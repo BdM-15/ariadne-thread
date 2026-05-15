@@ -46,7 +46,7 @@ Developer skills are required to _build_ the platform itself. They must be activ
 | Skill                                                                                                   | Purpose                                                                                                                               | Installation Command / Source                                                                             |
 | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills                    | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/`             |
-| **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Theseus-inspired interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/` |
+| **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Ariadne-specific interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/` |
 | **skill-creator** (Anthropic-style)                                                                     | Dynamic generation of new skills/MCPs with proper structure                                                                           | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/`       |
 | **first-principles-skill**                                                                              | Systematic first-principles analysis for architecture and strategy                                                                    | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/` |
 
@@ -89,10 +89,10 @@ Commit the vendored skill immediately.
 | Local Efficient Models               | Fast daily execution (Qwen3.5 / 9B-class via Ollama)                     | https://ollama.com                                      |
 | OpenAI text-embedding-3-large        | High-quality semantic search in knowledge layer                          | https://platform.openai.com                             |
 | MinerU                               | Primary document parser (PDFs, RFPs, guides)                             | https://github.com/opendatalab/MinerU                   |
-| LightRAG (custom UI)                 | Opportunity-centric knowledge management with settings + integrated chat | https://github.com/HKUDS/LightRAG                       |
+| Knowledge Engine Candidate           | Opportunity-centric retrieval and graph context with settings + integrated chat; LightRAG is a candidate, not a committed runtime shape | https://github.com/HKUDS/LightRAG                       |
 | LangGraph (selective)                | Clean skill/MCP chaining only where it adds clear value                  | https://github.com/langchain-ai/langgraph               |
 | huashu-design                        | Visual artifact renderer (platform skill)                                | Internal (guided by ui-ux-pro-max)                      |
-| Custom Renderer Skill                | DOCX + XLSX generation (modeled on Theseus patterns)                     | Internal (guided by ui-ux-pro-max)                      |
+| Custom Renderer Skill                | DOCX + XLSX generation for capture artifacts                             | Internal (guided by ui-ux-pro-max)                      |
 | Custom HITL Chat Interface           | Back-and-forth interaction for skills requiring human decision input     | Internal (guided by ui-ux-pro-max)                      |
 | Obsidian Integration                 | Living PKM and capture plans                                             | https://github.com/kepano/obsidian-skills               |
 | 1102tools/federal-contracting-skills | Government contracting deliverables (IGCE, SOW/PWS, market research)     | https://github.com/1102tools/federal-contracting-skills |
@@ -103,13 +103,12 @@ Commit the vendored skill immediately.
 
 ## 4. Technical Architecture
 
-- **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max)
 - **Primary Language**: Python 3.13+ as the default implementation language for backend services, agents, orchestration, document processing, knowledge workflows, and platform tools.
 - **Python Tooling**: Use `uv` for dependency, lockfile, and virtualenv management; use `uvx` for one-off Python CLIs. Keep a local `.venv/` ignored by git.
 - **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max). Use TypeScript only for the frontend and frontend-adjacent tooling.
 - **Backend**: Python-first, deep modular structure (enforced by Matt Pocock skills)
 - **Agents**: Hermes Agent (persistent memory) + Grok 4.3 for complex work + local models for speed
-- **Knowledge Layer**: LightRAG with custom Theseus-inspired UI (settings panel + chat)
+- **Knowledge Layer**: Opportunity-centric retrieval and graph context with a custom Command Center UI. LightRAG is a candidate component, but exact integration details should be decided during architecture work.
 - **Artifact Generation**: Custom renderer skill (DOCX, XLSX, presentations, visuals)
 - **Storage**: Local-first (Obsidian + file system) with optional encrypted sync
 - **Development Discipline**: Every change reviewed by `improve-codebase-architecture` before merge
@@ -141,15 +140,26 @@ Commit the vendored skill immediately.
 - Add to `.env` as `FIRECRAWL_API_KEY`
 - 500 credits/month free tier (ample for research)
 
-### Zero-Cost Local Stack
+### Capture Research Data APIs
+
+- SAM.gov: opportunity and entity data; add an API key to `.env` as `SAM_GOV_API_KEY` when needed.
+- USAspending.gov: award, agency, and spending context; base URL is public and tracked in `.env.example`.
+- BLS: labor, wage, and market context for price-to-win and staffing analysis; add `BLS_API_KEY` when needed.
+
+### MCP Tool Integration
+
+- Use MCP for external tool connectors where it keeps the Command Center simpler.
+- Keep MCP configuration path and timeout settings in `.env.example`; define actual server wiring only when a connector is selected.
+
+### Zero-Cost Local Stack Candidates
 
 - Ollama (local models): https://ollama.com
-- MinerU: `pip install mineru[all]`
-- LightRAG: Local clone from GitHub
+- MinerU: candidate document parser for PDFs/RFPs
+- LightRAG: candidate knowledge layer component
 
 **`.env.example`**
 
-The committed `.env.example` is a public, secret-free template. It is modeled on the richer Project Theseus runtime shape, but reorganized around Ariadne Thread platform concerns: app/workspace identity, model routing, embeddings, research, knowledge storage, parsing, graph storage, post-processing, and agent runtime ceilings.
+The committed `.env.example` is a public, secret-free template for Ariadne's known configuration needs. Keep it intentionally lean until architecture decisions are made. Include stable platform settings, model-provider keys, local-model defaults, capture research APIs, MCP tool settings, and local file paths; do not preconfigure undecided internals such as a specific RAG engine, graph database, parser backend, or agent runtime.
 
 Local development uses a private `.env` file that is ignored by git. Update `.env.example` whenever the public configuration shape changes.
 
@@ -162,7 +172,7 @@ Local development uses a private `.env` file that is ignored by git. Update `.en
 - Persistent sidebar with opportunity list + decision-gate status
 - Custom panels guided by `ui-ux-pro-max`:
   - Quick Capture (native, frictionless)
-  - Knowledge Chat (LightRAG + settings)
+  - Knowledge Chat (candidate RAG/graph layer + settings)
   - HITL Strategy Sessions (brainstorming, first-principles reviews)
   - Living Capture Plan viewer
   - Artifact preview & export

@@ -29,3 +29,6 @@ Thumbs.db
 rag_storage/
 inputs/
 knowledge/
+.ariadne/
+artifacts/
+exports/

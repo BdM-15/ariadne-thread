@@ -28,4 +28,3 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - HITL Strategy Session: a structured human-in-the-loop exchange for brainstorming, challenge, review, and action capture.
 - Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, presentation, and visual deliverables.
 - Hermes Agent: the local-first persistent operator that coordinates skills, memory, and execution.
-

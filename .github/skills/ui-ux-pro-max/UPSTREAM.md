@@ -1,12 +1,12 @@
 # Upstream Vendor Notes
 
-| Field | Value |
-|-------|-------|
-| Upstream repo | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill |
-| Upstream commit | b7e3af80f6e331f6fb456667b82b12cade7c9d35 |
-| Source skill | `.claude/skills/ui-ux-pro-max/` |
-| Vendored path | `.github/skills/ui-ux-pro-max/` |
-| License | MIT |
+| Field           | Value                                                   |
+| --------------- | ------------------------------------------------------- |
+| Upstream repo   | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill |
+| Upstream commit | b7e3af80f6e331f6fb456667b82b12cade7c9d35                |
+| Source skill    | `.claude/skills/ui-ux-pro-max/`                         |
+| Vendored path   | `.github/skills/ui-ux-pro-max/`                         |
+| License         | MIT                                                     |
 
 ## Local Adaptation
 

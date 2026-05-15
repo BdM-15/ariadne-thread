@@ -3,6 +3,14 @@
 Date: 2026-05-15  
 Scope: fresh repository before application code
 
+## First Slice Outcome
+
+Status: complete and merged to `main` on 2026-05-15.
+
+Delivered first-slice domain/storage foundation: Opportunity shell, Quick Capture review routing, Evidence Item and local Evidence Store, Living Briefing Packet views and deck-shaped review UI, Capture Action Plan skeleton, read-only Capability Catalog, first Command Center shell, and packet knowledge slots for reusable field definitions plus opportunity-specific answers.
+
+Next iteration should begin with `grill-with-docs` before code. Use current `PRD.md`, `CONTEXT.md`, ADRs, and this review to choose a new vertical slice. Preserve command-first dashboard intent: pulse check, quick actions, and AI support before passive metrics.
+
 ## Current State
 
 - Product source of truth exists in `PRD.md`.

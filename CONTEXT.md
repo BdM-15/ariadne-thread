@@ -85,6 +85,11 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a milestone or gate review.
 - Packet Readiness: the maturity label for a milestone decision briefing packet, such as not ready, draft ready, review ready, or decision ready.
 - Packet Section: a user-facing section of a living briefing packet that corresponds to part of the decision briefing experience.
+- Packet Field Definition: a reusable strategic question or data slot in a living briefing packet, such as customer, RFP release date, pWin, competition, or approval criteria.
+- Packet Field Answer: an opportunity-specific answer to a packet field definition, carrying value, evidence, assumptions, confidence, status, gaps, and action links.
+- Answer Path: metadata describing how Ariadne is likely to answer or maintain a packet field, such as human input, imported data, evidence extraction, model synthesis, or a capability module.
+- Shared Knowledge Entity: a structured Ariadne knowledge node, such as a customer, competitor, incumbent, contract vehicle, scope area, evaluation method, source document, reusable insight, or capture pattern, that can connect answers across opportunities.
+- Packet Field Review: a view of packet field answers and shared-entity connections that provides context without treating another opportunity's answer as valid for the current opportunity.
 - Canonical Packet Section Model: Ariadne's company-agnostic internal packet-section structure, inspired by the user's private briefing packet needs but kept separate from private output formatting.
 - Living Briefing Packet: the UI-native, continuously updated working view of a milestone decision briefing packet.
 - Briefing View: the user-facing view of a living briefing packet as a decision briefing.
@@ -128,6 +133,10 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - An **Action Plan Dashboard** lets the user manage outcomes while Ariadne maintains supporting details and recommended next steps.
 - A **Milestone Intelligence Checklist** informs a **Milestone Decision Briefing Packet** and can create **Backfill Needs** or **Capture Action Plan** items.
 - A **Milestone Decision Briefing Packet** contains **Traceable Recommendations** and **Evidence Status** for key answers.
+- A **Packet Field Definition** belongs to a **Canonical Packet Section Model** and represents the reusable question Ariadne should answer, not the one-off answer text.
+- A **Packet Field Answer** belongs to one **Opportunity** and may connect to **Evidence Items**, assumptions, confidence, gaps, **Action Plan Items**, and **Shared Knowledge Entities**.
+- **Packet Field Answers** can connect across opportunities through **Shared Knowledge Entities**, but those connections provide context only; they do not make one opportunity's answer valid for another opportunity.
+- An **Answer Path** can point to human input, imported CRM/API data, evidence extraction, model synthesis, or a **Capability Module** without bloating the packet data dictionary prose.
 - A **Milestone Decision Briefing Packet** can be generated at any **Packet Readiness** level.
 - A **Living Briefing Packet** is the in-product working surface for a **Milestone Decision Briefing Packet** before export.
 - A **Living Briefing Packet** is navigated through the **Canonical Packet Section Model**, while **Core Capture Workstreams** and **Evidence Items** provide the underlying readiness and evidence structure.

@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.1**
+**Product Requirements Document (PRD) v1.2**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -14,12 +14,13 @@
 
 **Completed**
 
-- Developer skills are installed or vendored under `.github/skills/`, including Matt Pocock's full pack, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Hub meta-skill.
+- Developer skills are installed or vendored under `.github/skills/`, including Matt Pocock's full pack, first-principles thinking, skill-creator, ui-ux-pro-max, CLI-Anything builder skill, and CLI-Hub meta-skill.
 - Python-first workspace defaults are established with Python 3.13+, `uv`, `.python-version`, `pyproject.toml`, `uv.lock`, and local `.venv/`.
 - Secret hygiene is established: `.env` and `.env.*` remain private; `.env.example` is the public descriptive config contract.
 - OpenAI `text-embedding-3-large` is the single canonical embedding path unless an ADR later defines migration/index isolation for alternatives.
 - Architecture foundation docs exist in `docs/architecture/` and `docs/adr/`.
 - Shipley global knowledge references are commit-safe and organized under `docs/reference/shipley/`.
+- CLI-first harnesses are an approved architecture option for repeatable, batchable, tool-facing, or agent-facing capabilities that should not become complicated UI or bespoke tool sprawl.
 
 **Not Started**
 
@@ -27,7 +28,7 @@
 
 **Next Build Gate**
 
-- Begin product build only after this PRD/status update and Shipley reference organization are committed.
+- Begin product build only after this Phase 0 status update, CLI-Anything vendoring, and Shipley reference organization are committed.
 - First build slice should be the Command Center shell plus minimal Python configuration/domain scaffolding, guided by `ui-ux-pro-max` and `improve-codebase-architecture`.
 
 ---
@@ -71,6 +72,7 @@ Developer skills are required to _build_ the platform itself. They must be activ
 | **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Ariadne-specific interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/`                        |
 | **skill-creator** (Anthropic-style)                                                                     | Dynamic generation of new skills/MCPs with proper structure                                                                           | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/`                              |
 | **first-principles-skill**                                                                              | Systematic first-principles analysis for architecture and strategy                                                                    | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/`                        |
+| **CLI-Anything builder skill**                                                                          | Generate, refine, test, and validate agent-native Python CLI harnesses for Ariadne internal capabilities or external software/tools   | Vendor `codex-skill/` plus selected `cli-anything-plugin/` methodology resources from https://github.com/HKUDS/CLI-Anything      |
 | **CLI-Hub meta-skill**                                                                                  | Developer enablement for discovering agent-native CLIs without vendoring the full CLI-Anything monorepo                               | Vendor `skills/cli-hub-meta-skill/` from https://github.com/HKUDS/CLI-Anything under `.github/skills/cli-hub-meta-skill/`        |
 
 **Exact Day-0 Installation Sequence (Run in VSCode Terminal)**
@@ -87,7 +89,7 @@ npx skills add anthropic/skills
 
 # 4. Vendor ui-ux-pro-max (Critical — Run this immediately after)
 
-# 5. Vendor CLI-Hub meta-skill from CLI-Anything
+# 5. Vendor CLI-Anything builder skill and CLI-Hub meta-skill
 ```
 
 **How to Vendor `ui-ux-pro-max` on Day 0**
@@ -101,6 +103,14 @@ Commit the vendored skill immediately.
 **How to Vendor CLI-Hub Meta-Skill**
 
 Vendor only `skills/cli-hub-meta-skill/` from `HKUDS/CLI-Anything` into `.github/skills/cli-hub-meta-skill/`. Include upstream license and provenance. Do not vendor the full CLI-Anything monorepo unless a later architecture decision requires a specific generated harness.
+
+**How to Vendor CLI-Anything Builder Skill**
+
+Vendor upstream `codex-skill/` from `HKUDS/CLI-Anything` into `.github/skills/cli-anything/`, then bundle selected `cli-anything-plugin/` methodology resources under `.github/skills/cli-anything/resources/cli-anything-plugin/` so agents can read the full `HARNESS.md` playbook without vendoring the full monorepo. Patch installation examples to `uv`/`uv pip`/`uv tool` forms for Ariadne.
+
+**CLI-First Architecture Rule**
+
+Use the CLI-Anything builder skill when a capability is repeatable, batchable, tool-facing, or agent-facing and benefits from deterministic JSON output. Prefer CLI-first harnesses for research/data pulls, document conversion, artifact export, Shipley reference extraction/refresh, future knowledge ingestion/reindexing jobs, admin validation, and wrappers around real external software or APIs. Keep strategic review, decision-making, visual sensemaking, and high-context human workflows in the Command Center UI, with CLI harnesses behind the UI where useful.
 
 **Post-Installation Verification**
 
@@ -121,6 +131,7 @@ Vendor only `skills/cli-hub-meta-skill/` from `HKUDS/CLI-Anything` into `.github
 | MinerU                               | Primary document parser (PDFs, RFPs, guides)                                                                                            | https://github.com/opendatalab/MinerU                   |
 | Knowledge Engine Candidate           | Opportunity-centric retrieval and graph context with settings + integrated chat; LightRAG is a candidate, not a committed runtime shape | https://github.com/HKUDS/LightRAG                       |
 | LangGraph (selective)                | Clean skill/MCP chaining only where it adds clear value                                                                                 | https://github.com/langchain-ai/langgraph               |
+| CLI-Anything Harness Methodology     | Agent-native CLI surfaces for repeatable Ariadne workflows and external software/tool access                                            | https://github.com/HKUDS/CLI-Anything                   |
 | huashu-design                        | Visual artifact renderer (platform skill)                                                                                               | Internal (guided by ui-ux-pro-max)                      |
 | Custom Renderer Skill                | DOCX + XLSX generation for capture artifacts                                                                                            | Internal (guided by ui-ux-pro-max)                      |
 | Custom HITL Chat Interface           | Back-and-forth interaction for skills requiring human decision input                                                                    | Internal (guided by ui-ux-pro-max)                      |
@@ -137,6 +148,7 @@ Vendor only `skills/cli-hub-meta-skill/` from `HKUDS/CLI-Anything` into `.github
 - **Python Tooling**: Use `uv` for dependency, lockfile, and virtualenv management; use `uvx` for one-off Python CLIs. Keep a local `.venv/` ignored by git.
 - **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max). Use TypeScript only for the frontend and frontend-adjacent tooling.
 - **Backend**: Python-first, deep modular structure (enforced by Matt Pocock skills)
+- **CLI-First Harnesses**: Use Python Click-style CLIs with `--json` output for repeatable, batchable, tool-facing, or agent-facing operations. These CLIs should sit behind the UI or agent runtime rather than replacing human-facing strategy workflows.
 - **Agents**: Hermes Agent (persistent memory) + Grok 4.3 for complex work + local models for speed
 - **Knowledge Layer**: Opportunity-centric retrieval and graph context with a custom Command Center UI. LightRAG is a candidate component, but exact integration details should be decided during architecture work.
 - **Artifact Generation**: Custom renderer skill (DOCX, XLSX, presentations, visuals)
@@ -217,7 +229,7 @@ Local development uses a private `.env` file that is ignored by git. Update `.en
 
 **Completed**
 
-- Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Hub meta-skill.
+- Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, CLI-Anything builder skill, and CLI-Hub meta-skill.
 - Established Python 3.13+ / `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and `uv.lock`.
 - Established secret-safe environment handling with descriptive `.env.example` and private ignored `.env` files.
 - Ran architecture foundation review and recorded ADRs before application code.
@@ -228,6 +240,7 @@ Local development uses a private `.env` file that is ignored by git. Update `.en
 
 - Bootstrap the Command Center shell using `ui-ux-pro-max`.
 - Create the minimal Python configuration/domain scaffold needed by the first UI slice.
+- Identify first CLI-first harness candidates before turning batch/tool workflows into UI complexity.
 
 No application code has been built yet.
 
@@ -271,6 +284,7 @@ ariadne-thread/
 │   └── skills/
 │       ├── mattpocock skills...
 │       ├── ui-ux-pro-max/
+│       ├── cli-anything/
 │       ├── cli-hub-meta-skill/
 │       ├── first-principles-thinking/
 │       └── skill-creator/
@@ -286,7 +300,7 @@ ariadne-thread/
 
 **Bootstrap Command for Copilot (use this exact prompt)**
 
-> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install or vendor all required developer skills, including Matt Pocock skills, first-principles thinking, skill-creator, `ui-ux-pro-max`, and CLI-Hub meta-skill. Run `improve-codebase-architecture` on the new repo and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
+> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install or vendor all required developer skills, including Matt Pocock skills, first-principles thinking, skill-creator, `ui-ux-pro-max`, CLI-Anything builder skill, and CLI-Hub meta-skill. Run `improve-codebase-architecture` on the new repo and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
 
 ---
 
@@ -305,7 +319,7 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.1**
+**End of PRD v1.2**
 
 **Phase 0 foundation complete. Product build not started.**
 

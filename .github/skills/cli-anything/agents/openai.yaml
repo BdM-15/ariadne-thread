@@ -1,0 +1,4 @@
+interface:
+  display_name: "CLI-Anything"
+  short_description: "Build or refine agent-native CLI-Anything harnesses."
+  default_prompt: "Use CLI-Anything to build, refine, test, or validate a harness for the user's target software, source repository, or Ariadne internal capability."

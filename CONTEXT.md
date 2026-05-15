@@ -17,6 +17,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - PRD first, architecture foundation second, application code third.
 - Python-first implementation: use the latest stable Python supported by the dependency stack, manage dependencies and virtualenvs with `uv`, run one-off Python CLIs with `uvx`, and keep `.venv/` local.
 - Prefer custom in-product interfaces over tool sprawl.
+- Prefer CLI-first harnesses for repeatable, batchable, tool-facing, or agent-facing workflows that need deterministic JSON output. Keep visual judgment, strategy, and high-context human decisions in the Command Center UI.
 - Keep the provided Project Theseus `.env` as reference material only; never commit live secrets or copy Theseus-specific runtime assumptions into Ariadne before architecture decisions are made. Maintain `.env.example` as the public, secret-free configuration contract.
 - Treat `docs/reference/shipley/` as global capture-methodology knowledge. Use it to shape language, decision gates, workflows, and artifacts, but do not build indexing/runtime assumptions before architecture decisions are made.
 
@@ -31,3 +32,4 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, presentation, and visual deliverables.
 - Hermes Agent: the local-first persistent operator that coordinates skills, memory, and execution.
 - Global Knowledge Reference: commit-safe source material that informs product behavior and terminology without implying a specific retrieval/indexing implementation.
+- Agent-Native CLI Harness: a Python CLI surface with machine-readable JSON output that exposes repeatable Ariadne or external-tool capabilities to agents, scripts, and optionally the UI.

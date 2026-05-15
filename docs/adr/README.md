@@ -13,4 +13,4 @@ Use concise records with this shape:
 
 - `0001-phase-0-architecture-foundation.md`: PRD-led docs, ADRs, ignored secrets, and no app code before architecture foundation.
 - `0002-vscode-native-skills-location.md`: `.github/skills/` is the canonical workspace skill location.
-- `0003-shipley-references-and-cli-hub-skill.md`: Shipley references live under `docs/reference/shipley/`; only CLI-Hub meta-skill is vendored from CLI-Anything for now.
+- `0003-shipley-references-and-cli-hub-skill.md`: Shipley references live under `docs/reference/shipley/`; CLI-Anything builder and CLI-Hub meta-skills are vendored without the full CLI-Anything monorepo.

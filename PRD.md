@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.3**
+**Product Requirements Document (PRD) v1.4**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -14,7 +14,7 @@
 
 **Completed**
 
-- Developer skills are installed or vendored under `.github/skills/`, including Matt Pocock's full pack, first-principles thinking, skill-creator, ui-ux-pro-max, CLI-Anything builder skill, and CLI-Hub meta-skill.
+- Developer skills are installed or vendored under `.github/skills/`, including Matt Pocock's full pack, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Anything builder skill. CLI-Hub meta-skill is present only as an optional discovery aid.
 - Python-first workspace defaults are established with Python 3.14.5 / `>=3.14`, `uv`, `.python-version`, `pyproject.toml`, `uv.lock`, and local `.venv/`.
 - Secret hygiene is established: `.env` and `.env.*` remain private; `.env.example` is the public descriptive config contract.
 - OpenAI `text-embedding-3-large` is the single canonical embedding path unless an ADR later defines migration/index isolation for alternatives.
@@ -66,14 +66,13 @@ Developer skills are required to _build_ the platform itself. They must be activ
 
 **Required Developer Skills (Install in Parallel on Day 0)**
 
-| Skill                                                                                                   | Purpose                                                                                                                               | Installation Command / Source                                                                                                    |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills                    | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/`                                    |
-| **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Ariadne-specific interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/`                        |
-| **skill-creator** (Anthropic-style)                                                                     | Dynamic generation of new skills/MCPs with proper structure                                                                           | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/`                              |
-| **first-principles-skill**                                                                              | Systematic first-principles analysis for architecture and strategy                                                                    | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/`                        |
-| **CLI-Anything builder skill**                                                                          | Generate, refine, test, and validate agent-native Python CLI harnesses for Ariadne internal capabilities or external software/tools   | Vendor `codex-skill/` plus selected `cli-anything-plugin/` methodology resources from https://github.com/HKUDS/CLI-Anything      |
-| **CLI-Hub meta-skill**                                                                                  | Developer enablement for discovering agent-native CLIs without vendoring the full CLI-Anything monorepo                               | Vendor `skills/cli-hub-meta-skill/` from https://github.com/HKUDS/CLI-Anything under `.github/skills/cli-hub-meta-skill/`        |
+| Skill                                                                                                   | Purpose                                                                                                                               | Installation Command / Source                                                                                               |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills                    | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/`                               |
+| **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Ariadne-specific interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/`                   |
+| **skill-creator** (Anthropic-style)                                                                     | Dynamic generation of new skills/MCPs with proper structure                                                                           | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/`                         |
+| **first-principles-skill**                                                                              | Systematic first-principles analysis for architecture and strategy                                                                    | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/`                   |
+| **CLI-Anything builder skill**                                                                          | Generate, refine, test, and validate agent-native Python CLI harnesses for Ariadne internal capabilities or external software/tools   | Vendor `codex-skill/` plus selected `cli-anything-plugin/` methodology resources from https://github.com/HKUDS/CLI-Anything |
 
 **Exact Day-0 Installation Sequence (Run in VSCode Terminal)**
 
@@ -89,7 +88,7 @@ npx skills add anthropic/skills
 
 # 4. Vendor ui-ux-pro-max (Critical — Run this immediately after)
 
-# 5. Vendor CLI-Anything builder skill and CLI-Hub meta-skill
+# 5. Vendor CLI-Anything builder skill
 ```
 
 **How to Vendor `ui-ux-pro-max` on Day 0**
@@ -100,13 +99,13 @@ After installing the skill-creator, vendor the upstream skill:
 
 Commit the vendored skill immediately.
 
-**How to Vendor CLI-Hub Meta-Skill**
-
-Vendor only `skills/cli-hub-meta-skill/` from `HKUDS/CLI-Anything` into `.github/skills/cli-hub-meta-skill/`. Include upstream license and provenance. Do not vendor the full CLI-Anything monorepo unless a later architecture decision requires a specific generated harness.
-
 **How to Vendor CLI-Anything Builder Skill**
 
 Vendor upstream `codex-skill/` from `HKUDS/CLI-Anything` into `.github/skills/cli-anything/`, then bundle selected `cli-anything-plugin/` methodology resources under `.github/skills/cli-anything/resources/cli-anything-plugin/` so agents can read the full `HARNESS.md` playbook without vendoring the full monorepo. Patch installation examples to `uv`/`uv pip`/`uv tool` forms for Ariadne.
+
+**Optional: How to Vendor CLI-Hub Meta-Skill**
+
+Vendor only `skills/cli-hub-meta-skill/` from `HKUDS/CLI-Anything` into `.github/skills/cli-hub-meta-skill/` when live catalog discovery is useful before building or choosing an external-tool harness. Include upstream license and provenance. Do not vendor the full CLI-Anything monorepo unless a later architecture decision requires a specific generated harness.
 
 **CLI-First Architecture Rule**
 
@@ -229,7 +228,7 @@ Local development uses a private `.env` file that is ignored by git. Update `.en
 
 **Completed**
 
-- Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, CLI-Anything builder skill, and CLI-Hub meta-skill.
+- Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Anything builder skill. CLI-Hub meta-skill is vendored only as an optional discovery aid.
 - Established Python 3.14.5 / `>=3.14` with `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and `uv.lock`.
 - Established secret-safe environment handling with descriptive `.env.example` and private ignored `.env` files.
 - Ran architecture foundation review and recorded ADRs before application code.
@@ -285,7 +284,7 @@ ariadne-thread/
 │       ├── mattpocock skills...
 │       ├── ui-ux-pro-max/
 │       ├── cli-anything/
-│       ├── cli-hub-meta-skill/
+│       ├── cli-hub-meta-skill/  # optional discovery aid
 │       ├── first-principles-thinking/
 │       └── skill-creator/
 ├── src/
@@ -300,7 +299,7 @@ ariadne-thread/
 
 **Bootstrap Command for Copilot (use this exact prompt)**
 
-> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install or vendor all required developer skills, including Matt Pocock skills, first-principles thinking, skill-creator, `ui-ux-pro-max`, CLI-Anything builder skill, and CLI-Hub meta-skill. Run `improve-codebase-architecture` on the new repo and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
+> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install or vendor all required developer skills, including Matt Pocock skills, first-principles thinking, skill-creator, `ui-ux-pro-max`, and CLI-Anything builder skill. Treat CLI-Hub meta-skill as optional catalog discovery only. Run `improve-codebase-architecture` on the new repo and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
 
 ---
 
@@ -319,7 +318,7 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.3**
+**End of PRD v1.4**
 
 **Phase 0 foundation complete. Product build not started.**
 

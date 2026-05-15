@@ -10,3 +10,4 @@
 
 - Vendored only the CLI-Hub meta-skill, not the full CLI-Anything monorepo.
 - Replaced `pip install cli-anything-hub` examples with `uv tool install cli-anything-hub` to match Ariadne's Python tooling rules.
+- Demoted this skill to optional live-catalog discovery; Ariadne internal harness building uses `.github/skills/cli-anything/`.

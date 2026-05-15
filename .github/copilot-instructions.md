@@ -7,7 +7,7 @@ Use workspace skills from `.github/skills/`. In particular:
 - Use `setup-matt-pocock-skills` configuration from `AGENTS.md` and `docs/agents/`.
 - Use `improve-codebase-architecture` before major application code or refactors.
 - Use `ui-ux-pro-max` for Command Center UI work.
-- Use `cli-anything` when building, refining, testing, or validating agent-native CLI harnesses for repeatable Ariadne capabilities or external tools. Use `cli-hub-meta-skill` to discover existing CLI-Anything harnesses.
+- Use `cli-anything` when building, refining, testing, or validating agent-native CLI harnesses for repeatable Ariadne capabilities or external tools. Use `cli-hub-meta-skill` only when checking whether an existing external-tool CLI-Anything harness already exists.
 - Before building a new capability, decide whether it is primarily a Command Center UI workflow, a CLI-first harness candidate, or both; prefer CLI harnesses for repeatable, batchable, tool-facing, or agent-facing work with deterministic JSON output.
 - Use Python as the main application language for backend, agents, orchestration, document processing, knowledge workflows, and platform tooling. Use Python 3.14.5 / `>=3.14` as the current baseline; only downgrade by ADR if a required dependency blocks it.
 - Use `uv` for Python dependency management, lockfiles, sync, and `.venv/` creation. Use `uvx` for one-off Python CLIs. Do not introduce pip/Poetry/Pipenv workflows unless explicitly requested.

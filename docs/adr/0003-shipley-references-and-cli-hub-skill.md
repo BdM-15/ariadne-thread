@@ -14,8 +14,8 @@ The project also expects agents to use professional tools through stable, struct
 - Store global Shipley knowledge references under `docs/reference/shipley/`.
 - Treat those files as methodology source material, not a committed choice of RAG/indexing engine.
 - Vendor CLI-Anything's builder skill under `.github/skills/cli-anything/` from upstream `codex-skill/`, with selected `cli-anything-plugin/` methodology resources bundled under `resources/cli-anything-plugin/`.
-- Vendor CLI-Anything's `cli-hub-meta-skill` under `.github/skills/cli-hub-meta-skill/` for discovering existing harnesses.
-- Use `uv tool install cli-anything-hub` for CLI-Hub developer tooling to stay aligned with Ariadne's Python tooling rules.
+- Keep CLI-Anything's `cli-hub-meta-skill` under `.github/skills/cli-hub-meta-skill/` as an optional discovery aid for checking whether an existing external-tool harness already exists.
+- Use `uv tool install cli-anything-hub` only when live catalog discovery is needed, to stay aligned with Ariadne's Python tooling rules.
 - Do not vendor the full CLI-Anything monorepo or generated harnesses until a specific product or developer workflow needs one.
 - Prefer CLI-first harnesses for repeatable, batchable, tool-facing, or agent-facing Ariadne capabilities that need deterministic JSON output.
 
@@ -23,6 +23,6 @@ The project also expects agents to use professional tools through stable, struct
 
 - Future build work can cite Shipley references without inventing capture language from scratch.
 - Knowledge architecture remains open until a retrieval/indexing decision is made.
-- Agents can discover existing professional CLI harnesses and create new Ariadne-specific harnesses when useful, while the repo stays small and focused.
+- Agents can optionally discover existing professional CLI harnesses before building new external-tool wrappers, while the repo stays small and focused.
 - UI work is less likely to absorb batch jobs, data pulls, document conversion, validation, or tool wrappers that belong behind CLI/agent surfaces.
 - Any later generated CLI harness should arrive through a narrow, documented architecture decision or issue tied to a concrete workflow.

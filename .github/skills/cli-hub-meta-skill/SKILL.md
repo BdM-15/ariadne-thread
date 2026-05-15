@@ -1,13 +1,16 @@
 ---
 name: cli-hub-meta-skill
 description: >-
-  Discover agent-native CLIs for professional software. Access the live catalog
-  to find tools for creative workflows, productivity, AI, and more.
+  Optional discovery aid. Use only when checking whether an existing
+  CLI-Anything harness already exists before building or choosing an
+  external-tool harness.
 ---
 
 # CLI-Hub Meta-Skill
 
 CLI-Hub is a marketplace of agent-native command-line interfaces that make professional software accessible to AI agents.
+
+In Ariadne, this skill is optional. Use it only to check the live catalog before building or choosing an external-tool harness. For Ariadne internal CLI-first capabilities, use `cli-anything` directly.
 
 ## Quick Start
 
@@ -34,10 +37,10 @@ cli-hub info gimp
 **URL**: [`https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md`](https://reeceyang.sgp1.cdn.digitaloceanspaces.com/SKILL.md)
 
 The catalog is auto-updated and provides:
+
 - Full list of available CLIs organized by category
 - One-line `cli-hub install` commands for each tool
 - Complete descriptions and usage patterns
-
 
 ## What Can You Do?
 
@@ -86,7 +89,7 @@ For live sessions, `cli-hub previews` reads:
 
 1. **Install cli-hub**: `uv tool install cli-anything-hub`
 2. **Find your tool**: `cli-hub search <keyword>` or `cli-hub list -c <category>`
-3. **Install**: `cli-hub install <name>` (installs the `cli-anything-<name>` pip package)
+3. **Install**: `cli-hub install <name>` (installs the `cli-anything-<name>` Python package)
 4. **Run**: `cli-anything-<name>` for REPL, or `cli-anything-<name> <command>` for one-shot
 5. **JSON output**: All CLIs support `--json` flag for machine-readable output
 6. **Preview-capable CLIs**: use `cli-anything-<name> preview ... --json` to publish,

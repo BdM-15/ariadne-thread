@@ -7,7 +7,7 @@ Scope: fresh repository before application code
 
 - Product source of truth exists in `PRD.md`.
 - Domain language exists in `CONTEXT.md`.
-- Matt Pocock architecture/setup/write-a-skill, first-principles, skill-creator, Ariadne UI/UX, CLI-Anything builder, and CLI-Hub meta-skills are installed or vendored project-locally.
+- Matt Pocock architecture/setup/write-a-skill, first-principles, skill-creator, Ariadne UI/UX, and CLI-Anything builder skills are installed or vendored project-locally. CLI-Hub meta-skill is optional discovery only.
 - Agent setup docs exist in `AGENTS.md` and `docs/agents/`.
 - Live secrets are excluded by `.gitignore`; `.env.example` contains only public configuration shape.
 - Commit-safe Shipley references live under `docs/reference/shipley/` as global methodology source material.
@@ -20,7 +20,7 @@ Scope: fresh repository before application code
 3. Artifact renderer module: separate artifact intent, preview state, and export adapters so DOCX/XLSX/presentation outputs share one workflow without one oversized renderer.
 4. Agent runtime module: define a narrow Hermes execution interface before wiring model providers, local tools, skills, and memory.
 5. Environment configuration module: translate `.env` provider settings into typed runtime capabilities without exposing raw Project Theseus variable sprawl to application callers.
-6. External tool adapter: use MCP and CLI-Hub-discovered CLIs through narrow adapters rather than letting tool-specific commands spread through agents or UI code.
+6. External tool adapter: use MCP and, when helpful, CLI-Hub-discovered CLIs through narrow adapters rather than letting tool-specific commands spread through agents or UI code.
 7. CLI-first harness adapter: expose repeatable Ariadne operations as Python CLIs with JSON output when that avoids complicated UI or bespoke integration code.
 
 ## Guardrails

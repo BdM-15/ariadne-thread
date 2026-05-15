@@ -44,7 +44,7 @@ def test_runtime_api_reports_configured_app_status() -> None:
     }
 
 
-def test_root_serves_runtime_status_page() -> None:
+def test_root_serves_command_center_shell() -> None:
     settings = RuntimeSettings.from_mapping(
         {
             "PORT": "9622",
@@ -59,7 +59,16 @@ def test_root_serves_runtime_status_page() -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Ariadne Local" in response.text
-    assert "Runtime online" in response.text
+    assert "Capture Command Center" in response.text
+    assert "Opportunity" in response.text
+    assert "Quick Capture" in response.text
+    assert "Living Briefing Packet" in response.text
+    assert "Capture Action Plan" in response.text
+    assert "Capability Studio" in response.text
+    assert "Advanced / read-only" in response.text
+    assert "/api/capabilities/catalog" in response.text
+    assert "AFLCMC recompete support" in response.text
+    assert "Need validated customer pain" in response.text
     assert "http://127.0.0.1:9622" in response.text
 
 

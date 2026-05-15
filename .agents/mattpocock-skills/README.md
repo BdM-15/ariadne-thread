@@ -1,8 +1,8 @@
 # Matt Pocock Skills
 
-Installed project-local via `npx skills@latest add mattpocock/skills` for the `github-copilot` agent.
+Installed project-local via `npx skills@latest add mattpocock/skills`, then migrated to VS Code's workspace skill convention.
 
-Canonical installed skills live under `.agents/skills/`:
+Canonical installed skills live under `.github/skills/`:
 
 - `caveman`
 - `diagnose`

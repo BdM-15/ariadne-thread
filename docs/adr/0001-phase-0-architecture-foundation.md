@@ -13,7 +13,7 @@ The workspace also contains a Project Theseus `.env` with live keys. That file i
 
 - Treat `PRD.md` as the product source of truth and `CONTEXT.md` as the living domain vocabulary.
 - Use a single-context documentation layout: root `CONTEXT.md` and ADRs in `docs/adr/`.
-- Keep developer skills project-local under `.agents/skills/`, with PRD compatibility folders under `.agents/` where useful.
+- Keep developer skills project-local. Skill location is superseded by ADR 0002, which makes `.github/skills/` canonical for VS Code workspace discovery.
 - Keep `.env` ignored and publish only a secret-free `.env.example`.
 - Defer Next.js and application code until after the developer-skill foundation is committed.
 

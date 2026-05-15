@@ -17,6 +17,7 @@ Single-context layout: root `CONTEXT.md` plus ADRs in `docs/adr/`. See `docs/age
 ## Working Rules
 
 - Treat `PRD.md` as the product source of truth.
+- Use `.github/skills/` as the canonical workspace skill directory.
 - Keep live secrets out of git; the provided `.env` is reference only.
 - Run architecture review before substantive application code.
 - Prefer deep modules with small interfaces over scattered workflow logic.

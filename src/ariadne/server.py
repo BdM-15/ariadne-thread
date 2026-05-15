@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.command_center import render_command_center_shell
 from ariadne.config import RuntimeSettings
+from ariadne.packet_knowledge import PacketFieldReview, build_demo_packet_field_review
 from ariadne.packet_review import (
     build_demo_packet_briefing_view,
     build_demo_packet_coverage_view,
@@ -50,6 +51,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     @app.get("/api/packets/review/coverage")
     def packet_review_coverage() -> CoverageView:
         return build_demo_packet_coverage_view()
+
+    @app.get("/api/packets/review/knowledge-slots")
+    def packet_review_knowledge_slots() -> PacketFieldReview:
+        return build_demo_packet_field_review()
 
     @app.get("/api/capabilities/catalog")
     def capability_catalog() -> CapabilityCatalog:

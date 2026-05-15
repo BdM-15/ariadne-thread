@@ -144,6 +144,20 @@ def test_capability_catalog_api_exposes_local_workspace_skills() -> None:
     assert caveman["source_path"] == ".github/skills/caveman/SKILL.md"
 
 
+def test_packet_review_api_exposes_knowledge_slot_connections() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/api/packets/review/knowledge-slots")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["opportunity_id"] == "opp-aflcmc-recompete"
+    customer = next(item for item in body["items"] if item["field_key"] == "customer")
+    assert customer["answer"]["value"] == "AFLCMC"
+    assert customer["connections"][0]["validity_scope"] == "opportunity_specific"
+    assert "context only" in customer["scope_note"]
+
+
 def test_app_py_builds_runtime_app_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(

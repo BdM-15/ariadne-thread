@@ -8,6 +8,8 @@ out/
 dist/
 build/
 coverage/
+__pycache__/
+*.py[cod]
 
 *.log
 npm-debug.log*

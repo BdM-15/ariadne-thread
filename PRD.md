@@ -42,7 +42,7 @@ Developer skills are required to *build* the platform itself. They must be activ
 | Skill                              | Purpose                                                                 | Installation Command / Source                                                                 |
 |------------------------------------|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
 | **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/` |
-| **ui-ux-pro-max-skill**            | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Theseus-inspired interfaces, visual renderer) | Create on Day 0 using skill-creator and save under `.github/skills/ui-ux-pro-max-skill/`      |
+| **ui-ux-pro-max**                  | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Theseus-inspired interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/` |
 | **skill-creator** (Anthropic-style) | Dynamic generation of new skills/MCPs with proper structure             | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/` |
 | **first-principles-skill**         | Systematic first-principles analysis for architecture and strategy      | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/` |
 
@@ -58,16 +58,16 @@ npx skills add awesome-skills/first-principles-skill
 # 3. Skill-Creator (for dynamic skill generation)
 npx skills add anthropic/skills
 
-# 4. Create ui-ux-pro-max-skill (Critical — Run this prompt immediately after)
+# 4. Vendor ui-ux-pro-max (Critical — Run this immediately after)
 ```
 
-**How to Create `ui-ux-pro-max-skill` on Day 0**
+**How to Vendor `ui-ux-pro-max` on Day 0**
 
-After installing the skill-creator, run this exact prompt:
+After installing the skill-creator, vendor the upstream skill:
 
-> “Using Anthropic-style skill-creator patterns and the North Star Vision (dark cyberpunk Command Center, deep modular architecture, custom Theseus-inspired interfaces for knowledge and HITL, huashu-design visual renderer), create a complete new skill called `ui-ux-pro-max-skill`. The skill must generate production-ready Next.js 15 + Tailwind + shadcn/ui components with deep black backgrounds, neon cyan/magenta accents, information-dense yet calm layouts, support for custom knowledge chat panels, HITL strategy sessions, quick-capture, decision-gate workflows, and visual artifact rendering. Enforce Matt Pocock deep-module principles and Shipley-aligned UX flows in every generated component. Output the full skill file ready to save at `.github/skills/ui-ux-pro-max-skill/SKILL.md`.”
+> Vendor `nextlevelbuilder/ui-ux-pro-max-skill` into `.github/skills/ui-ux-pro-max/`. Keep upstream resources (`data`, `scripts`, license, README, and skill metadata) with the skill, and patch command examples only as needed for VS Code workspace paths.
 
-Commit the generated skill immediately.
+Commit the vendored skill immediately.
 
 **Post-Installation Verification**
 - Run `improve-codebase-architecture` on the fresh repo.
@@ -86,9 +86,9 @@ Commit the generated skill immediately.
 | MinerU                           | Primary document parser (PDFs, RFPs, guides)                            | https://github.com/opendatalab/MinerU                                           |
 | LightRAG (custom UI)             | Opportunity-centric knowledge management with settings + integrated chat| https://github.com/HKUDS/LightRAG                                               |
 | LangGraph (selective)            | Clean skill/MCP chaining only where it adds clear value                 | https://github.com/langchain-ai/langgraph                                       |
-| huashu-design                    | Visual artifact renderer (platform skill)                               | Internal (generated via ui-ux-pro-max-skill)                                    |
-| Custom Renderer Skill            | DOCX + XLSX generation (modeled on Theseus patterns)                    | Internal (generated via ui-ux-pro-max-skill)                                    |
-| Custom HITL Chat Interface       | Back-and-forth interaction for skills requiring human decision input    | Internal (generated via ui-ux-pro-max-skill)                                    |
+| huashu-design                    | Visual artifact renderer (platform skill)                               | Internal (guided by ui-ux-pro-max)                                             |
+| Custom Renderer Skill            | DOCX + XLSX generation (modeled on Theseus patterns)                    | Internal (guided by ui-ux-pro-max)                                             |
+| Custom HITL Chat Interface       | Back-and-forth interaction for skills requiring human decision input    | Internal (guided by ui-ux-pro-max)                                             |
 | Obsidian Integration             | Living PKM and capture plans                                            | https://github.com/kepano/obsidian-skills                                       |
 | 1102tools/federal-contracting-skills | Government contracting deliverables (IGCE, SOW/PWS, market research)   | https://github.com/1102tools/federal-contracting-skills                         |
 | coreyhaines31/marketingskills    | Value propositions, positioning, messaging, CRO                         | https://github.com/coreyhaines31/marketingskills                                |
@@ -98,7 +98,7 @@ Commit the generated skill immediately.
 
 ## 4. Technical Architecture
 
-- **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (generated by ui-ux-pro-max-skill)
+- **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max)
 - **Backend**: TypeScript, deep modular structure (enforced by Matt Pocock skills)
 - **Agents**: Hermes Agent (persistent memory) + Grok 4.3 for complex work + local models for speed
 - **Knowledge Layer**: LightRAG with custom Theseus-inspired UI (settings panel + chat)
@@ -149,7 +149,7 @@ FIRECRAWL_API_KEY=your_firecrawl_key
 - Dark cyberpunk theme (deep #0a0a0a background, neon cyan/magenta accents, subtle grid overlays)
 - Information-dense but calm — mission-control feel
 - Persistent sidebar with opportunity list + decision-gate status
-- Custom panels generated by `ui-ux-pro-max-skill`:
+- Custom panels guided by `ui-ux-pro-max`:
   - Quick Capture (native, frictionless)
   - Knowledge Chat (LightRAG + settings)
   - HITL Strategy Sessions (brainstorming, first-principles reviews)
@@ -163,10 +163,10 @@ FIRECRAWL_API_KEY=your_firecrawl_key
 
 **Phase 0 – Developer Skills + Architecture Foundation (Week 0–1)** ← **CURRENT PHASE**
 - Install all developer skills in parallel (Section 2)
-- Create `ui-ux-pro-max-skill`
+- Vendor `ui-ux-pro-max`
 - Run `improve-codebase-architecture` on fresh repo and commit recommendations
 - Establish `CONTEXT.md`, `docs/adr/`, and domain language
-- Bootstrap Command Center shell using `ui-ux-pro-max-skill`
+- Bootstrap Command Center shell using `ui-ux-pro-max`
 
 **Phase 1 – Core Infrastructure**
 - Hermes Agent skeleton + persistent memory
@@ -200,7 +200,7 @@ ariadne-thread/
 │   ├── copilot-instructions.md
 │   └── skills/
 │       ├── mattpocock skills...
-│       ├── ui-ux-pro-max-skill/
+│       ├── ui-ux-pro-max/
 │       ├── first-principles-thinking/
 │       └── skill-creator/
 ├── src/
@@ -212,7 +212,7 @@ ariadne-thread/
 
 **Bootstrap Command for Copilot (use this exact prompt)**
 
-> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install all four skills in parallel, create the `ui-ux-pro-max-skill`, run `improve-codebase-architecture` on the new repo, and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
+> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install all four skills in parallel, vendor `ui-ux-pro-max`, run `improve-codebase-architecture` on the new repo, and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
 
 ---
 

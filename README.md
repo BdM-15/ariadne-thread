@@ -7,6 +7,6 @@ The product source of truth is [PRD.md](PRD.md). Phase 0 focuses on developer sk
 ## Phase 0 Priorities
 
 - Bring in architecture, first-principles, skill-creation, and UI/UX developer skills.
-- Create the Ariadne-specific `ui-ux-pro-max-skill`.
+- Vendor `ui-ux-pro-max` from `nextlevelbuilder/ui-ux-pro-max-skill`.
 - Capture architecture recommendations before writing application code.
 - Keep secrets out of the repository; use `.env.example` for public configuration shape only.

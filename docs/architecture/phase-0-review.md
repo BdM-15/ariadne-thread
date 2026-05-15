@@ -23,6 +23,31 @@ Scope: fresh repository before application code
 6. External tool adapter: use MCP and, when helpful, CLI-Hub-discovered CLIs through narrow adapters rather than letting tool-specific commands spread through agents or UI code.
 7. CLI-first harness adapter: expose repeatable Ariadne operations as Python CLIs with JSON output when that avoids complicated UI or bespoke integration code.
 
+## Accepted First Build Slice
+
+Build a thin vertical slice that establishes the load-bearing structure before broad feature work:
+
+- Opportunity shell with lifecycle state, entry context, and core capture workstreams.
+- Quick Capture Inbox for raw notes, thoughts, meeting fragments, pasted text, and uploaded material.
+- Pydantic-validated Evidence Item model backed by a local-first Evidence Store adapter.
+- Living Briefing Packet skeleton with packet readiness, briefing view, coverage view, and evidence/gap status.
+- Capture Action Plan skeleton with outcome-level tasks and expandable execution details.
+- Read-only Capability Catalog in the advanced Capability Studio surface.
+
+Implementation order: build the Python domain/storage layer first, then put a thin Command Center UI shell on top immediately after. Treat this as a days-scale sequence, not a weeks-or-months architecture phase.
+
+Initial package shape: use one `src/ariadne/` package with deep internal modules for `config`, `opportunities`, `evidence`, `packets`, `actions`, and `capabilities`. Do not split into many top-level packages until the deletion test shows a real seam with leverage and locality.
+
+Test approach: use the `tdd` skill from the start of the first slice. Write behavior tests through public interfaces, one tracer bullet at a time, then implement the minimum code needed to pass. Focus initial tests on opportunity creation, evidence validation/storage, packet readiness, action-plan item creation, and read-only capability catalog discovery. Do not write all tests first or couple tests to internal implementation details.
+
+First tracer bullet: prove that a user can create an Opportunity that starts at a later Lifecycle State because of an Entry Context, while still preserving the standard Core Capture Workstreams and Backfill Needs for earlier work that may need to be revisited.
+
+First public interface: start with an application-facing `create_opportunity(...)` function that accepts an opportunity name and Entry Context, then returns an Opportunity with lifecycle state, entry context, core capture workstreams, and backfill needs initialized. Keep nested Pydantic models available, but do not require callers to manually assemble every internal object for the first behavior.
+
+Defer full Hermes autonomy, full RAG/graph implementation, third-party skill installation, artifact rendering, and external tool integrations until the first slice proves the product shape and interfaces.
+
+Do not let that deferral make those integrations vague. Use `docs/architecture/future-integration-strategy.md` to preserve the planned attachment points for Hermes, graph visualization, MinerU, huashu-design, RAG, external APIs, and advanced skills while keeping the first slice small.
+
 ## Guardrails
 
 - Do not split modules just because files approach a small line count; use the deletion test and require real leverage.

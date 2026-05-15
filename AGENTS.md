@@ -20,4 +20,5 @@ Single-context layout: root `CONTEXT.md` plus ADRs in `docs/adr/`. See `docs/age
 - Use `.github/skills/` as the canonical workspace skill directory.
 - Keep live secrets out of git; the provided `.env` is reference only.
 - Run architecture review before substantive application code.
+- Run a `grill-with-docs` session before each future integration slice for Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation.
 - Prefer deep modules with small interfaces over scattered workflow logic.

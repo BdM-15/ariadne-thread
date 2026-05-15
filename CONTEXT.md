@@ -24,12 +24,149 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Domain Language
 
 - Capture Command Center: the single working surface for opportunities, decision gates, knowledge, HITL sessions, plans, agents, and artifacts.
-- Opportunity: a potential pursuit with customer, requirements, status, evidence, risks, and next actions.
-- Pursuit: the active lifecycle of moving an opportunity through Shipley-aligned gates toward bid and award.
+- Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
+- Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate.
+- Knowledge Processing Workflow: the workflow that turns raw capture items and uploaded documents into structured evidence, opportunity knowledge, action items, and reusable insight candidates.
+- Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
+- Pursuit: the active capture phase of an opportunity once serious work begins toward a bid decision and award.
 - Decision Gate: a disciplined checkpoint that turns evidence into a go/no-go/hold action.
+- Lifecycle State: the current maturity position of an opportunity in the capture lifecycle.
+- Entry Context: the starting maturity context for an opportunity when it is first entered into Ariadne.
+- Capture Workstream: a recurring body of capture work, such as customer insight, competitive intelligence, partner strategy, solution shaping, pricing, compliance, or artifact development, that can be revisited at any lifecycle state.
+- Core Capture Workstream: one of the stable capture workstreams present on every opportunity so evidence, gaps, maturity, and next actions stay comparable.
+- Backfill Need: missing or stale capture work that should be revisited even though an opportunity entered Ariadne at a later lifecycle state.
+- Evidence Status: the completeness label for a packet answer, such as answered, partial, gap, or assumption.
+- Evidence Item: a traceable source unit, such as a note, document excerpt, research finding, API result, tool output, call record, artifact, or model-produced observation, that supports opportunity knowledge or a recommendation.
+- Source Evidence: an evidence item captured from an external or user-provided source before Ariadne interpretation.
+- Derived Evidence: an evidence item produced by Ariadne interpretation, extraction, summarization, synthesis, or model reasoning.
+- Evidence Store: the local-first home for evidence items used by opportunity knowledge, packet generation, and traceable recommendations.
+- Document Intake: the process of accepting uploaded files and extracting useful source evidence from them.
+- Traceable Recommendation: an AI recommendation that cites its supporting sources, assumptions, confidence, gaps, and rationale.
+- Capability Gap: a missing Ariadne workflow, skill, view, adapter, or automation that would materially improve capture execution.
+- Model Role: the intended responsibility level for a model, separating frontier reasoning work from local or administrative work.
+- Frontier Reasoning Model: a model role for strategy, synthesis, mentoring, hard tradeoffs, and executive-ready recommendations.
+- Local Admin Model: a model role for lower-risk tasks such as tagging, summarizing, date extraction, deduplication, formatting, and evidence preparation.
+- Recompete: a new competition for work that has been awarded before.
+- Incumbent Recompete: a recompete for work currently held by the user or their organization.
 - Knowledge Layer: the local-first retrieval and graph context behind opportunity-specific reasoning.
+- Knowledge Mirror: an optional human-readable export or integration, such as Obsidian, that reflects Ariadne knowledge without becoming the primary source of truth.
+- Mirror Update Proposal: a proposed Ariadne knowledge update derived from edits made in a knowledge mirror.
+- Knowledge Graph View: a visual exploration surface for Ariadne's primary knowledge connections across opportunities, evidence, workstreams, actions, artifacts, and reusable insights.
+- Graph Sensemaking Mode: the first-stage knowledge graph mode for exploring and understanding relationships without changing capture records.
+- Graph Action Mode: a later-stage knowledge graph mode for acting on selected knowledge nodes, such as creating actions, promoting insights, generating packet sections, or running research workflows.
+- Opportunity Knowledge: evidence, notes, artifacts, decisions, lessons, and intel tied to a specific opportunity.
+- Reusable Capture Insight: opportunity-derived knowledge that can support future opportunities beyond the one where it was learned.
+- Insight Promotion: the human-approved act of turning opportunity knowledge into reusable capture insight.
 - HITL Strategy Session: a structured human-in-the-loop exchange for brainstorming, challenge, review, and action capture.
+- Capture Intelligence Workflow: a structured workflow that gathers, aggregates, and synthesizes capture data into insights, recommendations, and actions.
+- Product Workflow: a user-facing outcome workflow in Ariadne, such as building a briefing packet, creating a call plan, or researching competitors.
+- Capability Module: an underlying skill, skill chain, CLI harness, MCP tool, parser, renderer, model workflow, or adapter that a product workflow can use.
+- Capability Studio: an advanced workspace for adding, testing, refining, and validating capability modules without making capability management the main capture experience.
+- Capability Run: one execution of a capability module with its inputs, outputs, rationale, evidence links, artifacts, and audit trail.
+- Capability Run Output: an output from a capability run that must be reviewed, refined, promoted, or discarded before becoming trusted knowledge or a final artifact.
+- Capability Iteration: a versioned refinement step for a capability run output, including user feedback, revised output, acceptance, and promotion history.
+- Interactive Capability Session: a capability run that requires back-and-forth user input before it can produce a useful output.
+- Capability Session Context: the purpose and scope in which a capability module runs, such as opportunity-scoped product work, exploratory capture work, or studio testing.
+- Exploratory Capture Session: a capture strategy, learning, research, or ideation session that is not yet tied to a specific opportunity.
+- Operational Learning: a pattern or lesson Hermes observes across product, studio, and exploratory work that may improve future workflows, capability modules, action plans, or mentoring behavior.
+- Improvement Proposal: a human-reviewed suggestion from Hermes to improve Ariadne's workflows, capability modules, product behavior, documentation, or action patterns.
+- Capability Artifact Library: the advanced studio surface for inspecting artifacts produced by capability runs across product workflows.
+- Capability Provenance: the trace that explains why a capability run produced an output and which sources, tools, prompts, or evidence supported it.
+- Capability Catalog: the local inventory of available capability modules, their metadata, maturity, workflow fit, validation status, and run history.
+- Guided Capture Mentor: AI assistance that helps execute capture work while explaining the capture reasoning, tradeoffs, and importance of each step.
+- Capture Action Plan: a dated sequence of actions tied to lifecycle states, decision gates, milestones, and opportunity deadlines.
+- Action Plan Item: a single actionable unit in a capture action plan, with rationale, owner, due date, status, autonomy tier, and links to the opportunity context it advances.
+- Outcome-Level Task: an action plan item framed as the capture outcome the user needs to steer, not the internal execution steps Ariadne may perform.
+- Execution Detail: a lower-level supporting step Ariadne performs or tracks under an outcome-level task.
+- Action Plan Dashboard: the UI-native working surface for managing capture action plan items across urgency, status, timeline, packet section, workstream, and evidence gap.
+- Engagement Artifact: a customer- or stakeholder-facing artifact, such as a call plan or customer engagement presentation, used to advance an opportunity.
+- Autonomy Tier: the permission level that determines whether Ariadne can run work automatically, ask before running, or require human approval.
+- Assisted Execution: AI-supported completion of capture work that reduces manual effort while keeping the user in control of strategic, sensitive, and external-facing decisions.
+- Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a milestone or gate review.
+- Packet Readiness: the maturity label for a milestone decision briefing packet, such as not ready, draft ready, review ready, or decision ready.
+- Packet Section: a user-facing section of a living briefing packet that corresponds to part of the decision briefing experience.
+- Canonical Packet Section Model: Ariadne's company-agnostic internal packet-section structure, inspired by the user's private briefing packet needs but kept separate from private output formatting.
+- Living Briefing Packet: the UI-native, continuously updated working view of a milestone decision briefing packet.
+- Briefing View: the user-facing view of a living briefing packet as a decision briefing.
+- Coverage View: the supporting view that shows milestone intelligence checklist coverage, evidence status, gaps, assumptions, and supporting sources.
+- Milestone Intelligence Checklist: a reusable, company-agnostic question set for gathering and validating the information needed to produce milestone decision briefing packets.
+- Managed Capture Task: an outcome-level capture task the user steers while Ariadne performs supporting collection, synthesis, artifact, and follow-up work.
+- Artifact Export Profile: a private mapping from Ariadne artifact content into a user- or organization-specific output format.
 - Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, presentation, and visual deliverables.
 - Hermes Agent: the local-first persistent operator that coordinates skills, memory, and execution.
 - Global Knowledge Reference: commit-safe source material that informs product behavior and terminology without implying a specific retrieval/indexing implementation.
 - Agent-Native CLI Harness: a Python CLI surface with machine-readable JSON output that exposes repeatable Ariadne or external-tool capabilities to agents, scripts, and optionally the UI.
+
+## Relationships
+
+- An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
+- An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
+- A later **Lifecycle State** does not imply all earlier **Capture Workstreams** are complete; the **Entry Context** can create **Backfill Needs**.
+- Every **Opportunity** has the same **Core Capture Workstreams**, even when some workstreams are lightweight, inactive, or need backfill.
+- **Opportunity Knowledge** can become **Reusable Capture Insight** when it remains useful beyond the original opportunity.
+- **Insight Promotion** preserves the source **Opportunity**, related **Core Capture Workstream**, freshness, confidence, sensitivity, and use context.
+- A **Capture Intelligence Workflow** can produce **Reusable Capture Insight**, a **Capture Action Plan**, an **Engagement Artifact**, or a **Milestone Decision Briefing Packet**.
+- A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
+- The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.
+- The first **Capability Studio** stage focuses on a local **Capability Catalog**, testing, refinement, validation, run history, artifacts, and provenance before third-party plugin installation.
+- The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.
+- **Capability Run Outputs** land in review before becoming **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, **Reusable Capture Insight** candidates, or final artifacts.
+- **Capability Run Outputs** can move through **Capability Iterations** before acceptance or promotion.
+- An **Interactive Capability Session** supports capability modules that require conversational input, clarification, critique, or staged decisions.
+- An **Interactive Capability Session** can run in different **Capability Session Contexts** without changing the underlying **Capability Module**.
+- An **Exploratory Capture Session** can later produce **Reusable Capture Insight**, **Raw Capture Items**, **Action Plan Items**, or a new **Opportunity**.
+- **Hermes Agent** can observe saved product, studio, and exploratory sessions for **Operational Learning** while preserving human approval for durable changes.
+- **Operational Learning** can become an **Improvement Proposal**, but durable Ariadne changes require human approval.
+- A **Quick Capture Inbox** contains **Raw Capture Items** that can be handled by a **Knowledge Processing Workflow**.
+- A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.
+- **Document Intake** creates **Source Evidence** from uploaded files before Ariadne derives summaries, tags, dates, or recommendations.
+- A **Guided Capture Mentor** supports the user by executing work, recommending next steps, and teaching the capture reasoning behind those recommendations.
+- **Assisted Execution** lets Ariadne complete low-risk work, prepare insights, and teach the user while **Autonomy Tiers** protect strategic, sensitive, and external-facing decisions.
+- Every **Opportunity** has a **Capture Action Plan** made of **Action Plan Items**.
+- An **Action Plan Item** can address a **Backfill Need**, reduce a risk, prepare an **Engagement Artifact**, improve **Packet Readiness**, or advance a **Decision Gate**.
+- An **Outcome-Level Task** can contain **Execution Details** that remain available for inspection without cluttering the main action plan view.
+- An **Action Plan Dashboard** lets the user manage outcomes while Ariadne maintains supporting details and recommended next steps.
+- A **Milestone Intelligence Checklist** informs a **Milestone Decision Briefing Packet** and can create **Backfill Needs** or **Capture Action Plan** items.
+- A **Milestone Decision Briefing Packet** contains **Traceable Recommendations** and **Evidence Status** for key answers.
+- A **Milestone Decision Briefing Packet** can be generated at any **Packet Readiness** level.
+- A **Living Briefing Packet** is the in-product working surface for a **Milestone Decision Briefing Packet** before export.
+- A **Living Briefing Packet** is navigated through the **Canonical Packet Section Model**, while **Core Capture Workstreams** and **Evidence Items** provide the underlying readiness and evidence structure.
+- The **Milestone Intelligence Checklist** guides the intelligence needed to populate the **Canonical Packet Section Model**.
+- A **Living Briefing Packet** has a **Briefing View** for decision-making and a **Coverage View** for checklist coverage, evidence status, and source traceability.
+- A **Managed Capture Task** lets the user steer the capture outcome while Ariadne handles supporting execution through **Capture Intelligence Workflows**.
+- An **Artifact Export Profile** lets the **Artifact Renderer** produce organization-specific artifacts without making private templates part of Ariadne's public domain model.
+- A **Traceable Recommendation** is supported by one or more **Evidence Items**.
+- **Evidence Items** live in the **Evidence Store** and can support **Opportunity Knowledge**, **Reusable Capture Insight**, and **Milestone Decision Briefing Packets**.
+- **Derived Evidence** should point back to the **Source Evidence** or earlier **Derived Evidence** that produced it.
+- A **Knowledge Mirror** can reflect Ariadne knowledge for human browsing, but Ariadne's primary knowledge remains structured in the **Evidence Store** and **Knowledge Layer**.
+- Edits made in a **Knowledge Mirror** return to Ariadne as **Mirror Update Proposals**, not direct source-of-truth overwrites.
+- A **Knowledge Graph View** visualizes relationships in Ariadne's primary knowledge rather than depending on mirror-specific graph behavior.
+- A **Knowledge Graph View** should begin with **Graph Sensemaking Mode** and later add **Graph Action Mode**.
+- A **Traceable Recommendation** can support action before all evidence is complete when its assumptions, gaps, and confidence are explicit.
+- **Frontier Reasoning Models** and **Local Admin Models** can both produce or enrich **Evidence Items**, but their outputs remain traceable through **Model Roles**.
+- A **Backfill Need** describes missing capture work; a **Capability Gap** describes missing platform capability.
+- An **Incumbent Recompete** is a kind of **Recompete** with existing relationship, performance, and contract-history context.
+
+## Flagged ambiguities
+
+- "opportunity" and "pursuit" were used as potentially separate lifecycle objects — resolved: **Opportunity** is the single durable record, and **Pursuit** is its active capture phase.
+- "ground zero," "Phase 1," and "Phase 2" were used to describe different opportunity maturity points — resolved: use **Lifecycle State** for the maturity position and **Entry Context** for why the opportunity starts there.
+- "mature opportunity" could imply earlier research is already complete — resolved: **Lifecycle State** describes decision maturity, while **Capture Workstreams** can still have **Backfill Needs**.
+- "LLM wiki" was used to mean connected capture knowledge for reuse — resolved: use **Knowledge Layer** for the retrieval context, **Opportunity Knowledge** for opportunity-specific material, and **Reusable Capture Insight** for knowledge that can help future opportunities.
+- "Obsidian" was used as both a possible knowledge workspace and possible source of truth — resolved: use **Knowledge Mirror** for optional human-readable sync, while Ariadne keeps primary knowledge in the **Evidence Store** and **Knowledge Layer**.
+- "edit in Obsidian" could imply direct writes to Ariadne knowledge — resolved: mirror edits become **Mirror Update Proposals** that Ariadne can classify, validate, and apply.
+- "skills" was used to mean repeatable AI/tool workflows — resolved: use **Capture Intelligence Workflow** for the domain workflow, with implementation left open to skills, skill chaining, agents, CLI harnesses, or UI actions.
+- "skills page" was used to mean advanced management of underlying tool capabilities — resolved: use **Capability Studio** for managing **Capability Modules** outside the main capture workflow.
+- "plugin" was used generically for underlying capabilities, not as a promise of portable app-plugin packaging — resolved: use **Capability Module** as the architecture-neutral term.
+- "click and run" was too narrow for skills that require follow-up input — resolved: use **Interactive Capability Session** for multi-turn capability runs.
+- "general exploring" was used for work not tied to a specific opportunity — resolved: use **Exploratory Capture Session** for strategy, learning, research, or ideation before an opportunity exists.
+- "self-improvement" was sharpened to mean Hermes learning from actual platform use — resolved: use **Operational Learning** for patterns that may improve workflows, capability modules, action plans, or mentoring behavior.
+- "Hermes changing Ariadne" was resolved as proposal-first — **Improvement Proposals** suggest changes while the user approves durable product, workflow, documentation, or code changes.
+- "super consultant/mentor" was used to describe AI guidance — resolved: use **Guided Capture Mentor** for assistance that both performs capture work and teaches the user why it matters.
+- "gap" was used for both missing capture information and missing product capability — resolved: use **Backfill Need** for capture-work gaps and **Capability Gap** for platform gaps.
+- "company format" was used for private output templates — resolved: use **Artifact Export Profile** for private mappings from Ariadne artifacts into user- or organization-specific formats.
+- "skin" and "brain" were used to describe packet UI versus capture structure — resolved: **Packet Sections** are the user-facing navigation, while **Core Capture Workstreams** and **Evidence Items** are the underlying structure.
+- "packet sections" and "questions" were used as different parts of the same workflow — resolved: the **Canonical Packet Section Model** defines the briefing shape, while the **Milestone Intelligence Checklist** defines the questions that gather supporting intelligence.
+- "manage the task" was used to mean steering outcomes while AI performs supporting work — resolved: use **Managed Capture Task** for outcome-level work the user controls while Ariadne performs under-the-hood execution.
+- "task completing drone" was used to describe AI doing boring work while mentoring the user — resolved: use **Assisted Execution** plus **Guided Capture Mentor**.
+- "chicken scratch" was used to mean rough, unstructured user input — resolved: use **Raw Capture Item** for unprocessed notes, ideas, meeting fragments, and rough thoughts in the **Quick Capture Inbox**.

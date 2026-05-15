@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.4**
+**Product Requirements Document (PRD) v1.5**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 15, 2026  
-**Status:** Phase 0 foundation complete; product build not started
+**Status:** First-slice domain/storage epic complete; ready for next planning grill
 
 ---
 
@@ -21,15 +21,22 @@
 - Architecture foundation docs exist in `docs/architecture/` and `docs/adr/`.
 - Shipley global knowledge references are commit-safe and organized under `docs/reference/shipley/`.
 - CLI-first harnesses are an approved architecture option for repeatable, batchable, tool-facing, or agent-facing capabilities that should not become complicated UI or bespoke tool sprawl.
+- The first-slice domain/storage epic is complete on `01-build/first-slice-domain-storage` and merged to `main`: Opportunity shell, Evidence Store, Quick Capture review routing, Living Briefing Packet skeleton/review, Capture Action Plan skeleton, read-only Capability Catalog, first Command Center shell, and packet data elements as cross-opportunity knowledge slots.
+- A local FastAPI runtime exists via `uv run python app.py` or `python app.py` with `.env`; the project-standard local UI port is `9621`.
+- The first Command Center shell is command-first: it supports pulse checks, quick actions, and AI-support entry points rather than serving as a passive metrics wall.
+- Packet data modeling now distinguishes reusable Packet Field Definitions from opportunity-specific Packet Field Answers, evidence/provenance, assumptions, confidence, gaps, Action Plan links, Shared Knowledge Entities, and Knowledge Mirror projections.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the first slice.
 
-**Not Started**
+**Still Deferred**
 
-- No application runtime, Command Center shell, backend modules, agent runtime, knowledge engine, parser pipeline, renderer, or UI components have been built yet.
+- Hermes runtime, knowledge/retrieval engine, graph visualization, MinerU document intake, huashu-design/artifact rendering, external API integrations, advanced skill installation, and full Next.js UI are not implemented yet.
+- The existing FastAPI HTML surfaces are first-slice review/runtime scaffolds, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Begin product build only after this Phase 0 status update, CLI-Anything vendoring, and Shipley reference organization are committed.
-- First build slice should be the Command Center shell plus minimal Python configuration/domain scaffolding, guided by `ui-ux-pro-max` and `improve-codebase-architecture`.
+- Start the next iteration with a new `grill-with-docs` session. Review this PRD, `CONTEXT.md`, ADRs, `docs/architecture/phase-0-review.md`, and any future-integration notes before choosing the next epic.
+- The next epic should be chosen as a vertical product slice, not a broad infrastructure sweep. Candidate directions include durable local storage beyond in-memory/demo builders, Knowledge Processing Workflow from Quick Capture, Document Intake, Knowledge Graph sensemaking, or Hermes-assisted capture mentoring.
+- Before any future integration slice for Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation, run `grill-with-docs` and record any load-bearing decisions in `CONTEXT.md` or ADRs.
 
 ---
 
@@ -282,7 +289,7 @@ Each future slice should leave a short documentation trail before code: what is 
 
 ## 7. Phased Development Roadmap
 
-**Phase 0 – Developer Skills + Architecture Foundation (Week 0–1)** ← **CURRENT PHASE**
+**Phase 0 – Developer Skills + Architecture Foundation (Week 0–1)** ← **COMPLETE**
 
 **Completed**
 
@@ -293,17 +300,23 @@ Each future slice should leave a short documentation trail before code: what is 
 - Established `CONTEXT.md`, `AGENTS.md`, `docs/agents/`, `docs/architecture/`, and `docs/adr/`.
 - Organized Shipley global knowledge references under `docs/reference/shipley/`.
 
-**Remaining Before Phase 1**
+**First Slice Epic – Domain/Storage Foundation** ← **COMPLETE**
 
-- Bootstrap the first vertical product slice around structure before breadth: Opportunity shell, Quick Capture Inbox, Pydantic-validated Evidence Item model and local Evidence Store, Living Briefing Packet skeleton, Capture Action Plan skeleton, and read-only Capability Catalog.
-- Build the first slice domain/storage first, then place a thin Command Center UI on top immediately after; these steps should be separated by days, not weeks or months.
-- Use the `tdd` skill immediately for the first Python domain/storage slice: one behavior test, minimal implementation, repeat, then refactor only after green tests.
-- Start TDD with an Opportunity creation tracer bullet that proves flexible Entry Context, later Lifecycle State entry, standard Core Capture Workstreams, and Backfill Needs can coexist.
-- Design the first Command Center shell around that slice using `ui-ux-pro-max`, with the Milestone Decision Briefing Packet as the flagship workflow.
-- Create the minimal Python configuration/domain scaffold needed for opportunity lifecycle state, entry context, core capture workstreams, evidence items, packet readiness, action plan items, and capability catalog metadata.
-- Identify first CLI-first harness candidates before turning batch/tool workflows into UI complexity.
+- Built the local runtime and first Command Center shell.
+- Built Opportunity, Entry Context, Lifecycle State, Core Capture Workstream, and Backfill Need domain scaffolding.
+- Built Quick Capture raw-item intake and review routing without trusted knowledge writes.
+- Built Pydantic-validated Evidence Items and a local Evidence Store adapter.
+- Built Living Briefing Packet readiness, Briefing View, Coverage View, deck-shaped review UI, and packet evidence/gap status.
+- Built Capture Action Plan outcome tasks with lower-level execution details kept out of the primary view.
+- Built read-only Capability Catalog discovery from local `.github/skills/` metadata.
+- Built Packet Field Definitions, Packet Field Answers, Answer Paths, Shared Knowledge Entities, and Packet Field Review connections so briefing data elements become reusable strategic slots without reusing another Opportunity's answers as truth.
+- Closed issues #1 through #8 and merged the completed epic to `main` after validation.
 
-No application code has been built yet.
+**Next Planning Gate**
+
+- Run a new `grill-with-docs` session before starting the next epic.
+- Decide whether the next vertical slice should deepen durable storage, Knowledge Processing Workflow, Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, or another product workflow.
+- Keep the Command Center command-first: pulse check, quick action, and AI support should take priority over passive data display.
 
 **Phase 1 – Core Infrastructure**
 
@@ -381,9 +394,9 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.4**
+**End of PRD v1.5**
 
-**Phase 0 foundation complete. Product build not started.**
+**Phase 0 and first-slice domain/storage epic complete. Next work starts with a new `grill-with-docs` planning session.**
 
 ---
 

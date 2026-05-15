@@ -4,11 +4,11 @@
 
 ### Issue tracker
 
-GitHub Issues are the intended tracker once the public `ariadne-thread` remote is connected. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live in GitHub Issues for the public `ariadne-thread` repository. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Use the default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
+Use Matt Pocock's default five-label triage vocabulary. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

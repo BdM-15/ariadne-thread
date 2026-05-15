@@ -120,6 +120,21 @@ def test_packet_review_api_exposes_briefing_and_coverage_views() -> None:
     )
 
 
+def test_capability_catalog_api_exposes_local_workspace_skills() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/api/capabilities/catalog")
+
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    caveman = next(entry for entry in entries if entry["id"] == "caveman")
+    assert caveman["name"] == "caveman"
+    assert caveman["capability_type"] == "workspace_skill"
+    assert caveman["maturity"] == "experimental"
+    assert caveman["validation_status"] == "unvalidated"
+    assert caveman["source_path"] == ".github/skills/caveman/SKILL.md"
+
+
 def test_app_py_builds_runtime_app_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(

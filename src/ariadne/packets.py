@@ -27,6 +27,9 @@ class CanonicalPacketSection(StrEnum):
 
 class PacketSectionStatus(StrEnum):
     NEEDS_EVIDENCE = "needs_evidence"
+    PARTIALLY_SUPPORTED = "partially_supported"
+    SUPPORTED = "supported"
+    ASSUMPTION = "assumption"
 
 
 class EvidenceStatus(StrEnum):
@@ -105,12 +108,23 @@ def update_packet_section_coverage(
 ) -> LivingBriefingPacket:
     packet.sections[section] = packet.sections[section].model_copy(
         update={
+            "status": _section_status_for_evidence(evidence_status),
             "evidence_status": evidence_status,
             "evidence_ids": tuple(evidence_ids),
             "gap_summary": gap_summary,
         }
     )
     return packet
+
+
+def _section_status_for_evidence(evidence_status: EvidenceStatus) -> PacketSectionStatus:
+    if evidence_status is EvidenceStatus.ANSWERED:
+        return PacketSectionStatus.SUPPORTED
+    if evidence_status is EvidenceStatus.PARTIAL:
+        return PacketSectionStatus.PARTIALLY_SUPPORTED
+    if evidence_status is EvidenceStatus.ASSUMPTION:
+        return PacketSectionStatus.ASSUMPTION
+    return PacketSectionStatus.NEEDS_EVIDENCE
 
 
 def update_packet_readiness(

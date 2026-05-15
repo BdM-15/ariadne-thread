@@ -50,6 +50,7 @@ class ActionPlanItem(BaseModel):
     related_lifecycle_state: LifecycleState | None = None
     related_workstream: CoreCaptureWorkstream | None = None
     related_packet_section: CanonicalPacketSection | None = None
+    related_packet_field_key: str | None = None
     related_evidence_ids: tuple[str, ...] = ()
     gap_summary: str | None = None
     status: ActionPlanItemStatus = ActionPlanItemStatus.PENDING
@@ -70,6 +71,7 @@ class ActionPlanItemSummary(BaseModel):
     related_lifecycle_state: LifecycleState | None = None
     related_workstream: CoreCaptureWorkstream | None = None
     related_packet_section: CanonicalPacketSection | None = None
+    related_packet_field_key: str | None = None
     status: ActionPlanItemStatus
     autonomy_tier: AutonomyTier
     gap_summary: str | None = None
@@ -87,6 +89,7 @@ class ActionPlanItemDetailView(BaseModel):
     related_lifecycle_state: LifecycleState | None = None
     related_workstream: CoreCaptureWorkstream | None = None
     related_packet_section: CanonicalPacketSection | None = None
+    related_packet_field_key: str | None = None
     related_evidence_ids: tuple[str, ...] = ()
     gap_summary: str | None = None
     status: ActionPlanItemStatus
@@ -163,6 +166,7 @@ def build_action_plan_view(plan: CaptureActionPlan) -> ActionPlanView:
                 related_lifecycle_state=item.related_lifecycle_state,
                 related_workstream=item.related_workstream,
                 related_packet_section=item.related_packet_section,
+                related_packet_field_key=item.related_packet_field_key,
                 status=item.status,
                 autonomy_tier=item.autonomy_tier,
                 gap_summary=item.gap_summary,
@@ -182,6 +186,7 @@ def build_action_plan_item_detail_view(
         related_lifecycle_state=item.related_lifecycle_state,
         related_workstream=item.related_workstream,
         related_packet_section=item.related_packet_section,
+        related_packet_field_key=item.related_packet_field_key,
         related_evidence_ids=item.related_evidence_ids,
         gap_summary=item.gap_summary,
         status=item.status,

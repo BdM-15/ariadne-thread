@@ -15,7 +15,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Build Discipline
 
 - PRD first, architecture foundation second, application code third.
-- Python-first implementation: use the latest stable Python supported by the dependency stack, manage dependencies and virtualenvs with `uv`, run one-off Python CLIs with `uvx`, and keep `.venv/` local.
+- Python-first implementation: use Python 3.14.5 / `>=3.14` as the current baseline, manage dependencies and virtualenvs with `uv`, run one-off Python CLIs with `uvx`, and keep `.venv/` local. Only downgrade by ADR if a required dependency blocks 3.14.
 - Prefer custom in-product interfaces over tool sprawl.
 - Prefer CLI-first harnesses for repeatable, batchable, tool-facing, or agent-facing workflows that need deterministic JSON output. Keep visual judgment, strategy, and high-context human decisions in the Command Center UI.
 - Keep the provided Project Theseus `.env` as reference material only; never commit live secrets or copy Theseus-specific runtime assumptions into Ariadne before architecture decisions are made. Maintain `.env.example` as the public, secret-free configuration contract.

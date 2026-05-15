@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.2**
+**Product Requirements Document (PRD) v1.3**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -15,7 +15,7 @@
 **Completed**
 
 - Developer skills are installed or vendored under `.github/skills/`, including Matt Pocock's full pack, first-principles thinking, skill-creator, ui-ux-pro-max, CLI-Anything builder skill, and CLI-Hub meta-skill.
-- Python-first workspace defaults are established with Python 3.13+, `uv`, `.python-version`, `pyproject.toml`, `uv.lock`, and local `.venv/`.
+- Python-first workspace defaults are established with Python 3.14.5 / `>=3.14`, `uv`, `.python-version`, `pyproject.toml`, `uv.lock`, and local `.venv/`.
 - Secret hygiene is established: `.env` and `.env.*` remain private; `.env.example` is the public descriptive config contract.
 - OpenAI `text-embedding-3-large` is the single canonical embedding path unless an ADR later defines migration/index isolation for alternatives.
 - Architecture foundation docs exist in `docs/architecture/` and `docs/adr/`.
@@ -144,7 +144,7 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 
 ## 4. Technical Architecture
 
-- **Primary Language**: Python 3.13+ as the default implementation language for backend services, agents, orchestration, document processing, knowledge workflows, and platform tools.
+- **Primary Language**: Python 3.14.5 / `>=3.14` as the default implementation baseline for backend services, agents, orchestration, document processing, knowledge workflows, and platform tools. Downgrade only through an ADR if a required dependency blocks 3.14.
 - **Python Tooling**: Use `uv` for dependency, lockfile, and virtualenv management; use `uvx` for one-off Python CLIs. Keep a local `.venv/` ignored by git.
 - **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max). Use TypeScript only for the frontend and frontend-adjacent tooling.
 - **Backend**: Python-first, deep modular structure (enforced by Matt Pocock skills)
@@ -230,7 +230,7 @@ Local development uses a private `.env` file that is ignored by git. Update `.en
 **Completed**
 
 - Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, CLI-Anything builder skill, and CLI-Hub meta-skill.
-- Established Python 3.13+ / `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and `uv.lock`.
+- Established Python 3.14.5 / `>=3.14` with `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and `uv.lock`.
 - Established secret-safe environment handling with descriptive `.env.example` and private ignored `.env` files.
 - Ran architecture foundation review and recorded ADRs before application code.
 - Established `CONTEXT.md`, `AGENTS.md`, `docs/agents/`, `docs/architecture/`, and `docs/adr/`.
@@ -319,7 +319,7 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.2**
+**End of PRD v1.3**
 
 **Phase 0 foundation complete. Product build not started.**
 

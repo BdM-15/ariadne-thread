@@ -41,16 +41,16 @@ Developer skills are required to *build* the platform itself. They must be activ
 
 | Skill                              | Purpose                                                                 | Installation Command / Source                                                                 |
 |------------------------------------|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
-| **mattpocock/skills** (improve-codebase-architecture) | Architectural guardian — surfaces friction, proposes deep-module refactors | `npx skills add mattpocock/skills` or clone https://github.com/mattpocock/skills             |
-| **ui-ux-pro-max-skill**            | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Theseus-inspired interfaces, visual renderer) | Create on Day 0 using skill-creator (see below)                                              |
-| **skill-creator** (Anthropic-style) | Dynamic generation of new skills/MCPs with proper structure             | `npx skills add anthropic/skills` or equivalent skill-creator pattern                        |
-| **first-principles-skill**         | Systematic first-principles analysis for architecture and strategy      | `npx skills add awesome-skills/first-principles-skill` (https://github.com/awesome-skills/first-principles-skill) |
+| **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/` |
+| **ui-ux-pro-max-skill**            | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Theseus-inspired interfaces, visual renderer) | Create on Day 0 using skill-creator and save under `.github/skills/ui-ux-pro-max-skill/`      |
+| **skill-creator** (Anthropic-style) | Dynamic generation of new skills/MCPs with proper structure             | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/` |
+| **first-principles-skill**         | Systematic first-principles analysis for architecture and strategy      | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/` |
 
 **Exact Day-0 Installation Sequence (Run in VSCode Terminal)**
 
 ```bash
 # 1. Matt Pocock Skills (Architecture Guardian)
-npx skills add mattpocock/skills
+npx skills@latest add mattpocock/skills
 
 # 2. First-Principles Skill
 npx skills add awesome-skills/first-principles-skill
@@ -65,7 +65,7 @@ npx skills add anthropic/skills
 
 After installing the skill-creator, run this exact prompt:
 
-> “Using Anthropic-style skill-creator patterns and the North Star Vision (dark cyberpunk Command Center, deep modular architecture, custom Theseus-inspired interfaces for knowledge and HITL, huashu-design visual renderer), create a complete new skill called `ui-ux-pro-max-skill`. The skill must generate production-ready Next.js 15 + Tailwind + shadcn/ui components with deep black backgrounds, neon cyan/magenta accents, information-dense yet calm layouts, support for custom knowledge chat panels, HITL strategy sessions, quick-capture, decision-gate workflows, and visual artifact rendering. Enforce Matt Pocock deep-module principles and Shipley-aligned UX flows in every generated component. Output the full skill file ready to save at `.agents/ui-ux-pro-max-skill/SKILL.md`.”
+> “Using Anthropic-style skill-creator patterns and the North Star Vision (dark cyberpunk Command Center, deep modular architecture, custom Theseus-inspired interfaces for knowledge and HITL, huashu-design visual renderer), create a complete new skill called `ui-ux-pro-max-skill`. The skill must generate production-ready Next.js 15 + Tailwind + shadcn/ui components with deep black backgrounds, neon cyan/magenta accents, information-dense yet calm layouts, support for custom knowledge chat panels, HITL strategy sessions, quick-capture, decision-gate workflows, and visual artifact rendering. Enforce Matt Pocock deep-module principles and Shipley-aligned UX flows in every generated component. Output the full skill file ready to save at `.github/skills/ui-ux-pro-max-skill/SKILL.md`.”
 
 Commit the generated skill immediately.
 
@@ -196,15 +196,17 @@ ariadne-thread/
 ├── PRD.md
 ├── README.md
 ├── .env.example
-├── .agents/
-│   ├── mattpocock-skills/
-│   ├── ui-ux-pro-max-skill/
-│   ├── first-principles-skill/
-│   └── skill-creator/
+├── .github/
+│   ├── copilot-instructions.md
+│   └── skills/
+│       ├── mattpocock skills...
+│       ├── ui-ux-pro-max-skill/
+│       ├── first-principles-thinking/
+│       └── skill-creator/
 ├── src/
 ├── docs/
-│   └── adr/
-├── skills/
+│   ├── adr/
+│   └── agents/
 └── ui/
 ```
 

@@ -2,6 +2,13 @@
 
 Read `PRD.md`, `CONTEXT.md`, and `AGENTS.md` before substantive architecture or implementation work.
 
+Branch substantial work through numbered epic branches:
+
+- Use `<NN>-build/<epic-slug>` for the epic branch, such as `01-build/first-slice-domain-storage`.
+- Create each incremental progression branch from the epic branch and merge it back into the epic branch, not directly into `main`.
+- Keep the epic branch out of `main` until all scoped epic enhancements are implemented, tested, and reviewed.
+- For first-slice progression branch names, use sibling names under the numbered namespace, such as `01-build/02-local-evidence-store-tracer`, because Git refs cannot have both `01-build/first-slice-domain-storage` and child branches beneath that exact same path.
+
 Use workspace skills from `.github/skills/`. In particular:
 
 - Use `setup-matt-pocock-skills` configuration from `AGENTS.md` and `docs/agents/`.

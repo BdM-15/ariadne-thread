@@ -11,3 +11,4 @@ Use workspace skills from `.github/skills/`. In particular:
 - Use `uv` for Python dependency management, lockfiles, sync, and `.venv/` creation. Use `uvx` for one-off Python CLIs. Do not introduce pip/Poetry/Pipenv workflows unless explicitly requested.
 - Keep TypeScript scoped to the Next.js UI and frontend-adjacent tooling.
 - Keep live secrets out of git; `.env` and `.env.*` are private reference only. Maintain `.env.example` as the public, secret-free configuration shape whenever env vars change.
+- Environment files are for non-expert coders too: every env var in `.env.example` should have a nearby plain-English comment explaining what it controls, when it is required, where to get the value if applicable, and whether the default is safe for local development.

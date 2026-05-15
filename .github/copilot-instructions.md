@@ -12,3 +12,4 @@ Use workspace skills from `.github/skills/`. In particular:
 - Keep TypeScript scoped to the Next.js UI and frontend-adjacent tooling.
 - Keep live secrets out of git; `.env` and `.env.*` are private reference only. Maintain `.env.example` as the public, secret-free configuration shape whenever env vars change.
 - Environment files are for non-expert coders too: every env var in `.env.example` should have a nearby plain-English comment explaining what it controls, when it is required, where to get the value if applicable, and whether the default is safe for local development.
+- Treat OpenAI `text-embedding-3-large` as Ariadne's single canonical embedding path unless an ADR explicitly changes that. Do not add local/alternate embedding env vars without a migration/index-isolation plan.

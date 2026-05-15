@@ -94,3 +94,31 @@ def test_coverage_view_shows_evidence_and_gap_status() -> None:
     assert customer_context.evidence_status is EvidenceStatus.PARTIAL
     assert customer_context.evidence_ids == ("ev_customer_call",)
     assert customer_context.gap_summary == "Need validated customer pain and decision-maker map."
+
+
+def test_packet_section_status_tracks_evidence_coverage() -> None:
+    opportunity = create_opportunity(
+        name="AFLCMC recompete support",
+        entry_context=EntryContext(
+            reason=EntryReason.INCUMBENT_RECOMPETE,
+            starting_lifecycle_state=LifecycleState.PURSUING,
+            rationale="Existing contract is approaching its recompete window.",
+        ),
+    )
+    packet = create_living_briefing_packet(opportunity)
+
+    update_packet_section_coverage(
+        packet,
+        section=CanonicalPacketSection.OPPORTUNITY_OVERVIEW,
+        evidence_status=EvidenceStatus.ANSWERED,
+        evidence_ids=["ev_notice"],
+    )
+
+    briefing_view = build_briefing_view(packet)
+    overview = next(
+        section
+        for section in briefing_view.sections
+        if section.section is CanonicalPacketSection.OPPORTUNITY_OVERVIEW
+    )
+
+    assert overview.status is PacketSectionStatus.SUPPORTED

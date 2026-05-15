@@ -4,6 +4,15 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from ariadne.config import RuntimeSettings
+from ariadne.packet_review import (
+    build_demo_packet_briefing_view,
+    build_demo_packet_coverage_view,
+    render_demo_packet_review_shell,
+)
+from ariadne.packets import (
+    BriefingView,
+    CoverageView,
+)
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -25,6 +34,18 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:
         return _render_status_shell(runtime_settings)
+
+    @app.get("/packets/review", response_class=HTMLResponse)
+    def packet_review(stage: str = "MS2", slide: int = 4) -> str:
+        return render_demo_packet_review_shell(stage=stage, slide=slide)
+
+    @app.get("/api/packets/review/briefing")
+    def packet_review_briefing() -> BriefingView:
+        return build_demo_packet_briefing_view()
+
+    @app.get("/api/packets/review/coverage")
+    def packet_review_coverage() -> CoverageView:
+        return build_demo_packet_coverage_view()
 
     return app
 
@@ -105,6 +126,7 @@ def _render_status_shell(settings: RuntimeSettings) -> str:
       <div class=\"tile\"><div class=\"label\">Environment</div><div class=\"value\">{settings.ariadne_env}</div></div>
       <div class=\"tile\"><div class=\"label\">Local URL</div><div class=\"value magenta\">{settings.local_url}</div></div>
     </section>
+    <p class=\"review-link\"><a href=\"/packets/review\">Open Living Briefing Packet review</a></p>
   </main>
 </body>
 </html>"""

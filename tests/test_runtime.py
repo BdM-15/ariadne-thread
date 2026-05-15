@@ -63,6 +63,63 @@ def test_root_serves_runtime_status_page() -> None:
     assert "http://127.0.0.1:9622" in response.text
 
 
+def test_packet_review_page_serves_deck_shaped_packet_workspace() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/packets/review")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Living Briefing Packet" in response.text
+    assert "AFLCMC recompete support" in response.text
+    assert "Briefing View" in response.text
+    assert "Coverage View" in response.text
+    assert "Slide Navigator" in response.text
+    assert "Evidence Inspector" in response.text
+    assert "Opportunity Synopsis" in response.text
+    assert "Visible Data Elements" in response.text
+    assert "CRM / Salesforce ID" in response.text
+    assert "Required for MS2" in response.text
+
+
+def test_packet_review_page_can_select_stage_and_slide() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/packets/review?stage=MS4&slide=18")
+
+    assert response.status_code == 200
+    assert "MS3 / MS4 Approval Decision" in response.text
+    assert "Required for MS4" in response.text
+    assert "Bid/no-bid answers" in response.text
+    assert "Execution-risk acceptance" in response.text
+
+
+def test_packet_review_api_exposes_briefing_and_coverage_views() -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app())
+
+    briefing_response = client.get("/api/packets/review/briefing")
+    coverage_response = client.get("/api/packets/review/coverage")
+
+    assert briefing_response.status_code == 200
+    assert briefing_response.json()["opportunity_name"] == "AFLCMC recompete support"
+    assert briefing_response.json()["readiness"] == "draft_ready"
+    assert len(briefing_response.json()["sections"]) == 8
+
+    assert coverage_response.status_code == 200
+    customer_context = next(
+        section
+        for section in coverage_response.json()["sections"]
+        if section["section"] == "customer_context"
+    )
+    assert customer_context["evidence_status"] == "partial"
+    assert customer_context["evidence_ids"] == ["ev_customer_call"]
+    assert customer_context["gap_summary"] == (
+        "Need validated customer pain and decision-maker map."
+    )
+
+
 def test_app_py_builds_runtime_app_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(

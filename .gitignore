@@ -34,5 +34,6 @@ artifacts/
 exports/
 
 # Private organization-specific briefing templates; use Artifact Export Profiles instead.
+docs/reference/briefing_packet/
 docs/reference/shipley/MTS Milestone Template All*.pptx
 docs/reference/shipley/MTS Milestone Template All*.pdf

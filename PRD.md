@@ -1,12 +1,34 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.0**
+**Product Requirements Document (PRD) v1.1**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 15, 2026  
-**Status:** Ready for immediate bootstrap
+**Status:** Phase 0 foundation complete; product build not started
+
+---
+
+## 0. Current State Snapshot (May 15, 2026)
+
+**Completed**
+
+- Developer skills are installed or vendored under `.github/skills/`, including Matt Pocock's full pack, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Hub meta-skill.
+- Python-first workspace defaults are established with Python 3.13+, `uv`, `.python-version`, `pyproject.toml`, `uv.lock`, and local `.venv/`.
+- Secret hygiene is established: `.env` and `.env.*` remain private; `.env.example` is the public descriptive config contract.
+- OpenAI `text-embedding-3-large` is the single canonical embedding path unless an ADR later defines migration/index isolation for alternatives.
+- Architecture foundation docs exist in `docs/architecture/` and `docs/adr/`.
+- Shipley global knowledge references are commit-safe and organized under `docs/reference/shipley/`.
+
+**Not Started**
+
+- No application runtime, Command Center shell, backend modules, agent runtime, knowledge engine, parser pipeline, renderer, or UI components have been built yet.
+
+**Next Build Gate**
+
+- Begin product build only after this PRD/status update and Shipley reference organization are committed.
+- First build slice should be the Command Center shell plus minimal Python configuration/domain scaffolding, guided by `ui-ux-pro-max` and `improve-codebase-architecture`.
 
 ---
 
@@ -43,12 +65,13 @@ Developer skills are required to _build_ the platform itself. They must be activ
 
 **Required Developer Skills (Install in Parallel on Day 0)**
 
-| Skill                                                                                                   | Purpose                                                                                                                               | Installation Command / Source                                                                             |
-| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills                    | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/`             |
-| **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Ariadne-specific interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/` |
-| **skill-creator** (Anthropic-style)                                                                     | Dynamic generation of new skills/MCPs with proper structure                                                                           | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/`       |
-| **first-principles-skill**                                                                              | Systematic first-principles analysis for architecture and strategy                                                                    | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/` |
+| Skill                                                                                                   | Purpose                                                                                                                               | Installation Command / Source                                                                                                    |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **mattpocock/skills** (full pack, including improve-codebase-architecture and setup-matt-pocock-skills) | Architectural guardian, diagnosis, TDD, triage, issue/PRD workflows, prototyping, handoff, and productivity skills                    | `npx skills@latest add mattpocock/skills`, then keep committed skills under `.github/skills/`                                    |
+| **ui-ux-pro-max**                                                                                       | Master UI/UX design & component generation for cyberpunk Command Center (custom panels, Ariadne-specific interfaces, visual renderer) | Vendor from https://github.com/nextlevelbuilder/ui-ux-pro-max-skill under `.github/skills/ui-ux-pro-max/`                        |
+| **skill-creator** (Anthropic-style)                                                                     | Dynamic generation of new skills/MCPs with proper structure                                                                           | `npx skills add anthropic/skills` or equivalent skill-creator pattern; save under `.github/skills/`                              |
+| **first-principles-skill**                                                                              | Systematic first-principles analysis for architecture and strategy                                                                    | `npx skills add awesome-skills/first-principles-skill`, then keep committed skill under `.github/skills/`                        |
+| **CLI-Hub meta-skill**                                                                                  | Developer enablement for discovering agent-native CLIs without vendoring the full CLI-Anything monorepo                               | Vendor `skills/cli-hub-meta-skill/` from https://github.com/HKUDS/CLI-Anything under `.github/skills/cli-hub-meta-skill/`        |
 
 **Exact Day-0 Installation Sequence (Run in VSCode Terminal)**
 
@@ -63,6 +86,8 @@ npx skills add awesome-skills/first-principles-skill
 npx skills add anthropic/skills
 
 # 4. Vendor ui-ux-pro-max (Critical — Run this immediately after)
+
+# 5. Vendor CLI-Hub meta-skill from CLI-Anything
 ```
 
 **How to Vendor `ui-ux-pro-max` on Day 0**
@@ -73,31 +98,36 @@ After installing the skill-creator, vendor the upstream skill:
 
 Commit the vendored skill immediately.
 
+**How to Vendor CLI-Hub Meta-Skill**
+
+Vendor only `skills/cli-hub-meta-skill/` from `HKUDS/CLI-Anything` into `.github/skills/cli-hub-meta-skill/`. Include upstream license and provenance. Do not vendor the full CLI-Anything monorepo unless a later architecture decision requires a specific generated harness.
+
 **Post-Installation Verification**
 
 - Run `improve-codebase-architecture` on the fresh repo.
 - Commit the resulting architectural recommendations before writing any application code.
+- Verify expected skills live under `.github/skills/` and no `.agents`, top-level `skills`, or `skills-lock.json` paths remain.
 
 ---
 
 ## 3. Core Platform Components
 
-| Component                            | Purpose                                                                  | GitHub / Source                                         |
-| ------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------- |
-| Hermes Agent                         | Primary self-hosted, persistent, self-improving autonomous operator      | To be implemented (local-first)                         |
-| Grok 4.3 (xAI)                       | Primary reasoning & complex artifact generation model                    | xAI Console                                             |
-| Local Efficient Models               | Fast daily execution (Qwen3.5 / 9B-class via Ollama)                     | https://ollama.com                                      |
-| OpenAI text-embedding-3-large        | High-quality semantic search in knowledge layer                          | https://platform.openai.com                             |
-| MinerU                               | Primary document parser (PDFs, RFPs, guides)                             | https://github.com/opendatalab/MinerU                   |
+| Component                            | Purpose                                                                                                                                 | GitHub / Source                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Hermes Agent                         | Primary self-hosted, persistent, self-improving autonomous operator                                                                     | To be implemented (local-first)                         |
+| Grok 4.3 (xAI)                       | Primary reasoning & complex artifact generation model                                                                                   | xAI Console                                             |
+| Local Efficient Models               | Fast daily execution (Qwen3.5 / 9B-class via Ollama)                                                                                    | https://ollama.com                                      |
+| OpenAI text-embedding-3-large        | High-quality semantic search in knowledge layer                                                                                         | https://platform.openai.com                             |
+| MinerU                               | Primary document parser (PDFs, RFPs, guides)                                                                                            | https://github.com/opendatalab/MinerU                   |
 | Knowledge Engine Candidate           | Opportunity-centric retrieval and graph context with settings + integrated chat; LightRAG is a candidate, not a committed runtime shape | https://github.com/HKUDS/LightRAG                       |
-| LangGraph (selective)                | Clean skill/MCP chaining only where it adds clear value                  | https://github.com/langchain-ai/langgraph               |
-| huashu-design                        | Visual artifact renderer (platform skill)                                | Internal (guided by ui-ux-pro-max)                      |
-| Custom Renderer Skill                | DOCX + XLSX generation for capture artifacts                             | Internal (guided by ui-ux-pro-max)                      |
-| Custom HITL Chat Interface           | Back-and-forth interaction for skills requiring human decision input     | Internal (guided by ui-ux-pro-max)                      |
-| Obsidian Integration                 | Living PKM and capture plans                                             | https://github.com/kepano/obsidian-skills               |
-| 1102tools/federal-contracting-skills | Government contracting deliverables (IGCE, SOW/PWS, market research)     | https://github.com/1102tools/federal-contracting-skills |
-| coreyhaines31/marketingskills        | Value propositions, positioning, messaging, CRO                          | https://github.com/coreyhaines31/marketingskills        |
-| Firecrawl                            | Primary research/scraping engine                                         | https://github.com/mendableai/firecrawl                 |
+| LangGraph (selective)                | Clean skill/MCP chaining only where it adds clear value                                                                                 | https://github.com/langchain-ai/langgraph               |
+| huashu-design                        | Visual artifact renderer (platform skill)                                                                                               | Internal (guided by ui-ux-pro-max)                      |
+| Custom Renderer Skill                | DOCX + XLSX generation for capture artifacts                                                                                            | Internal (guided by ui-ux-pro-max)                      |
+| Custom HITL Chat Interface           | Back-and-forth interaction for skills requiring human decision input                                                                    | Internal (guided by ui-ux-pro-max)                      |
+| Obsidian Integration                 | Living PKM and capture plans                                                                                                            | https://github.com/kepano/obsidian-skills               |
+| 1102tools/federal-contracting-skills | Government contracting deliverables (IGCE, SOW/PWS, market research)                                                                    | https://github.com/1102tools/federal-contracting-skills |
+| coreyhaines31/marketingskills        | Value propositions, positioning, messaging, CRO                                                                                         | https://github.com/coreyhaines31/marketingskills        |
+| Firecrawl                            | Primary research/scraping engine                                                                                                        | https://github.com/mendableai/firecrawl                 |
 
 ---
 
@@ -131,7 +161,7 @@ Commit the vendored skill immediately.
 - Console: https://platform.openai.com
 - New account receives free credits ($5–18 typical)
 - Add to `.env` as `OPENAI_API_KEY`
-- Transition to local embeddings (Ollama) when volume increases
+- Use `text-embedding-3-large` as the single canonical embedding path for Ariadne indexes unless an ADR explicitly defines migration and index isolation.
 
 ### Firecrawl
 
@@ -145,6 +175,7 @@ Commit the vendored skill immediately.
 - SAM.gov: opportunity and entity data; add an API key to `.env` as `SAM_GOV_API_KEY` when needed.
 - USAspending.gov: award, agency, and spending context; base URL is public and tracked in `.env.example`.
 - BLS: labor, wage, and market context for price-to-win and staffing analysis; add `BLS_API_KEY` when needed.
+- api.data.gov: shared key for public-data connectors such as GSA Per Diem and Regulations.gov MCPs; add `API_DATA_GOV_KEY` when needed.
 
 ### MCP Tool Integration
 
@@ -184,17 +215,26 @@ Local development uses a private `.env` file that is ignored by git. Update `.en
 
 **Phase 0 – Developer Skills + Architecture Foundation (Week 0–1)** ← **CURRENT PHASE**
 
-- Install all developer skills in parallel (Section 2)
-- Vendor `ui-ux-pro-max`
-- Establish Python 3.13+ / `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and secret-safe `.env.example`
-- Run `improve-codebase-architecture` on fresh repo and commit recommendations
-- Establish `CONTEXT.md`, `docs/adr/`, and domain language
-- Bootstrap Command Center shell using `ui-ux-pro-max`
+**Completed**
+
+- Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Hub meta-skill.
+- Established Python 3.13+ / `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and `uv.lock`.
+- Established secret-safe environment handling with descriptive `.env.example` and private ignored `.env` files.
+- Ran architecture foundation review and recorded ADRs before application code.
+- Established `CONTEXT.md`, `AGENTS.md`, `docs/agents/`, `docs/architecture/`, and `docs/adr/`.
+- Organized Shipley global knowledge references under `docs/reference/shipley/`.
+
+**Remaining Before Phase 1**
+
+- Bootstrap the Command Center shell using `ui-ux-pro-max`.
+- Create the minimal Python configuration/domain scaffold needed by the first UI slice.
+
+No application code has been built yet.
 
 **Phase 1 – Core Infrastructure**
 
 - Hermes Agent skeleton + persistent memory
-- LightRAG with custom UI
+- Select and wire the first knowledge layer candidate behind an Ariadne adapter
 - Basic Command Center shell with cyberpunk theme
 
 **Phase 2 – Domain Intelligence & Strategy**
@@ -231,18 +271,22 @@ ariadne-thread/
 │   └── skills/
 │       ├── mattpocock skills...
 │       ├── ui-ux-pro-max/
+│       ├── cli-hub-meta-skill/
 │       ├── first-principles-thinking/
 │       └── skill-creator/
 ├── src/
 ├── docs/
 │   ├── adr/
-│   └── agents/
+│   ├── agents/
+│   ├── architecture/
+│   └── reference/
+│       └── shipley/
 └── ui/
 ```
 
 **Bootstrap Command for Copilot (use this exact prompt)**
 
-> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install all four skills in parallel, vendor `ui-ux-pro-max`, run `improve-codebase-architecture` on the new repo, and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
+> “Create a new public GitHub repository named `ariadne-thread`. Initialize it with this exact PRD.md as the root file. Immediately execute **Section 2 Developer Skills Bootstrap** in full — install or vendor all required developer skills, including Matt Pocock skills, first-principles thinking, skill-creator, `ui-ux-pro-max`, and CLI-Hub meta-skill. Run `improve-codebase-architecture` on the new repo and commit the results before writing any application code. Follow the North Star Vision and deep modular principles at every step. Set up the exact folder structure shown in the PRD.”
 
 ---
 
@@ -261,10 +305,9 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.0**
+**End of PRD v1.1**
 
-**Ready for bootstrap.**  
-Once the repository is created and developer skills are installed as specified, reply with the repo URL and we will officially begin platform construction.
+**Phase 0 foundation complete. Product build not started.**
 
 ---
 

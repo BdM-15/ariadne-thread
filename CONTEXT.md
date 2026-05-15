@@ -18,6 +18,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Python-first implementation: use the latest stable Python supported by the dependency stack, manage dependencies and virtualenvs with `uv`, run one-off Python CLIs with `uvx`, and keep `.venv/` local.
 - Prefer custom in-product interfaces over tool sprawl.
 - Keep the provided Project Theseus `.env` as reference material only; never commit live secrets or copy Theseus-specific runtime assumptions into Ariadne before architecture decisions are made. Maintain `.env.example` as the public, secret-free configuration contract.
+- Treat `docs/reference/shipley/` as global capture-methodology knowledge. Use it to shape language, decision gates, workflows, and artifacts, but do not build indexing/runtime assumptions before architecture decisions are made.
 
 ## Domain Language
 
@@ -29,3 +30,4 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - HITL Strategy Session: a structured human-in-the-loop exchange for brainstorming, challenge, review, and action capture.
 - Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, presentation, and visual deliverables.
 - Hermes Agent: the local-first persistent operator that coordinates skills, memory, and execution.
+- Global Knowledge Reference: commit-safe source material that informs product behavior and terminology without implying a specific retrieval/indexing implementation.

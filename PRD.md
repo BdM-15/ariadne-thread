@@ -21,6 +21,7 @@ The platform embodies Shipley’s fundamental principles (customer-centricity, e
 
 - **Shipley Foundation**: Every major feature and workflow must align with proven capture methodology.
 - **Deep Modular Architecture (Matt Pocock influence)**: Rich functionality behind simple, clean interfaces. Constant evaluation and refactoring toward deeper, more composable modules.
+- **Python-First Platform**: Python is the primary application, backend, agent, orchestration, and data-processing language. Use the latest stable Python supported by the dependency stack, managed through `uv`; keep TypeScript scoped to the Next.js interface where it is the right tool.
 - **Simplicity & Focus**: Maximum simplicity. Minimum tool sprawl. No redundancy. Dual-purpose capabilities preferred.
 - **UI-First Mindset**: Custom interfaces (especially for knowledge/RAG and HITL skills) take priority. The user should complete the vast majority of capture work inside one cohesive interface.
 - **Agentic Execution**: Self-improving, persistent agents that reduce manual effort over time. Hybrid model usage (powerful reasoning models for complex work + efficient local models for daily execution).
@@ -103,7 +104,10 @@ Commit the vendored skill immediately.
 ## 4. Technical Architecture
 
 - **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max)
-- **Backend**: TypeScript, deep modular structure (enforced by Matt Pocock skills)
+- **Primary Language**: Python 3.13+ as the default implementation language for backend services, agents, orchestration, document processing, knowledge workflows, and platform tools.
+- **Python Tooling**: Use `uv` for dependency, lockfile, and virtualenv management; use `uvx` for one-off Python CLIs. Keep a local `.venv/` ignored by git.
+- **Frontend**: Next.js 15 + Tailwind + shadcn/ui + custom cyberpunk components (guided by ui-ux-pro-max). Use TypeScript only for the frontend and frontend-adjacent tooling.
+- **Backend**: Python-first, deep modular structure (enforced by Matt Pocock skills)
 - **Agents**: Hermes Agent (persistent memory) + Grok 4.3 for complex work + local models for speed
 - **Knowledge Layer**: LightRAG with custom Theseus-inspired UI (settings panel + chat)
 - **Artifact Generation**: Custom renderer skill (DOCX, XLSX, presentations, visuals)
@@ -145,11 +149,9 @@ Commit the vendored skill immediately.
 
 **`.env.example`**
 
-```env
-XAI_API_KEY=your_xai_key
-OPENAI_API_KEY=your_openai_key
-FIRECRAWL_API_KEY=your_firecrawl_key
-```
+The committed `.env.example` is a public, secret-free template. It is modeled on the richer Project Theseus runtime shape, but reorganized around Ariadne Thread platform concerns: app/workspace identity, model routing, embeddings, research, knowledge storage, parsing, graph storage, post-processing, and agent runtime ceilings.
+
+Local development uses a private `.env` file that is ignored by git. Update `.env.example` whenever the public configuration shape changes.
 
 ---
 
@@ -174,6 +176,7 @@ FIRECRAWL_API_KEY=your_firecrawl_key
 
 - Install all developer skills in parallel (Section 2)
 - Vendor `ui-ux-pro-max`
+- Establish Python 3.13+ / `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and secret-safe `.env.example`
 - Run `improve-codebase-architecture` on fresh repo and commit recommendations
 - Establish `CONTEXT.md`, `docs/adr/`, and domain language
 - Bootstrap Command Center shell using `ui-ux-pro-max`
@@ -209,6 +212,9 @@ FIRECRAWL_API_KEY=your_firecrawl_key
 ariadne-thread/
 ├── PRD.md
 ├── README.md
+├── pyproject.toml
+├── .python-version
+├── .gitignore
 ├── .env.example
 ├── .github/
 │   ├── copilot-instructions.md

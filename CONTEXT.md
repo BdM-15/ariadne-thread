@@ -8,15 +8,16 @@ Build one elegant, powerful capture command center that lets a single capture pr
 
 - A single immersive UI for opportunity status, decision gates, capture planning, knowledge chat, HITL strategy sessions, artifact preview, and exports.
 - Shipley-aligned workflows embedded in the product rather than scattered across tools.
-- Deep, composable TypeScript modules with simple interfaces and clear ownership boundaries.
+- Deep, composable Python modules with simple interfaces and clear ownership boundaries. TypeScript is reserved for the Next.js UI surface and frontend-adjacent tooling.
 - Local-first knowledge and agent execution, with hosted reasoning models used where they add clear value.
 - A self-improving agent layer that compounds learning from real capture work over time.
 
 ## Build Discipline
 
 - PRD first, architecture foundation second, application code third.
+- Python-first implementation: use the latest stable Python supported by the dependency stack, manage dependencies and virtualenvs with `uv`, run one-off Python CLIs with `uvx`, and keep `.venv/` local.
 - Prefer custom in-product interfaces over tool sprawl.
-- Keep the provided Project Theseus `.env` as reference only; never commit live secrets.
+- Keep the provided Project Theseus `.env` as reference only; never commit live secrets. Maintain `.env.example` as the public, secret-free configuration contract.
 
 ## Domain Language
 

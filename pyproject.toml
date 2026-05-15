@@ -1,0 +1,13 @@
+[project]
+name = "ariadne-thread"
+version = "0.1.0"
+description = "Python-first capture command center platform for Shipley-aligned pursuits."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = []
+
+[tool.uv]
+package = false

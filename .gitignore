@@ -8,8 +8,14 @@ out/
 dist/
 build/
 coverage/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
 __pycache__/
 *.py[cod]
+*.egg-info/
 
 *.log
 npm-debug.log*

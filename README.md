@@ -8,5 +8,13 @@ The product source of truth is [PRD.md](PRD.md). Phase 0 focuses on developer sk
 
 - Bring in architecture, first-principles, skill-creation, and UI/UX developer skills.
 - Vendor `ui-ux-pro-max` from `nextlevelbuilder/ui-ux-pro-max-skill`.
+- Use Python 3.13+ as the main application language, managed with `uv` and `uvx`.
 - Capture architecture recommendations before writing application code.
-- Keep secrets out of the repository; use `.env.example` for public configuration shape only.
+- Keep secrets out of the repository; use `.env.example` for the public configuration shape only.
+
+## Development Defaults
+
+- Python is the default language for backend, agents, orchestration, document processing, knowledge workflows, and platform tooling.
+- TypeScript is reserved for the Next.js Command Center UI and frontend-adjacent tooling.
+- Use `uv sync` to create/update the local `.venv/`, `uv add` for Python dependencies, and `uvx` for one-off Python CLIs.
+- Keep live values in `.env`; commit only secret-free placeholders in `.env.example`.

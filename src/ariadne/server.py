@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.config import RuntimeSettings
 from ariadne.packet_review import (
     build_demo_packet_briefing_view,
@@ -46,6 +49,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     @app.get("/api/packets/review/coverage")
     def packet_review_coverage() -> CoverageView:
         return build_demo_packet_coverage_view()
+
+    @app.get("/api/capabilities/catalog")
+    def capability_catalog() -> CapabilityCatalog:
+        return discover_local_capability_catalog(Path.cwd())
 
     return app
 

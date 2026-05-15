@@ -37,6 +37,11 @@ class CoreCaptureWorkstream(StrEnum):
     ARTIFACTS = "artifacts"
 
 
+class WorkstreamStatus(StrEnum):
+    UNASSESSED = "unassessed"
+    NEEDS_BACKFILL = "needs_backfill"
+
+
 class EntryContext(BaseModel):
     reason: EntryReason
     starting_lifecycle_state: LifecycleState
@@ -46,6 +51,7 @@ class EntryContext(BaseModel):
 
 class CaptureWorkstreamState(BaseModel):
     workstream: CoreCaptureWorkstream
+    status: WorkstreamStatus = WorkstreamStatus.UNASSESSED
 
 
 class BackfillNeed(BaseModel):
@@ -63,7 +69,14 @@ class Opportunity(BaseModel):
 
 def create_opportunity(*, name: str, entry_context: EntryContext) -> Opportunity:
     workstreams = {
-        workstream: CaptureWorkstreamState(workstream=workstream)
+        workstream: CaptureWorkstreamState(
+            workstream=workstream,
+            status=(
+                WorkstreamStatus.NEEDS_BACKFILL
+                if workstream in entry_context.missing_or_stale_workstreams
+                else WorkstreamStatus.UNASSESSED
+            ),
+        )
         for workstream in CoreCaptureWorkstream
     }
     backfill_needs = [

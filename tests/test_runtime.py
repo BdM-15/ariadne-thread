@@ -63,7 +63,7 @@ def test_root_serves_runtime_status_page() -> None:
     assert "http://127.0.0.1:9622" in response.text
 
 
-def test_packet_review_page_serves_living_briefing_packet_skeleton() -> None:
+def test_packet_review_page_serves_deck_shaped_packet_workspace() -> None:
     from fastapi.testclient import TestClient
 
     response = TestClient(create_app()).get("/packets/review")
@@ -74,8 +74,24 @@ def test_packet_review_page_serves_living_briefing_packet_skeleton() -> None:
     assert "AFLCMC recompete support" in response.text
     assert "Briefing View" in response.text
     assert "Coverage View" in response.text
-    assert "Supported" in response.text
-    assert "Partially Supported" in response.text
+    assert "Slide Navigator" in response.text
+    assert "Evidence Inspector" in response.text
+    assert "Opportunity Synopsis" in response.text
+    assert "Visible Data Elements" in response.text
+    assert "CRM / Salesforce ID" in response.text
+    assert "Required for MS2" in response.text
+
+
+def test_packet_review_page_can_select_stage_and_slide() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/packets/review?stage=MS4&slide=18")
+
+    assert response.status_code == 200
+    assert "MS3 / MS4 Approval Decision" in response.text
+    assert "Required for MS4" in response.text
+    assert "Bid/no-bid answers" in response.text
+    assert "Execution-risk acceptance" in response.text
 
 
 def test_packet_review_api_exposes_briefing_and_coverage_views() -> None:

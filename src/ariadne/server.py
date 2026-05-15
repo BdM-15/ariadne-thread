@@ -36,8 +36,8 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         return _render_status_shell(runtime_settings)
 
     @app.get("/packets/review", response_class=HTMLResponse)
-    def packet_review() -> str:
-        return render_demo_packet_review_shell()
+    def packet_review(stage: str = "MS2", slide: int = 4) -> str:
+        return render_demo_packet_review_shell(stage=stage, slide=slide)
 
     @app.get("/api/packets/review/briefing")
     def packet_review_briefing() -> BriefingView:

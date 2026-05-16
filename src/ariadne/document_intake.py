@@ -60,6 +60,20 @@ class ExtractionWarningSeverity(StrEnum):
     ERROR = "error"
 
 
+class DocumentIntakeCaptureCandidateType(StrEnum):
+    ACTION_PLAN_ITEM = "action_plan_item"
+    PACKET_FIELD_ANSWER = "packet_field_answer"
+    RISK_REGISTER_ITEM = "risk_register_item"
+    CALL_PLAN_SIGNAL = "call_plan_signal"
+
+
+class DocumentIntakeCandidateReviewState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ROUTED = "routed"
+    ACCEPTED = "accepted"
+    DISCARDED = "discarded"
+
+
 class DocumentIntakeCandidate(BaseModel):
     id: str
     filename: str | None = None
@@ -288,6 +302,39 @@ class AcceptedSourceSpanEvidenceResult(BaseModel):
     duplicate: bool = False
 
 
+class DocumentIntakeCaptureCandidate(BaseModel):
+    id: str
+    candidate_type: DocumentIntakeCaptureCandidateType
+    title: str
+    content: str
+    target_workflow: str
+    recommendation: str
+    rationale: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    review_state: DocumentIntakeCandidateReviewState = (
+        DocumentIntakeCandidateReviewState.PENDING_REVIEW
+    )
+    trusted_output_written: bool = False
+    source_ref: str
+    source_intake_record_id: str
+    source_extraction_bundle_id: str
+    source_draft_id: str
+    source_draft_part_id: str
+    source_span_ids: tuple[str, ...]
+    suggested_skill_chain: tuple[str, ...] = ()
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def validate_candidate_trace(self) -> DocumentIntakeCaptureCandidate:
+        if not self.source_span_ids:
+            raise ValueError("capture candidate requires source_span_ids")
+        if self.trusted_output_written and self.review_state is not (
+            DocumentIntakeCandidateReviewState.ACCEPTED
+        ):
+            raise ValueError("trusted output requires accepted review state")
+        return self
+
+
 class DocumentIntakeStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
@@ -397,6 +444,65 @@ class DocumentIntakeStore:
             links = [link for link in links if link.evidence_id == evidence_id]
         return links
 
+    def write_capture_candidate(
+        self,
+        candidate: DocumentIntakeCaptureCandidate,
+    ) -> DocumentIntakeCaptureCandidate:
+        self._capture_candidate_root.mkdir(parents=True, exist_ok=True)
+        self._capture_candidate_path(candidate.id).write_text(
+            candidate.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return candidate
+
+    def read_capture_candidate(
+        self,
+        candidate_id: str,
+    ) -> DocumentIntakeCaptureCandidate:
+        return DocumentIntakeCaptureCandidate.model_validate_json(
+            self._capture_candidate_path(candidate_id).read_text(encoding="utf-8")
+        )
+
+    def list_capture_candidates(
+        self,
+        *,
+        bundle_id: str | None = None,
+        intake_record_id: str | None = None,
+        candidate_type: DocumentIntakeCaptureCandidateType | None = None,
+        review_state: DocumentIntakeCandidateReviewState | None = None,
+    ) -> list[DocumentIntakeCaptureCandidate]:
+        if not self._capture_candidate_root.exists():
+            return []
+        candidates = [
+            self.read_capture_candidate(path.name.removesuffix(".json"))
+            for path in sorted(self._capture_candidate_root.glob("*.json"))
+        ]
+        if bundle_id is not None:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.source_extraction_bundle_id == bundle_id
+            ]
+        if intake_record_id is not None:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.source_intake_record_id == intake_record_id
+            ]
+        if candidate_type is not None:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.candidate_type is candidate_type
+            ]
+        if review_state is not None:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.review_state is review_state
+            ]
+        return candidates
+
     def _path(self, record_id: str) -> Path:
         if not record_id or record_id != Path(record_id).name:
             raise ValueError("record_id must be a file-safe identifier")
@@ -419,6 +525,15 @@ class DocumentIntakeStore:
         if not link_id or link_id != Path(link_id).name:
             raise ValueError("link_id must be a file-safe identifier")
         return self._accepted_evidence_root / f"{link_id}.json"
+
+    @property
+    def _capture_candidate_root(self) -> Path:
+        return self.root / "capture-candidates"
+
+    def _capture_candidate_path(self, candidate_id: str) -> Path:
+        if not candidate_id or candidate_id != Path(candidate_id).name:
+            raise ValueError("candidate_id must be a file-safe identifier")
+        return self._capture_candidate_root / f"{candidate_id}.json"
 
 
 def create_document_intake_record(
@@ -724,6 +839,164 @@ def _accepted_evidence_link_id(
 ) -> str:
     digest = sha256((bundle_id + "\0" + "\0".join(source_span_ids)).encode())
     return f"accepted_{digest.hexdigest()[:16]}"
+
+
+def create_review_gated_capture_candidates_from_extraction_bundle(
+    bundle: ExtractionBundle,
+) -> tuple[DocumentIntakeCaptureCandidate, ...]:
+    draft = create_capture_intelligence_draft_from_extraction_bundle(bundle)
+    candidates: list[DocumentIntakeCaptureCandidate] = []
+    seen_keys: set[tuple[DocumentIntakeCaptureCandidateType, str]] = set()
+    for piece in draft.intelligence_pieces:
+        for candidate_type in _candidate_types_for_draft_part(piece):
+            key = (candidate_type, piece.id)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            candidates.append(
+                _create_review_gated_capture_candidate(
+                    bundle,
+                    draft_id=draft.id,
+                    piece=piece,
+                    candidate_type=candidate_type,
+                    sequence=len(candidates) + 1,
+                )
+            )
+    return tuple(candidates)
+
+
+def _create_review_gated_capture_candidate(
+    bundle: ExtractionBundle,
+    *,
+    draft_id: str,
+    piece: CaptureIntelligenceDraftPart,
+    candidate_type: DocumentIntakeCaptureCandidateType,
+    sequence: int,
+) -> DocumentIntakeCaptureCandidate:
+    target_workflow, recommendation = _candidate_workflow_and_recommendation(
+        candidate_type,
+        piece,
+    )
+    return DocumentIntakeCaptureCandidate(
+        id=_capture_candidate_id(bundle.id, candidate_type, piece.id, sequence),
+        candidate_type=candidate_type,
+        title=_capture_candidate_title(candidate_type, piece),
+        content=piece.content,
+        target_workflow=target_workflow,
+        recommendation=recommendation,
+        rationale=_capture_candidate_rationale(bundle, piece),
+        confidence=_confidence_from_draft_part(piece),
+        source_ref=bundle.source_ref,
+        source_intake_record_id=bundle.document_id,
+        source_extraction_bundle_id=bundle.id,
+        source_draft_id=draft_id,
+        source_draft_part_id=piece.id,
+        source_span_ids=piece.source_span_ids,
+        suggested_skill_chain=piece.suggested_skill_chain,
+    )
+
+
+def _candidate_types_for_draft_part(
+    piece: CaptureIntelligenceDraftPart,
+) -> tuple[DocumentIntakeCaptureCandidateType, ...]:
+    candidate_types: list[DocumentIntakeCaptureCandidateType] = []
+    if piece.part_type is CaptureIntelligenceDraftPartType.ACTION_CANDIDATE:
+        candidate_types.append(DocumentIntakeCaptureCandidateType.ACTION_PLAN_ITEM)
+    if piece.part_type is CaptureIntelligenceDraftPartType.PACKET_IMPLICATION:
+        candidate_types.append(DocumentIntakeCaptureCandidateType.PACKET_FIELD_ANSWER)
+    if piece.part_type is CaptureIntelligenceDraftPartType.LIKELY_RISK:
+        candidate_types.append(DocumentIntakeCaptureCandidateType.RISK_REGISTER_ITEM)
+    if piece.part_type is CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION:
+        candidate_types.append(DocumentIntakeCaptureCandidateType.CALL_PLAN_SIGNAL)
+    if piece.part_type in {
+        CaptureIntelligenceDraftPartType.ACTION_CANDIDATE,
+        CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+    } and _looks_like_customer_engagement_signal(piece.content):
+        candidate_types.append(DocumentIntakeCaptureCandidateType.CALL_PLAN_SIGNAL)
+    return tuple(candidate_types)
+
+
+def _candidate_workflow_and_recommendation(
+    candidate_type: DocumentIntakeCaptureCandidateType,
+    piece: CaptureIntelligenceDraftPart,
+) -> tuple[str, str]:
+    if candidate_type is DocumentIntakeCaptureCandidateType.ACTION_PLAN_ITEM:
+        return (
+            "capture_action_plan",
+            "Review as a candidate Capture Action Plan item before assigning work.",
+        )
+    if candidate_type is DocumentIntakeCaptureCandidateType.PACKET_FIELD_ANSWER:
+        return (
+            "living_briefing_packet",
+            "Review as a candidate packet field answer or evidence-backed packet gap update.",
+        )
+    if candidate_type is DocumentIntakeCaptureCandidateType.RISK_REGISTER_ITEM:
+        return (
+            "risk_register",
+            "Review as a candidate Risk Register item before treating it as pursuit risk.",
+        )
+    return (
+        "call_plan",
+        "Review as a candidate Call Plan signal before preparing customer engagement.",
+    )
+
+
+def _capture_candidate_title(
+    candidate_type: DocumentIntakeCaptureCandidateType,
+    piece: CaptureIntelligenceDraftPart,
+) -> str:
+    label = candidate_type.value.replace("_", " ").title()
+    return f"{label}: {_candidate_text(piece.content)}"
+
+
+def _capture_candidate_rationale(
+    bundle: ExtractionBundle,
+    piece: CaptureIntelligenceDraftPart,
+) -> str:
+    return (
+        f"Generated from document-derived draft part {piece.id}; "
+        f"bundle confidence {bundle.confidence:.2f}; trusted output still requires review."
+    )
+
+
+def _confidence_from_draft_part(piece: CaptureIntelligenceDraftPart) -> float | None:
+    for note in piece.confidence_notes:
+        if "Extraction candidate confidence" not in note:
+            continue
+        confidence_text = note.split("Extraction candidate confidence", 1)[1]
+        confidence_value = confidence_text.split(";", 1)[0].strip()
+        try:
+            return float(confidence_value)
+        except ValueError:
+            return None
+    return None
+
+
+def _looks_like_customer_engagement_signal(content: str) -> bool:
+    lowered_content = content.lower()
+    return any(
+        term in lowered_content
+        for term in (
+            "customer",
+            "decision maker",
+            "follow up",
+            "meeting",
+            "pm",
+            "stakeholder",
+        )
+    )
+
+
+def _capture_candidate_id(
+    bundle_id: str,
+    candidate_type: DocumentIntakeCaptureCandidateType,
+    draft_part_id: str,
+    sequence: int,
+) -> str:
+    digest = sha256(
+        f"{bundle_id}\0{candidate_type.value}\0{draft_part_id}\0{sequence}".encode()
+    )
+    return f"candidate_{digest.hexdigest()[:16]}"
 
 
 _TEXT_EXTENSIONS = {".txt", ".text"}

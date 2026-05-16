@@ -20,6 +20,7 @@ from ariadne.draft_promotion import (
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
     AcceptedSourceSpanEvidenceResult,
+    DocumentIntakeCaptureCandidate,
     DocumentIntakeCandidate,
     DocumentIntakeRecord,
     DocumentIntakeStatus,
@@ -30,6 +31,7 @@ from ariadne.document_intake import (
     create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
+    create_review_gated_capture_candidates_from_extraction_bundle,
 )
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore
 from ariadne.local_admin_model import request_local_admin_draft_assist
@@ -125,6 +127,10 @@ class DocumentIntakeQueueResponse(BaseModel):
 
 class DocumentIntakeExtractionDraftsResponse(BaseModel):
     drafts: tuple[CaptureIntelligenceDraft, ...]
+
+
+class DocumentIntakeCaptureCandidatesResponse(BaseModel):
+    candidates: tuple[DocumentIntakeCaptureCandidate, ...]
 
 
 class DocumentIntakeReviewDecisionRequest(BaseModel):
@@ -252,6 +258,15 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 create_capture_intelligence_draft_from_extraction_bundle(bundle)
                 for bundle in store.list_extraction_bundles()
             )
+        )
+
+    @app.get("/api/document-intake/capture-candidates")
+    def document_intake_capture_candidates() -> DocumentIntakeCaptureCandidatesResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeCaptureCandidatesResponse(
+            candidates=tuple(store.list_capture_candidates())
         )
 
     @app.post("/api/document-intake/review-decisions")
@@ -582,6 +597,10 @@ def _write_intake_record_and_generic_bundle(
         return persisted_record
     bundle = create_generic_extraction_bundle(persisted_record, source_material)
     store.write_extraction_bundle(bundle)
+    for candidate in create_review_gated_capture_candidates_from_extraction_bundle(
+        bundle
+    ):
+        store.write_capture_candidate(candidate)
     return store.write(persisted_record.with_extraction_bundle(bundle))
 
 

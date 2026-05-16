@@ -24,6 +24,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Domain Language
 
 - Capture Command Center: the single working surface for opportunities, decision gates, knowledge, HITL sessions, plans, agents, and artifacts.
+- Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate.
 - Knowledge Processing Workflow: the workflow that turns raw capture items and uploaded documents into structured evidence, opportunity knowledge, action items, and reusable insight candidates.
@@ -122,6 +123,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Insight Promotion** preserves the source **Opportunity**, related **Core Capture Workstream**, freshness, confidence, sensitivity, and use context.
 - A **Capture Intelligence Workflow** can produce **Reusable Capture Insight**, a **Capture Action Plan**, an **Engagement Artifact**, or a **Milestone Decision Briefing Packet**.
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
+- A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
 - The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.
 - The first **Capability Studio** stage focuses on a local **Capability Catalog**, testing, refinement, validation, run history, artifacts, and provenance before third-party plugin installation.
 - The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.

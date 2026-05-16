@@ -301,6 +301,13 @@ def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) ->
     assert settings.local_url == "http://127.0.0.1:9622"
 
 
+def test_runtime_settings_default_to_ariadne_port_not_theseus_port() -> None:
+    settings = RuntimeSettings.from_mapping({})
+
+    assert settings.port == 9622
+    assert settings.local_url == "http://127.0.0.1:9622"
+
+
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     settings = RuntimeSettings.from_mapping(
         {

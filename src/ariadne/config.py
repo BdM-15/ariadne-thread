@@ -15,7 +15,7 @@ class LocalAdminModelSettings(BaseModel):
 
 class RuntimeSettings(BaseModel):
     host: str = "127.0.0.1"
-    port: int = 9621
+    port: int = 9622
     public_app_name: str = "Ariadne Thread"
     ariadne_env: str = "development"
     ariadne_workspace: str = "default"

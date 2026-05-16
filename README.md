@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 uv run python app.py
 ```
 
-The app reads `HOST`, `PORT`, `PUBLIC_APP_NAME`, `ARIADNE_ENV`, `ARIADNE_WORKSPACE`, and `ARIADNE_EVIDENCE_DIR` from `.env`, then starts the local FastAPI runtime. Open the URL printed at startup, usually `http://127.0.0.1:9621` unless your private `.env` sets another port.
+The app reads `HOST`, `PORT`, `PUBLIC_APP_NAME`, `ARIADNE_ENV`, `ARIADNE_WORKSPACE`, and `ARIADNE_EVIDENCE_DIR` from `.env`, then starts the local FastAPI runtime. Open the URL printed at startup, usually `http://127.0.0.1:9622`. Port `9621` is reserved for Project Theseus.
 
 With the virtual environment activated, `python app.py` also works.
 

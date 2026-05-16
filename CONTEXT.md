@@ -83,6 +83,11 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Execution Detail: a lower-level supporting step Ariadne performs or tracks under an outcome-level task.
 - Action Plan Dashboard: the UI-native working surface for managing capture action plan items across urgency, status, timeline, packet section, workstream, and evidence gap.
 - Engagement Artifact: a customer- or stakeholder-facing artifact, such as a call plan or customer engagement presentation, used to advance an opportunity.
+- Call Plan: an engagement artifact and product workflow that prepares, guides, captures, and follows up on a customer meeting or stakeholder interaction.
+- Customer Meeting: a planned or completed engagement with logistics, attendees, purpose, desired outcome, questions, notes, and follow-up commitments.
+- Call Plan Attendee: a customer, partner, or internal participant in a customer meeting, including role, contact details, influence, and meeting responsibility when known.
+- Customer Insight Profile: a reviewable structure for issues, hot buttons, needs, wants, motivations, fears, beliefs, biases, and funding status learned through customer engagement.
+- Call Plan Action Commitment: a follow-up action, deliverable, owner, and due date created or confirmed through a customer meeting.
 - Autonomy Tier: the permission level that determines whether Ariadne can run work automatically, ask before running, or require human approval.
 - Assisted Execution: AI-supported completion of capture work that reduces manual effort while keeping the user in control of strategic, sensitive, and external-facing decisions.
 - Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a milestone or gate review.
@@ -130,6 +135,11 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
 - A **Reference Wiki** can organize **Capture Reference Context** for lightweight retrieval without becoming the primary **Knowledge Layer** or a **Knowledge Mirror**.
 - A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.
+- A **Call Plan** can create or consume **Raw Capture Items**, **Capture Intelligence Drafts**, **Customer Insight Profiles**, **Call Plan Action Commitments**, and **Packet Field Answers**.
+- A **Customer Meeting** can belong to an **Opportunity** or begin as an **Exploratory Capture Session** before an opportunity is known.
+- A **Customer Insight Profile** can guide **Capture Intelligence Drafts**, but its subjective fields require review before becoming **Opportunity Knowledge**.
+- A **Call Plan Action Commitment** can become an **Action Plan Item** after user review.
+- Call plan fields such as customer, opportunity name, CRM identifier, funding status, owner, due date, customer needs, and action commitments can connect to existing **Packet Field Answers** without automatically updating them.
 - **Document Intake** creates **Source Evidence** from uploaded files before Ariadne derives summaries, tags, dates, or recommendations.
 - A **Guided Capture Mentor** supports the user by executing work, recommending next steps, and teaching the capture reasoning behind those recommendations.
 - **Assisted Execution** lets Ariadne complete low-risk work, prepare insights, and teach the user while **Autonomy Tiers** protect strategic, sensitive, and external-facing decisions.
@@ -188,3 +198,4 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "quick intel" was used to mean AI-heavy interpretation of rushed notes or uploaded material — resolved: use **Capture Intelligence Draft** for reviewable synthesized intelligence before promotion into trusted Ariadne knowledge.
 - "foundation knowledge" was used to mean public-source background material that helps Ariadne infer capture implications — resolved: use **Capture Reference Context**, which can guide drafts without becoming opportunity-specific evidence by itself.
 - "Obsidian-like LLM wiki" was used to mean lightweight retrieval over interlinked reference notes — resolved: use **Reference Wiki** for the note corpus and keep **Knowledge Mirror** for optional Obsidian-style exports or sync.
+- "call plan template" was used to mean both private document skin and reusable engagement workflow — resolved: keep private templates as **Artifact Export Profiles** or ignored reference material, and use **Call Plan** for the product workflow and data model.

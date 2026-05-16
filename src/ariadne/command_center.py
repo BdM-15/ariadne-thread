@@ -7,6 +7,7 @@ from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
+    DocumentIntakeCaptureCandidate,
     DocumentIntakeRecord,
     DocumentIntakeStore,
     ExtractionBundleReviewStatus,
@@ -48,6 +49,7 @@ def render_command_center_shell(
         create_capture_intelligence_draft_from_extraction_bundle(bundle)
         for bundle in document_intake_store.list_extraction_bundles()
     ]
+    document_intake_capture_candidates = document_intake_store.list_capture_candidates()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -343,6 +345,7 @@ def render_command_center_shell(
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
+        {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
@@ -575,6 +578,52 @@ def _render_document_intake_evidence_status(
     if accepted_link is None:
         return "<span>Evidence status: pending reviewer acceptance</span>"
     return f"""<span>Evidence accepted - {escape(accepted_link.evidence_id)}</span><span>Reviewer rationale: {escape(accepted_link.reviewer_rationale)}</span>"""
+
+
+def _render_document_intake_capture_candidates_panel(
+    candidates: list[DocumentIntakeCaptureCandidate],
+) -> str:
+    pending_candidates = [
+        candidate for candidate in candidates if not candidate.trusted_output_written
+    ]
+    if pending_candidates:
+        rows = "".join(
+            _render_document_intake_capture_candidate_row(candidate)
+            for candidate in pending_candidates[:8]
+        )
+    else:
+        rows = """<div class="row"><strong>No suggested next actions</strong><span>Create document-derived draft parts to queue review-gated downstream candidates.</span></div>"""
+    return f"""<section class="panel" id="document-capture-candidates" aria-labelledby="document-capture-candidates-heading">
+      <div class="panel-heading"><h2 id="document-capture-candidates-heading">Review-Gated Capture Candidates</h2><span class="status-chip amber">{len(pending_candidates)} pending</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Suggested next actions</strong><span>Trusted outputs still require acceptance; these candidates are prepared for review, routing, or dismissal.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_capture_candidate_row(
+    candidate: DocumentIntakeCaptureCandidate,
+) -> str:
+    workflow_label = _capture_candidate_workflow_label(candidate.target_workflow)
+    confidence = (
+        f"{candidate.confidence:.2f}" if candidate.confidence is not None else "unknown"
+    )
+    skill_chain = (
+        " -> ".join(candidate.suggested_skill_chain) or "needs capability match"
+    )
+    source_spans = ", ".join(candidate.source_span_ids)
+    return f"""<div class="row"><strong>{escape(workflow_label)}</strong><span>{escape(candidate.title)}</span><span>{escape(candidate.content)}</span><span>Review State: {escape(candidate.review_state.value.replace("_", " ").title())} - Confidence: {escape(confidence)}</span><span>Target workflow: {escape(workflow_label)} - Suggested Skill Chain: {escape(skill_chain)}</span><span>Trace: draft {escape(candidate.source_draft_id)} - part {escape(candidate.source_draft_part_id)} - bundle {escape(candidate.source_extraction_bundle_id)}</span><span>Source spans: {escape(source_spans)}</span><span>{escape(candidate.recommendation)}</span><div class="action-strip" aria-label="{escape(workflow_label)} candidate actions"><button class="action-button" type="button">Review Candidate</button><button class="action-button secondary" type="button">Route Candidate</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Ignore Candidate</button></div></div>"""
+
+
+def _capture_candidate_workflow_label(target_workflow: str) -> str:
+    labels = {
+        "capture_action_plan": "Capture Action Plan",
+        "living_briefing_packet": "Living Briefing Packet",
+        "risk_register": "Risk Register",
+        "call_plan": "Call Plan",
+    }
+    return labels.get(target_workflow, target_workflow.replace("_", " ").title())
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:

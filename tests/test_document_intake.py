@@ -7,6 +7,8 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStatus,
     DocumentIntakeStore,
+    DocumentIntakeCaptureCandidateType,
+    DocumentIntakeCandidateReviewState,
     EntityCandidate,
     ExtractionBundleReviewStatus,
     ExtractionStatus,
@@ -16,6 +18,7 @@ from ariadne.document_intake import (
     create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
+    create_review_gated_capture_candidates_from_extraction_bundle,
 )
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.quick_capture import CaptureIntelligenceDraftPartType
@@ -346,6 +349,119 @@ def test_accept_source_span_to_evidence_preserves_lineage_and_link(tmp_path) -> 
     assert duplicate_result.evidence.id == "ev_document_customer_need"
     assert len(evidence_store.list()) == 1
     assert intake_store.list_accepted_evidence_links(bundle_id=bundle.id) == links
+
+
+def test_extraction_bundle_creates_review_gated_capture_candidates() -> None:
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=(
+            b"Customer needs transition proof and PM follow up.\n"
+            b"Response-time risk could affect the recompete.\n"
+            b"Decision maker expects a customer meeting before the next milestone."
+        ),
+    )
+    record = create_document_intake_record(
+        source_material,
+        opportunity_id="opp-aflcmc-recompete",
+        record_id="intake_customer_brief",
+    )
+    bundle = create_generic_extraction_bundle(
+        record,
+        source_material,
+        bundle_id="bundle_customer_brief",
+    )
+
+    candidates = create_review_gated_capture_candidates_from_extraction_bundle(bundle)
+
+    assert {candidate.candidate_type for candidate in candidates} >= {
+        DocumentIntakeCaptureCandidateType.ACTION_PLAN_ITEM,
+        DocumentIntakeCaptureCandidateType.PACKET_FIELD_ANSWER,
+        DocumentIntakeCaptureCandidateType.RISK_REGISTER_ITEM,
+        DocumentIntakeCaptureCandidateType.CALL_PLAN_SIGNAL,
+    }
+    assert all(
+        candidate.review_state is DocumentIntakeCandidateReviewState.PENDING_REVIEW
+        for candidate in candidates
+    )
+    assert all(candidate.trusted_output_written is False for candidate in candidates)
+
+    risk_candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate.candidate_type
+        is DocumentIntakeCaptureCandidateType.RISK_REGISTER_ITEM
+    )
+    assert risk_candidate.target_workflow == "risk_register"
+    assert risk_candidate.source_intake_record_id == record.id
+    assert risk_candidate.source_extraction_bundle_id == bundle.id
+    assert risk_candidate.source_draft_id == f"draft_{bundle.id}"
+    assert risk_candidate.source_draft_part_id.startswith(f"draft_{bundle.id}_")
+    assert risk_candidate.source_span_ids
+    assert risk_candidate.recommendation
+    assert risk_candidate.rationale
+    assert risk_candidate.confidence is not None
+
+
+def test_document_intake_store_persists_review_gated_capture_candidates(
+    tmp_path,
+) -> None:
+    store = DocumentIntakeStore(tmp_path / "document-intake")
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=(
+            b"Customer needs transition proof and PM follow up.\n"
+            b"Response-time risk could affect the recompete."
+        ),
+    )
+    record = store.write(
+        create_document_intake_record(
+            source_material,
+            opportunity_id="opp-aflcmc-recompete",
+            record_id="intake_customer_brief",
+        )
+    )
+    bundle = store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            record,
+            source_material,
+            bundle_id="bundle_customer_brief",
+        )
+    )
+    candidates = create_review_gated_capture_candidates_from_extraction_bundle(bundle)
+
+    for candidate in candidates:
+        store.write_capture_candidate(candidate)
+
+    reloaded_store = DocumentIntakeStore(tmp_path / "document-intake")
+    loaded_candidates = reloaded_store.list_capture_candidates(bundle_id=bundle.id)
+
+    assert sorted(candidate.id for candidate in loaded_candidates) == sorted(
+        candidate.id for candidate in candidates
+    )
+    assert reloaded_store.read_capture_candidate(candidates[0].id).model_dump(
+        mode="json"
+    ) == candidates[0].model_dump(mode="json")
+    loaded_risk_candidate_ids = sorted(
+        candidate.id
+        for candidate in reloaded_store.list_capture_candidates(
+            candidate_type=DocumentIntakeCaptureCandidateType.RISK_REGISTER_ITEM
+        )
+    )
+    expected_risk_candidate_ids = sorted(
+        candidate.id
+        for candidate in candidates
+        if candidate.candidate_type
+        is DocumentIntakeCaptureCandidateType.RISK_REGISTER_ITEM
+    )
+    assert loaded_risk_candidate_ids == expected_risk_candidate_ids
+    assert (
+        reloaded_store.list_capture_candidates(
+            review_state=DocumentIntakeCandidateReviewState.PENDING_REVIEW
+        )
+        == loaded_candidates
+    )
 
 
 def test_create_document_intake_record_from_generic_upload() -> None:

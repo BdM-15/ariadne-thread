@@ -387,6 +387,74 @@ def test_document_intake_review_decision_api_accepts_spans_as_evidence(
     assert len(DocumentIntakeStore(intake_root).list_accepted_evidence_links()) == 1
 
 
+def test_document_intake_runtime_lists_review_gated_capture_candidates(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                (
+                    b"Customer needs transition proof and PM follow up.\n"
+                    b"Response-time risk could affect the recompete.\n"
+                    b"Decision maker expects a customer meeting before the next milestone."
+                ),
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+
+    response = client.get("/api/document-intake/capture-candidates")
+
+    assert response.status_code == 200
+    candidates = response.json()["candidates"]
+    candidate_types = {candidate["candidate_type"] for candidate in candidates}
+    assert candidate_types >= {
+        "action_plan_item",
+        "packet_field_answer",
+        "risk_register_item",
+        "call_plan_signal",
+    }
+    risk_candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate["candidate_type"] == "risk_register_item"
+    )
+    assert risk_candidate["review_state"] == "pending_review"
+    assert risk_candidate["trusted_output_written"] is False
+    assert risk_candidate["target_workflow"] == "risk_register"
+    assert risk_candidate["source_intake_record_id"] == record["id"]
+    assert (
+        risk_candidate["source_extraction_bundle_id"]
+        == (record["extraction_bundle_id"])
+    )
+    assert risk_candidate["source_draft_part_id"].startswith(
+        f"draft_{record['extraction_bundle_id']}_"
+    )
+    assert risk_candidate["source_span_ids"]
+    assert risk_candidate["recommendation"]
+    assert risk_candidate["rationale"]
+    assert LocalEvidenceStore(evidence_root).list() == []
+    assert len(DocumentIntakeStore(intake_root).list_capture_candidates()) == len(
+        candidates
+    )
+
+
 def test_document_intake_source_material_api_registers_generic_text(tmp_path) -> None:
     intake_root = tmp_path / "document-intake"
     settings = RuntimeSettings.from_mapping(
@@ -883,6 +951,46 @@ def test_command_center_shell_shows_document_intake_accepted_evidence_status(
     assert "Evidence accepted" in response.text
     assert accept_response.json()["evidence"]["id"] in response.text
     assert "Reviewer accepted source span as trusted evidence." in response.text
+
+
+def test_command_center_shell_shows_review_gated_capture_candidates(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                (
+                    b"Customer needs transition proof and PM follow up.\n"
+                    b"Response-time risk could affect the recompete.\n"
+                    b"Decision maker expects a customer meeting before the next milestone."
+                ),
+                "text/markdown",
+            )
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Review-Gated Capture Candidates" in response.text
+    assert "Suggested next actions" in response.text
+    assert "Capture Action Plan" in response.text
+    assert "Living Briefing Packet" in response.text
+    assert "Risk Register" in response.text
+    assert "Call Plan" in response.text
+    assert "Review Candidate" in response.text
+    assert "Route Candidate" in response.text
+    assert "Ignore Candidate" in response.text
+    assert "Trusted outputs still require acceptance" in response.text
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

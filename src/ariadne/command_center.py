@@ -7,12 +7,14 @@ from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
+    DocumentIntakeAdapterDeclaration,
     DocumentIntakeCaptureCandidate,
     DocumentIntakeRecord,
     DocumentIntakeStore,
     ExtractionBundleReviewStatus,
     KnowledgeNoteProjection,
     create_capture_intelligence_draft_from_extraction_bundle,
+    list_document_intake_adapter_declarations,
 )
 from ariadne.packets import (
     CanonicalPacketSection,
@@ -54,6 +56,7 @@ def render_command_center_shell(
     document_intake_knowledge_note_projections = (
         document_intake_store.list_knowledge_note_projections()
     )
+    document_intake_adapter_declarations = list_document_intake_adapter_declarations()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -348,6 +351,7 @@ def render_command_center_shell(
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
+        {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
         {_render_knowledge_note_projections_panel(document_intake_knowledge_note_projections)}
@@ -513,6 +517,38 @@ def _render_document_intake_record_row(
     warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
     accepted_count = sum(link.intake_record_id == record.id for link in accepted_links)
     return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count} - Accepted Evidence: {accepted_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+
+
+def _render_document_intake_capabilities_panel(
+    declarations: tuple[DocumentIntakeAdapterDeclaration, ...],
+) -> str:
+    deferred_count = sum(
+        declaration.status.value == "deferred" for declaration in declarations
+    )
+    rows = "".join(
+        _render_document_intake_capability_row(declaration)
+        for declaration in declarations
+    )
+    return f"""<section class="panel" id="document-intake-capabilities" aria-labelledby="document-intake-capabilities-heading">
+      <div class="panel-heading"><h2 id="document-intake-capabilities-heading">Document Intake Capabilities</h2><span class="status-chip amber">{deferred_count} deferred</span></div>
+      <div class="row-list">
+        <div class="row"><strong>ExtractionBundle boundary</strong><span>Future parser and retrieval hooks must produce reviewable Extraction Bundles before anything becomes trusted knowledge.</span><span>Deferred hooks do not invoke external tools.</span><a class="action-button secondary" href="/api/document-intake/capabilities">Open capability report</a></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_capability_row(
+    declaration: DocumentIntakeAdapterDeclaration,
+) -> str:
+    material_types = ", ".join(
+        material_type.value.replace("_", " ").title()
+        for material_type in declaration.supported_material_types
+    )
+    status = declaration.status.value.replace("_", " ").title()
+    adapter_kind = declaration.adapter_kind.value.replace("_", " ").title()
+    deferred_reason = declaration.deferred_reason or "available for current intake"
+    return f"""<div class="row"><strong>{escape(declaration.name)}</strong><span>{escape(status)} - {escape(adapter_kind)} - {escape(material_types)}</span><span>Output contract: {escape(declaration.expected_output_contract)} with parser provenance fields.</span><span>{escape(declaration.capability_hint)}</span><span>{escape(deferred_reason)}</span></div>"""
 
 
 def _render_document_intake_draft_parts_panel(

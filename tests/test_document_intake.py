@@ -7,6 +7,7 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStatus,
     DocumentIntakeStore,
+    DocumentIntakeAdapterStatus,
     DocumentIntakeCaptureCandidateType,
     DocumentIntakeCandidateReviewState,
     EntityCandidate,
@@ -21,6 +22,7 @@ from ariadne.document_intake import (
     create_generic_extraction_bundle,
     create_knowledge_note_projection_from_accepted_evidence,
     create_review_gated_capture_candidates_from_extraction_bundle,
+    list_document_intake_adapter_declarations,
 )
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.quick_capture import CaptureIntelligenceDraftPartType
@@ -136,6 +138,97 @@ def test_generic_source_material_creates_persisted_extraction_bundle(tmp_path) -
     }
     assert loaded.relationship_candidates
     assert loaded.confidence > 0
+
+
+def test_document_intake_adapter_declarations_describe_future_hooks() -> None:
+    declarations = list_document_intake_adapter_declarations()
+    by_id = {declaration.id: declaration for declaration in declarations}
+
+    generic_text = by_id["ariadne.generic_text_extractor"]
+    assert generic_text.status is DocumentIntakeAdapterStatus.AVAILABLE
+    assert generic_text.supported_material_types == (
+        DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,
+    )
+    assert generic_text.expected_output_contract == "ExtractionBundle"
+    assert set(generic_text.provenance_fields) >= {
+        "adapter_name",
+        "adapter_version",
+        "extraction_method",
+        "generated_at",
+    }
+    assert generic_text.external_tool_invocation_allowed is False
+
+    expected_deferred_ids = {
+        "ariadne.ocr_extractor",
+        "ariadne.multimodal_extractor",
+        "project_theseus.solicitation_parser",
+        "opendatalab.mineru",
+        "hkuds.raganything",
+        "hkuds.lightrag",
+    }
+    assert expected_deferred_ids <= set(by_id)
+    for declaration_id in expected_deferred_ids:
+        declaration = by_id[declaration_id]
+        assert declaration.status is DocumentIntakeAdapterStatus.DEFERRED
+        assert declaration.expected_output_contract == "ExtractionBundle"
+        assert declaration.external_tool_invocation_allowed is False
+        assert declaration.deferred_reason
+
+    assert (
+        DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL
+        in by_id["ariadne.ocr_extractor"].supported_material_types
+    )
+    assert (
+        DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+        in by_id["project_theseus.solicitation_parser"].supported_material_types
+    )
+
+
+def test_deferred_adapter_declarations_do_not_create_extraction_bundles() -> None:
+    deferred_declarations = list_document_intake_adapter_declarations(
+        status=DocumentIntakeAdapterStatus.DEFERRED
+    )
+    deferred_material_types = {
+        material_type
+        for declaration in deferred_declarations
+        for material_type in declaration.supported_material_types
+    }
+
+    for filename, mime_type, content, expected_material_type in (
+        (
+            "whiteboard-photo.png",
+            "image/png",
+            b"\x89PNG\r\n\x1a\n",
+            DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL,
+        ),
+        (
+            "draft-rfp-amendment-001.pdf",
+            "application/pdf",
+            b"%PDF-1.4\n...",
+            DocumentIntakeMaterialType.SOLICITATION_DOCUMENT,
+        ),
+        (
+            "mystery.bundle",
+            "application/octet-stream",
+            b"\x00\x01\x02",
+            DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT,
+        ),
+    ):
+        source_material = classify_uploaded_source_material(
+            filename=filename,
+            mime_type=mime_type,
+            content=content,
+        )
+        record = create_document_intake_record(source_material)
+
+        assert source_material.material_type is expected_material_type
+        assert expected_material_type in deferred_material_types
+        assert source_material.status is DocumentIntakeStatus.PARSER_REQUIRED
+        assert source_material.text is None
+        assert record.extraction_bundle_id is None
+        assert record.extraction_status is None
+        with pytest.raises(ValueError, match="generic extraction requires"):
+            create_generic_extraction_bundle(record, source_material)
 
 
 def test_extraction_bundle_preserves_warnings_and_lists_by_document_id(

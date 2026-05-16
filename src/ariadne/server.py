@@ -20,6 +20,8 @@ from ariadne.draft_promotion import (
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
     AcceptedSourceSpanEvidenceResult,
+    DocumentIntakeAdapterDeclaration,
+    DocumentIntakeAdapterStatus,
     DocumentIntakeCaptureCandidate,
     DocumentIntakeCandidate,
     DocumentIntakeRecord,
@@ -34,6 +36,7 @@ from ariadne.document_intake import (
     create_generic_extraction_bundle,
     create_knowledge_note_projection_from_accepted_evidence,
     create_review_gated_capture_candidates_from_extraction_bundle,
+    list_document_intake_adapter_declarations,
 )
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore
 from ariadne.local_admin_model import request_local_admin_draft_assist
@@ -133,6 +136,16 @@ class DocumentIntakeExtractionDraftsResponse(BaseModel):
 
 class DocumentIntakeCaptureCandidatesResponse(BaseModel):
     candidates: tuple[DocumentIntakeCaptureCandidate, ...]
+
+
+class DocumentIntakeCapabilitiesResponse(BaseModel):
+    capabilities: tuple[DocumentIntakeAdapterDeclaration, ...]
+    available_count: int
+    deferred_count: int
+    extraction_bundle_boundary: str = (
+        "Document Intake adapters must produce reviewable Extraction Bundles; "
+        "deferred declarations do not invoke external tools."
+    )
 
 
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
@@ -255,6 +268,21 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     @app.get("/api/capabilities/catalog")
     def capability_catalog() -> CapabilityCatalog:
         return discover_local_capability_catalog(Path.cwd())
+
+    @app.get("/api/document-intake/capabilities")
+    def document_intake_capabilities() -> DocumentIntakeCapabilitiesResponse:
+        capabilities = list_document_intake_adapter_declarations()
+        return DocumentIntakeCapabilitiesResponse(
+            capabilities=capabilities,
+            available_count=sum(
+                capability.status is DocumentIntakeAdapterStatus.AVAILABLE
+                for capability in capabilities
+            ),
+            deferred_count=sum(
+                capability.status is DocumentIntakeAdapterStatus.DEFERRED
+                for capability in capabilities
+            ),
+        )
 
     @app.get("/api/document-intake/queue")
     def document_intake_queue() -> DocumentIntakeQueueResponse:

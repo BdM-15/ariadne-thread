@@ -60,6 +60,18 @@ class ExtractionWarningSeverity(StrEnum):
     ERROR = "error"
 
 
+class DocumentIntakeAdapterStatus(StrEnum):
+    AVAILABLE = "available"
+    DEFERRED = "deferred"
+
+
+class DocumentIntakeAdapterKind(StrEnum):
+    PARSER = "parser"
+    OCR = "ocr"
+    MULTIMODAL = "multimodal"
+    RETRIEVAL = "retrieval"
+
+
 class DocumentIntakeCaptureCandidateType(StrEnum):
     ACTION_PLAN_ITEM = "action_plan_item"
     PACKET_FIELD_ANSWER = "packet_field_answer"
@@ -88,6 +100,43 @@ class DocumentIntakeCandidate(BaseModel):
     parser_hint: str
     capability_hint: str
     source_ref: str
+
+
+class DocumentIntakeAdapterDeclaration(BaseModel):
+    id: str
+    name: str
+    adapter_kind: DocumentIntakeAdapterKind
+    status: DocumentIntakeAdapterStatus
+    supported_material_types: tuple[DocumentIntakeMaterialType, ...]
+    expected_output_contract: str = "ExtractionBundle"
+    provenance_fields: tuple[str, ...] = (
+        "adapter_name",
+        "adapter_version",
+        "extraction_method",
+        "generated_at",
+    )
+    capability_hint: str
+    deferred_reason: str | None = None
+    external_tool_invocation_allowed: bool = False
+
+    @model_validator(mode="after")
+    def validate_adapter_declaration(self) -> DocumentIntakeAdapterDeclaration:
+        if not self.supported_material_types:
+            raise ValueError("adapter declaration requires supported_material_types")
+        required_provenance_fields = {
+            "adapter_name",
+            "adapter_version",
+            "extraction_method",
+            "generated_at",
+        }
+        if not required_provenance_fields.issubset(self.provenance_fields):
+            raise ValueError("adapter declaration missing provenance fields")
+        if self.status is DocumentIntakeAdapterStatus.DEFERRED:
+            if not self.deferred_reason:
+                raise ValueError("deferred adapter declaration requires reason")
+            if self.external_tool_invocation_allowed:
+                raise ValueError("deferred adapter cannot invoke external tools")
+        return self
 
 
 class UploadedSourceMaterial(BaseModel):
@@ -658,6 +707,25 @@ def create_document_intake_record(
         capability_hint=source_material.capability_hint
         or "Document is recorded for intake.",
     )
+
+
+def list_document_intake_adapter_declarations(
+    *,
+    material_type: DocumentIntakeMaterialType | None = None,
+    status: DocumentIntakeAdapterStatus | None = None,
+) -> tuple[DocumentIntakeAdapterDeclaration, ...]:
+    declarations = _DOCUMENT_INTAKE_ADAPTER_DECLARATIONS
+    if material_type is not None:
+        declarations = tuple(
+            declaration
+            for declaration in declarations
+            if material_type in declaration.supported_material_types
+        )
+    if status is not None:
+        declarations = tuple(
+            declaration for declaration in declarations if declaration.status is status
+        )
+    return declarations
 
 
 def create_generic_extraction_bundle(
@@ -1821,3 +1889,105 @@ def _parser_required_result(
 def _source_ref(filename: str | None, content: bytes) -> str:
     digest = sha256((filename or "uploaded-material").encode() + b"\0" + content)
     return f"upload:{digest.hexdigest()[:16]}"
+
+
+_DOCUMENT_INTAKE_ADAPTER_DECLARATIONS = (
+    DocumentIntakeAdapterDeclaration(
+        id="ariadne.generic_text_extractor",
+        name="Ariadne Generic Text Extractor",
+        adapter_kind=DocumentIntakeAdapterKind.PARSER,
+        status=DocumentIntakeAdapterStatus.AVAILABLE,
+        supported_material_types=(DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,),
+        capability_hint=(
+            "Current deterministic adapter for readable text and Markdown source "
+            "material; output is a reviewable Extraction Bundle."
+        ),
+    ),
+    DocumentIntakeAdapterDeclaration(
+        id="ariadne.ocr_extractor",
+        name="Ariadne OCR Extractor Hook",
+        adapter_kind=DocumentIntakeAdapterKind.OCR,
+        status=DocumentIntakeAdapterStatus.DEFERRED,
+        supported_material_types=(
+            DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT,
+        ),
+        capability_hint=(
+            "Future OCR adapter for scans, screenshots, and image-like source "
+            "material; must produce reviewable source spans."
+        ),
+        deferred_reason="OCR integration is not implemented in this slice.",
+    ),
+    DocumentIntakeAdapterDeclaration(
+        id="ariadne.multimodal_extractor",
+        name="Ariadne Multimodal Extractor Hook",
+        adapter_kind=DocumentIntakeAdapterKind.MULTIMODAL,
+        status=DocumentIntakeAdapterStatus.DEFERRED,
+        supported_material_types=(DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL,),
+        capability_hint=(
+            "Future multimodal extraction hook for image, layout, and visual "
+            "meaning; output remains an Extraction Bundle."
+        ),
+        deferred_reason="Multimodal extraction remains deferred capability work.",
+    ),
+    DocumentIntakeAdapterDeclaration(
+        id="project_theseus.solicitation_parser",
+        name="Project Theseus Solicitation Parser Hook",
+        adapter_kind=DocumentIntakeAdapterKind.PARSER,
+        status=DocumentIntakeAdapterStatus.DEFERRED,
+        supported_material_types=(DocumentIntakeMaterialType.SOLICITATION_DOCUMENT,),
+        capability_hint=(
+            "Future solicitation parser adapter for RFIs, Sources Soughts, RFPs, "
+            "amendments, and attachments."
+        ),
+        deferred_reason="Theseus integration will arrive through the Extraction Bundle boundary later.",
+    ),
+    DocumentIntakeAdapterDeclaration(
+        id="opendatalab.mineru",
+        name="MinerU Layout Extraction Hook",
+        adapter_kind=DocumentIntakeAdapterKind.PARSER,
+        status=DocumentIntakeAdapterStatus.DEFERRED,
+        supported_material_types=(
+            DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT,
+        ),
+        capability_hint=(
+            "Future MinerU adapter candidate for document layout and multimodal "
+            "source span extraction."
+        ),
+        deferred_reason="MinerU is only declared as a future adapter candidate.",
+    ),
+    DocumentIntakeAdapterDeclaration(
+        id="hkuds.raganything",
+        name="RAGAnything Retrieval Hook",
+        adapter_kind=DocumentIntakeAdapterKind.RETRIEVAL,
+        status=DocumentIntakeAdapterStatus.DEFERRED,
+        supported_material_types=(
+            DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.SOLICITATION_DOCUMENT,
+        ),
+        capability_hint=(
+            "Future RAGAnything retrieval candidate after source spans and "
+            "reviewed Extraction Bundles exist."
+        ),
+        deferred_reason="RAGAnything retrieval integration is not implemented yet.",
+    ),
+    DocumentIntakeAdapterDeclaration(
+        id="hkuds.lightrag",
+        name="LightRAG Knowledge Layer Hook",
+        adapter_kind=DocumentIntakeAdapterKind.RETRIEVAL,
+        status=DocumentIntakeAdapterStatus.DEFERRED,
+        supported_material_types=(
+            DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL,
+            DocumentIntakeMaterialType.SOLICITATION_DOCUMENT,
+        ),
+        capability_hint=(
+            "Future LightRAG knowledge-layer candidate for retrieval over accepted "
+            "Ariadne knowledge and projections."
+        ),
+        deferred_reason="LightRAG remains a future Knowledge Layer adapter decision.",
+    ),
+)

@@ -27,6 +27,7 @@ class RawCaptureSourceType(StrEnum):
 class ProposedDestination(StrEnum):
     EVIDENCE_ITEM_REVIEW = "evidence_item_review"
     ACTION_PLAN_ITEM_REVIEW = "action_plan_item_review"
+    CLARIFICATION_REQUEST = "clarification_request"
 
 
 class ProposalStatus(StrEnum):
@@ -48,6 +49,11 @@ class CaptureDraftInferenceSource(StrEnum):
     HEURISTIC = "heuristic"
     LOCAL_ADMIN_MODEL = "local_admin_model"
     HEURISTIC_FALLBACK = "heuristic_fallback"
+
+
+class CaptureDraftClarityStatus(StrEnum):
+    READY_FOR_REVIEW = "ready_for_review"
+    NEEDS_USER_CLARIFICATION = "needs_user_clarification"
 
 
 class CaptureIntelligenceDraftPartType(StrEnum):
@@ -104,6 +110,9 @@ class CaptureIntelligenceDraft(BaseModel):
         CaptureIntelligenceDraftStatus.PENDING_REVIEW
     )
     raw_source_content: str
+    polished_capture: str
+    clarity_status: CaptureDraftClarityStatus = CaptureDraftClarityStatus.READY_FOR_REVIEW
+    clarification_prompt: str | None = None
     inferred_claims: tuple[str, ...]
     reference_influences: tuple[ReferenceWikiInfluence, ...] = ()
     assumptions: tuple[str, ...]
@@ -146,6 +155,42 @@ class CaptureReview(BaseModel):
     reference_influences: tuple[ReferenceWikiInfluence, ...] = ()
     intelligence_draft: CaptureIntelligenceDraft | None = None
     trusted_opportunity_knowledge_updated: bool = False
+
+
+_CAPTURE_SIGNAL_TERMS = frozenset(
+    {
+        "action",
+        "call",
+        "complaint",
+        "customer",
+        "deadline",
+        "follow",
+        "incumbent",
+        "meeting",
+        "packet",
+        "pricing",
+        "proof",
+        "risk",
+        "transition",
+        "weak",
+    }
+)
+_LOW_SIGNAL_TERMS = frozenset(
+    {
+        "and",
+        "but",
+        "for",
+        "idk",
+        "later",
+        "maybe",
+        "need",
+        "note",
+        "stuff",
+        "the",
+        "thing",
+        "this",
+    }
+)
 
 
 def capture_raw_item(
@@ -220,10 +265,6 @@ def process_raw_capture_item(
     reference_wiki: ReferenceWiki | None = None,
     local_admin_model_assist: LocalAdminDraftAssist | None = None,
 ) -> CaptureReview:
-    destinations = [ProposedDestination.EVIDENCE_ITEM_REVIEW]
-    if _looks_actionable(raw_item.content):
-        destinations.append(ProposedDestination.ACTION_PLAN_ITEM_REVIEW)
-
     reference_influences = (
         reference_wiki.find_influences(raw_item.content) if reference_wiki else ()
     )
@@ -232,6 +273,15 @@ def process_raw_capture_item(
         reference_influences=reference_influences,
         local_admin_model_assist=local_admin_model_assist,
     )
+    if (
+        intelligence_draft.clarity_status
+        is CaptureDraftClarityStatus.NEEDS_USER_CLARIFICATION
+    ):
+        destinations = [ProposedDestination.CLARIFICATION_REQUEST]
+    else:
+        destinations = [ProposedDestination.EVIDENCE_ITEM_REVIEW]
+        if _looks_actionable(raw_item.content):
+            destinations.append(ProposedDestination.ACTION_PLAN_ITEM_REVIEW)
 
     return CaptureReview(
         raw_item_id=raw_item.id,
@@ -242,10 +292,14 @@ def process_raw_capture_item(
             CaptureReviewProposal(
                 id=f"proposal_{uuid4().hex}",
                 destination=destination,
-                proposed_content=raw_item.content,
+                proposed_content=(
+                    intelligence_draft.polished_capture
+                    if destination is ProposedDestination.EVIDENCE_ITEM_REVIEW
+                    else intelligence_draft.clarification_prompt or raw_item.content
+                ),
                 evidence=(
                     create_source_evidence(
-                        content=raw_item.content,
+                        content=intelligence_draft.polished_capture,
                         source_ref=_source_ref_for_raw_item(raw_item),
                         opportunity_id=raw_item.opportunity_id,
                     )
@@ -308,11 +362,25 @@ def create_capture_intelligence_draft(
         suggestion.confidence_notes if suggestion else (), heuristic_confidence_notes
     )
     inference_source = _inference_source_for_assist(assist)
+    clarity_status = _clarity_status_for(content)
     return CaptureIntelligenceDraft(
         id=draft_id,
         raw_item_id=raw_item.id,
         opportunity_id=raw_item.opportunity_id,
         raw_source_content=content,
+        polished_capture=_polish_capture(
+            inferred_claims=inferred_claims,
+            likely_risks=likely_risks,
+            packet_implications=packet_implications,
+            action_candidates=action_candidates,
+            follow_up_questions=follow_up_questions,
+        ),
+        clarity_status=clarity_status,
+        clarification_prompt=(
+            _clarification_prompt()
+            if clarity_status is CaptureDraftClarityStatus.NEEDS_USER_CLARIFICATION
+            else None
+        ),
         inferred_claims=inferred_claims,
         reference_influences=reference_influences,
         assumptions=_infer_assumptions(reference_influences),
@@ -385,6 +453,54 @@ def _merge_assist_suggestions(
         if item not in merged:
             merged.append(item)
     return tuple(merged)
+
+
+def _polish_capture(
+    *,
+    inferred_claims: tuple[str, ...],
+    likely_risks: tuple[str, ...],
+    packet_implications: tuple[str, ...],
+    action_candidates: tuple[str, ...],
+    follow_up_questions: tuple[str, ...],
+) -> str:
+    sections = (
+        ("Interpreted signal", inferred_claims[:2]),
+        ("Likely capture risk", likely_risks[:2]),
+        ("Packet implication", packet_implications[:1]),
+        ("Recommended action", action_candidates[:1]),
+        ("Clarification needed", follow_up_questions[:1]),
+    )
+    return " ".join(
+        f"{label}: {'; '.join(items)}"
+        for label, items in sections
+        if items
+    )
+
+
+def _clarity_status_for(content: str) -> CaptureDraftClarityStatus:
+    tokens = _meaningful_tokens(content)
+    if len(tokens) < 4:
+        return CaptureDraftClarityStatus.NEEDS_USER_CLARIFICATION
+    if not tokens.intersection(_CAPTURE_SIGNAL_TERMS):
+        return CaptureDraftClarityStatus.NEEDS_USER_CLARIFICATION
+    return CaptureDraftClarityStatus.READY_FOR_REVIEW
+
+
+def _clarification_prompt() -> str:
+    return (
+        "Need one or two concrete details before Ariadne can turn this into trusted "
+        "capture intel: source/customer, topic, requested action, deadline, or why "
+        "it matters."
+    )
+
+
+def _meaningful_tokens(content: str) -> set[str]:
+    tokens: set[str] = set()
+    for raw_token in content.lower().replace("/", " ").replace("-", " ").split():
+        token = raw_token.strip(".,:;!?()[]{}")
+        if len(token) > 2 and token not in _LOW_SIGNAL_TERMS:
+            tokens.add(token)
+    return tokens
 
 
 def _inference_source_for_assist(

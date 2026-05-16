@@ -5,6 +5,7 @@ from ariadne.local_admin_model import (
     LocalAdminModelAssistStatus,
 )
 from ariadne.quick_capture import (
+    CaptureDraftClarityStatus,
     CaptureIntelligenceDraftStatus,
     CaptureDraftInferenceSource,
     CaptureReviewStatus,
@@ -106,7 +107,12 @@ def test_evidence_review_proposal_contains_source_evidence_draft() -> None:
     )
 
     assert evidence_proposal.evidence.kind is EvidenceKind.SOURCE
-    assert evidence_proposal.evidence.content == raw_item.content
+    assert review.intelligence_draft is not None
+    assert evidence_proposal.proposed_content == review.intelligence_draft.polished_capture
+    assert evidence_proposal.evidence.content == (
+        review.intelligence_draft.polished_capture
+    )
+    assert evidence_proposal.evidence.content != raw_item.content
     assert evidence_proposal.evidence.source_ref == "raw_capture:raw_customer_response_note"
     assert evidence_proposal.evidence.opportunity_id == "opp-aflcmc-recompete"
 
@@ -190,6 +196,8 @@ and ghost strategy should shape capture follow-up.
     assert draft.opportunity_id == "opp-aflcmc-recompete"
     assert draft.status is CaptureIntelligenceDraftStatus.PENDING_REVIEW
     assert draft.raw_source_content == raw_item.content
+    assert draft.polished_capture.startswith("Interpreted signal:")
+    assert "call blur" not in draft.polished_capture
     assert draft.reference_influences[0].title == "Incumbent Analysis Strategy"
     assert "transition" in draft.inferred_claims[0].lower()
     assert "transition" in draft.likely_risks[0].lower()
@@ -204,6 +212,47 @@ and ghost strategy should shape capture follow-up.
     assert draft.inference_source is CaptureDraftInferenceSource.HEURISTIC
     assert draft.local_admin_model_assist_used is False
     assert draft.local_admin_model_assist_status == "disabled"
+
+
+def test_evidence_proposal_uses_polished_capture_not_raw_note() -> None:
+    raw_item = capture_raw_item(
+        "call blur: customer says transition weak maybe packet gap need PM follow up",
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_unpolished_customer_note",
+    )
+
+    review = process_raw_capture_item(raw_item)
+    draft = review.intelligence_draft
+    evidence_proposal = next(
+        proposal
+        for proposal in review.proposals
+        if proposal.destination is ProposedDestination.EVIDENCE_ITEM_REVIEW
+    )
+
+    assert draft is not None
+    assert evidence_proposal.proposed_content == draft.polished_capture
+    assert evidence_proposal.evidence is not None
+    assert evidence_proposal.evidence.content == draft.polished_capture
+    assert evidence_proposal.evidence.content != raw_item.content
+
+
+def test_low_signal_chicken_scratch_routes_to_clarification_without_evidence() -> None:
+    raw_item = capture_raw_item(
+        "idk thing maybe later",
+        raw_item_id="raw_low_signal_note",
+    )
+
+    review = process_raw_capture_item(raw_item)
+    draft = review.intelligence_draft
+
+    assert draft is not None
+    assert draft.clarity_status is CaptureDraftClarityStatus.NEEDS_USER_CLARIFICATION
+    assert draft.clarification_prompt is not None
+    assert {proposal.destination for proposal in review.proposals} == {
+        ProposedDestination.CLARIFICATION_REQUEST
+    }
+    assert review.proposals[0].proposed_content == draft.clarification_prompt
+    assert review.proposals[0].evidence is None
 
 
 def test_local_admin_model_assist_can_enrich_capture_intelligence_draft() -> None:
@@ -318,6 +367,8 @@ def test_accepting_evidence_review_proposal_writes_source_evidence_with_provenan
     assert decision.draft_id == review.intelligence_draft.id
     assert decision.evidence is not None
     assert decision.evidence.kind is EvidenceKind.SOURCE
+    assert decision.evidence.content == review.intelligence_draft.polished_capture
+    assert decision.evidence.content != raw_item.content
     assert decision.evidence.raw_item_id == "raw_customer_response_note"
     assert decision.evidence.draft_id == review.intelligence_draft.id
     assert decision.evidence.rationale[0] == (

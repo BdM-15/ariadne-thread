@@ -28,11 +28,12 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate. Pasted text and supported text or Markdown uploads should preserve source metadata.
 - Knowledge Processing Workflow: the workflow that turns raw capture items and uploaded documents into structured evidence, opportunity knowledge, action items, and reusable insight candidates.
-- Capture Intelligence Draft: an AI-prepared, reviewable synthesis inferred from raw capture material or source material before it becomes trusted evidence, opportunity knowledge, packet answers, action items, or reusable insight candidates.
+- Capture Intelligence Draft: an AI-prepared, reviewable synthesis inferred from raw capture material or source material before it becomes trusted evidence, opportunity knowledge, packet answers, action items, or reusable insight candidates. Its polished capture output is the preferred trusted-save content; raw source text remains trace/admin context.
 - Capture Intelligence Draft Part: one reviewable piece inside a Capture Intelligence Draft, such as a claim, risk, discriminator candidate, packet implication, action candidate, or follow-up question.
 - Capture Review Decision: the human or explicitly routed decision to accept, discard, refine, or route one part of a Capture Intelligence Draft before it becomes trusted evidence, questions, actions, or knowledge.
 - Draft Part Promotion: the review-gated act of turning a Capture Intelligence Draft Part into an Action Plan Item, Packet Field Answer, packet gap update, or other trusted workflow output.
 - Follow-Up Question Route: an explicit routing decision that turns draft questions into a next research, customer engagement, call plan, or skill-run prompt without writing trusted evidence.
+- Clarification Request: a review route back to the user when a raw note is too low-signal for Ariadne to infer useful capture intelligence without more context.
 - Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
 - Risk Register: a review-gated workflow and artifact that tracks pursuit risks and upside opportunities, their probability, impact, response plan, owner, cost or schedule exposure, and links to evidence, packet fields, and action plan items.
 - Risk Register Item: one risk or opportunity row in the Risk Register, framed as a threat or opportunity, measurable impact, response, score, and current review status.
@@ -145,6 +146,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Pasted text and supported text or Markdown uploads can become **Raw Capture Items** with source metadata before entering the **Knowledge Processing Workflow**.
 - A **Knowledge Processing Workflow** can create **Capture Intelligence Drafts** from **Raw Capture Items** or uploaded source material.
 - A **Capture Intelligence Draft** contains **Capture Intelligence Draft Parts** so each piece of intelligence can be accepted, discarded, routed, skill-chained, or recommended independently.
+- A **Capture Intelligence Draft** saves polished capture content as trusted evidence when accepted; the truly raw note remains trace/admin context rather than the primary trusted record.
+- A low-signal **Raw Capture Item** can become a **Clarification Request** instead of an **Evidence Item** when Ariadne cannot infer useful capture meaning.
 - A **Capture Review Decision** is required before **Capture Intelligence Draft** parts become trusted **Source Evidence**, **Opportunity Knowledge**, **Action Plan Items**, or **Packet Field Answers**.
 - **Draft Part Promotion** preserves raw item ID, draft ID, draft part ID, review rationale, evidence links, confidence or gap notes, and edit history on promoted outputs.
 - **Risk Register Items** can be drafted from **Capture Intelligence Draft Parts**, **Call Plan** notes, **Packet Field Answers**, or **Evidence Items**, but they require review before becoming trusted pursuit risk records.

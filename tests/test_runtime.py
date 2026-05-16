@@ -130,6 +130,9 @@ def test_quick_capture_source_material_api_creates_pasted_text_raw_item() -> Non
     assert body["review"]["intelligence_draft"]["raw_source_content"] == (
         "Customer pasted note says transition proof needs PM follow up."
     )
+    assert body["review"]["intelligence_draft"]["polished_capture"].startswith(
+        "Interpreted signal:"
+    )
 
 
 def test_quick_capture_upload_api_processes_markdown_as_raw_capture_material() -> None:
@@ -222,6 +225,12 @@ def test_quick_capture_review_decision_api_writes_evidence_after_acceptance(
         "raw_api_customer_response_note"
     )
     assert body["decision"]["evidence"]["draft_id"] == body["decision"]["draft_id"]
+    assert body["decision"]["evidence"]["content"] != (
+        "Customer says incumbent response times are weak."
+    )
+    assert body["decision"]["evidence"]["content"].startswith(
+        "Interpreted signal:"
+    )
     assert body["evidence_store_count"] == 1
     assert len(LocalEvidenceStore(evidence_root).list()) == 1
 
@@ -410,9 +419,12 @@ def test_root_serves_command_center_shell() -> None:
     assert "Reference Wiki influences" in response.text
     assert "Incumbent Analysis Strategy" in response.text
     assert "Capture Intelligence Draft" in response.text
+    assert "Polished Capture" in response.text
+    assert "Trace/Admin Raw Note" in response.text
     assert "Local Admin Model Assist" in response.text
     assert "Accepted Draft Promotions" in response.text
     assert "Accepted Evidence" in response.text
+    assert "Saved content: polished capture, not raw note" in response.text
     assert "Accepted Action" in response.text
     assert "Accepted Packet Update" in response.text
     assert "Discarded Output" in response.text

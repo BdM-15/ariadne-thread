@@ -30,6 +30,10 @@ and ghost strategy should shape capture follow-up.
     assert demo.accepted_evidence.status == "accepted"
     assert demo.accepted_evidence.trusted_evidence_written is True
     assert demo.accepted_evidence.evidence is not None
+    assert demo.accepted_evidence.evidence.content == (
+        demo.capture_review.intelligence_draft.polished_capture
+    )
+    assert "call blur" not in demo.accepted_evidence.evidence.content
     assert demo.accepted_evidence.evidence.raw_item_id == demo.quick_capture.id
     assert demo.accepted_evidence.evidence.draft_id == (
         demo.capture_review.intelligence_draft.id

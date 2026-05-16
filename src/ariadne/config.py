@@ -13,6 +13,9 @@ class RuntimeSettings(BaseModel):
     ariadne_env: str = "development"
     ariadne_workspace: str = "default"
     ariadne_evidence_dir: Path = Field(default=Path(".ariadne/evidence"))
+    ariadne_reference_wiki_dir: Path = Field(
+        default=Path("docs/reference/project-ariadne/knowledge")
+    )
 
     @property
     def local_url(self) -> str:
@@ -40,6 +43,12 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_EVIDENCE_DIR",
                     str(cls.model_fields["ariadne_evidence_dir"].default),
+                )
+            ),
+            ariadne_reference_wiki_dir=Path(
+                values.get(
+                    "ARIADNE_REFERENCE_WIKI_DIR",
+                    str(cls.model_fields["ariadne_reference_wiki_dir"].default),
                 )
             ),
         )

@@ -27,6 +27,7 @@ from ariadne.packets import (
     PacketReadiness,
 )
 from ariadne.quick_capture import capture_raw_item, process_raw_capture_item
+from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 
 
 def render_command_center_shell(
@@ -68,11 +69,18 @@ def render_command_center_shell(
     )
     action_view = build_action_plan_view(action_plan)
     quick_capture = capture_raw_item(
-        "Customer said transition plan is weak. Need follow up with PM next week.",
+      "Customer said incumbent transition plan is weak. Need follow up with PM next week.",
         opportunity_id="opp-aflcmc-recompete",
         raw_item_id="raw_customer_transition_note",
     )
-    capture_review = process_raw_capture_item(quick_capture)
+    reference_wiki = load_reference_wiki(
+      _reference_wiki_root(settings.ariadne_reference_wiki_dir, root)
+    )
+    capture_review = process_raw_capture_item(
+      quick_capture,
+      reference_wiki=reference_wiki,
+    )
+    reference_influences = capture_review.reference_influences
     coverage_view = build_coverage_view(packet)
     catalog = discover_local_capability_catalog(root)
 
@@ -315,11 +323,11 @@ def render_command_center_shell(
       <section class="hero" aria-labelledby="mission-heading">
         <h2 id="mission-heading">AFLCMC recompete support</h2>
         <p>Lifecycle: {escape(opportunity.lifecycle_state.value.replace("_", " "))}. Entry: incumbent recompete. Packet: {escape(packet.readiness.value.replace("_", " "))}.</p>
-        {_render_metrics(action_view, coverage_view, capture_review, catalog)}
+        {_render_metrics(action_view, coverage_view, capture_review, catalog, reference_influences)}
       </section>
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
-        {_render_quick_capture_panel(quick_capture, capture_review)}
+        {_render_quick_capture_panel(quick_capture, capture_review, reference_influences)}
         {_render_packet_panel(packet, coverage_view)}
         {_render_action_plan_panel(action_view)}
         {_render_capability_panel(catalog)}
@@ -331,7 +339,11 @@ def render_command_center_shell(
 
 
 def _render_metrics(
-    action_view, coverage_view, capture_review, catalog: CapabilityCatalog
+  action_view,
+  coverage_view,
+  capture_review,
+  catalog: CapabilityCatalog,
+  reference_influences: tuple[ReferenceWikiInfluence, ...],
 ) -> str:
     open_coverage = sum(
         section.evidence_status is not EvidenceStatus.ANSWERED
@@ -343,9 +355,9 @@ def _render_metrics(
       <div class="metric"><span>Action items</span><strong>{len(action_view.items)}</strong></div>
       <div class="metric"><span>Local capabilities</span><strong class="green">{len(catalog.entries)}</strong></div>
       <div class="metric"><span>Quick Capture</span><strong>{len(capture_review.proposals)} proposals</strong></div>
+      <div class="metric"><span>Reference influences</span><strong class="cyan">{len(reference_influences)}</strong></div>
       <div class="metric"><span>Knowledge flow</span><strong>review first</strong></div>
       <div class="metric"><span>Autonomy</span><strong>human gated</strong></div>
-      <div class="metric"><span>Studio mode</span><strong>read-only</strong></div>
     </section>"""
 
 
@@ -363,14 +375,30 @@ def _render_opportunity_panel(opportunity) -> str:
     </section>"""
 
 
-def _render_quick_capture_panel(raw_item, capture_review) -> str:
+def _render_quick_capture_panel(
+    raw_item,
+    capture_review,
+    reference_influences: tuple[ReferenceWikiInfluence, ...],
+) -> str:
+    influence_rows = "".join(
+        f"""<div class="row"><strong>{escape(influence.title)}</strong><span>{escape(influence.influence_type.value.replace("_", " ").title())} - {escape(influence.why_it_matters)}</span></div>"""
+        for influence in reference_influences[:3]
+    )
     return f"""<section class="panel" id="quick-capture" aria-labelledby="quick-capture-heading">
       <div class="panel-heading"><h2 id="quick-capture-heading">Quick Capture</h2><span class="status-chip amber">Needs Review</span></div>
       <div class="row-list">
         <div class="row"><strong>{escape(raw_item.id)}</strong><span>{escape(raw_item.content)}</span></div>
         <div class="row"><strong>{len(capture_review.proposals)} review proposals</strong><span>Evidence Item Review plus Action Plan Item Review queued.</span></div>
+        <div class="row"><strong>{len(reference_influences)} Reference Wiki influences</strong><span>Background context surfaced for review; no opportunity evidence is written automatically.</span></div>
+        {influence_rows}
       </div>
     </section>"""
+
+
+def _reference_wiki_root(path: Path, workspace_root: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return workspace_root / path
 
 
 def _render_packet_panel(packet, coverage_view) -> str:

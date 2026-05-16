@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.command_center import render_command_center_shell
@@ -18,6 +19,16 @@ from ariadne.packets import (
     BriefingView,
     CoverageView,
 )
+from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
+
+
+class ReferenceInfluenceRequest(BaseModel):
+    content: str
+    limit: int = Field(default=7, ge=1, le=7)
+
+
+class ReferenceInfluenceResponse(BaseModel):
+    influences: tuple[ReferenceWikiInfluence, ...]
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -60,4 +71,21 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     def capability_catalog() -> CapabilityCatalog:
         return discover_local_capability_catalog(Path.cwd())
 
+    @app.post("/api/quick-capture/reference-influences")
+    def quick_capture_reference_influences(
+        request: ReferenceInfluenceRequest,
+    ) -> ReferenceInfluenceResponse:
+        wiki = load_reference_wiki(
+            _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+        )
+        return ReferenceInfluenceResponse(
+            influences=wiki.find_influences(request.content, limit=request.limit)
+        )
+
     return app
+
+
+def _resolve_runtime_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return Path.cwd() / path

@@ -7,6 +7,7 @@ from ariadne.quick_capture import (
     capture_raw_item,
     process_raw_capture_item,
 )
+from ariadne.reference_wiki import load_reference_wiki
 
 
 def test_raw_capture_item_can_be_created_from_text_with_optional_opportunity() -> None:
@@ -60,3 +61,55 @@ def test_evidence_review_proposal_contains_source_evidence_draft() -> None:
     assert evidence_proposal.evidence.content == raw_item.content
     assert evidence_proposal.evidence.source_ref == "raw_capture:raw_customer_response_note"
     assert evidence_proposal.evidence.opportunity_id == "opp-aflcmc-recompete"
+
+
+def test_processing_can_attach_reference_wiki_influences_without_trusted_write(
+    tmp_path,
+) -> None:
+    _write_reference_note(
+        tmp_path / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
+        """---
+title: Incumbent Analysis Strategy
+---
+
+Incumbent transition risk, weak response times, and customer complaints should
+shape capture follow-up.
+""",
+    )
+    _write_reference_note(
+        tmp_path / "global_wiki" / "capture" / "customer-hot-buttons.md",
+        """---
+title: Customer Hot Button Identification
+---
+
+Customer complaints and operational pain indicate hot buttons.
+""",
+    )
+    _write_reference_note(
+        tmp_path / "global_wiki" / "shipley" / "capture-planning-phase.md",
+        """---
+title: Capture Planning Phase
+---
+
+Follow-up work after customer calls belongs in capture planning.
+""",
+    )
+    raw_item = capture_raw_item(
+        "Customer says incumbent response times are weak and transition risk "
+        "needs follow up.",
+        raw_item_id="raw_customer_transition_note",
+    )
+
+    review = process_raw_capture_item(
+        raw_item,
+        reference_wiki=load_reference_wiki(tmp_path),
+    )
+
+    assert len(review.reference_influences) == 3
+    assert review.reference_influences[0].title == "Incumbent Analysis Strategy"
+    assert review.trusted_opportunity_knowledge_updated is False
+
+
+def _write_reference_note(path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")

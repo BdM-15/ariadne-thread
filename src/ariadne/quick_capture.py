@@ -7,6 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from ariadne.evidence import EvidenceItem, create_source_evidence
+from ariadne.reference_wiki import ReferenceWiki, ReferenceWikiInfluence
 
 
 class RawCaptureStatus(StrEnum):
@@ -47,6 +48,7 @@ class CaptureReview(BaseModel):
     opportunity_id: str | None = None
     status: CaptureReviewStatus = CaptureReviewStatus.NEEDS_REVIEW
     proposals: tuple[CaptureReviewProposal, ...]
+    reference_influences: tuple[ReferenceWikiInfluence, ...] = ()
     trusted_opportunity_knowledge_updated: bool = False
 
 
@@ -63,14 +65,23 @@ def capture_raw_item(
     )
 
 
-def process_raw_capture_item(raw_item: RawCaptureItem) -> CaptureReview:
+def process_raw_capture_item(
+    raw_item: RawCaptureItem,
+    *,
+    reference_wiki: ReferenceWiki | None = None,
+) -> CaptureReview:
     destinations = [ProposedDestination.EVIDENCE_ITEM_REVIEW]
     if _looks_actionable(raw_item.content):
         destinations.append(ProposedDestination.ACTION_PLAN_ITEM_REVIEW)
 
+    reference_influences = (
+        reference_wiki.find_influences(raw_item.content) if reference_wiki else ()
+    )
+
     return CaptureReview(
         raw_item_id=raw_item.id,
         opportunity_id=raw_item.opportunity_id,
+        reference_influences=reference_influences,
         proposals=tuple(
             CaptureReviewProposal(
                 id=f"proposal_{uuid4().hex}",

@@ -2,6 +2,70 @@ from ariadne.config import RuntimeSettings
 from ariadne.server import create_app
 
 
+def test_quick_capture_reference_influences_api_exposes_wiki_matches(tmp_path) -> None:
+    wiki_root = tmp_path / "knowledge"
+    _write_reference_note(
+        wiki_root / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
+        """---
+title: Incumbent Analysis Strategy
+entity_type: concept
+---
+
+# Incumbent Analysis Strategy
+
+Incumbent transition risk and response-time weaknesses should influence capture
+strategy and follow-up actions.
+""",
+    )
+    _write_reference_note(
+        wiki_root / "global_wiki" / "capture" / "customer-hot-buttons.md",
+        """---
+title: Customer Hot Button Identification
+entity_type: concept
+---
+
+# Customer Hot Buttons
+
+Customer complaints and decision-maker priorities shape capture strategy.
+""",
+    )
+    _write_reference_note(
+        wiki_root / "global_wiki" / "shipley" / "capture-planning-phase.md",
+        """---
+title: Capture Planning Phase
+entity_type: concept
+---
+
+# Capture Planning Phase
+
+Follow-up actions after customer calls should become capture-plan inputs.
+""",
+    )
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_REFERENCE_WIKI_DIR": str(wiki_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/reference-influences",
+        json={
+            "content": "Customer says incumbent response times are weak and "
+            "transition risk needs follow up.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["influences"]) == 3
+    assert body["influences"][0]["title"] == "Incumbent Analysis Strategy"
+    assert body["influences"][0]["source_path"] == (
+        "global_wiki/capture/incumbent-analysis-strategy.md"
+    )
+    assert body["influences"][0]["influence_type"] == "capture_methodology"
+
+
 def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -65,6 +129,8 @@ def test_root_serves_command_center_shell() -> None:
     assert "Living Briefing Packet" in response.text
     assert "Capture Action Plan" in response.text
     assert "Capability Studio" in response.text
+    assert "Reference Wiki influences" in response.text
+    assert "Incumbent Analysis Strategy" in response.text
     assert "Advanced / read-only" in response.text
     assert "/api/capabilities/catalog" in response.text
     assert "AFLCMC recompete support" in response.text
@@ -182,3 +248,8 @@ def test_app_py_builds_runtime_app_from_env_file(tmp_path) -> None:
     assert response.status_code == 200
     assert response.json()["app_name"] == "Ariadne App"
     assert response.json()["port"] == 9622
+
+
+def _write_reference_note(path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")

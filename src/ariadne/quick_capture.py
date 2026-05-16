@@ -100,6 +100,12 @@ class CaptureIntelligenceDraftPart(BaseModel):
     recommended_route: str
     suggested_skill_chain: tuple[str, ...] = ()
     review_required: bool = True
+    source_intake_record_id: str | None = None
+    source_extraction_bundle_id: str | None = None
+    source_span_ids: tuple[str, ...] = ()
+    recommendation: str | None = None
+    assumptions: tuple[str, ...] = ()
+    confidence_notes: tuple[str, ...] = ()
 
 
 class CaptureIntelligenceDraft(BaseModel):
@@ -111,7 +117,9 @@ class CaptureIntelligenceDraft(BaseModel):
     )
     raw_source_content: str
     polished_capture: str
-    clarity_status: CaptureDraftClarityStatus = CaptureDraftClarityStatus.READY_FOR_REVIEW
+    clarity_status: CaptureDraftClarityStatus = (
+        CaptureDraftClarityStatus.READY_FOR_REVIEW
+    )
     clarification_prompt: str | None = None
     inferred_claims: tuple[str, ...]
     reference_influences: tuple[ReferenceWikiInfluence, ...] = ()
@@ -124,11 +132,18 @@ class CaptureIntelligenceDraft(BaseModel):
     gaps: tuple[str, ...]
     follow_up_questions: tuple[str, ...]
     intelligence_pieces: tuple[CaptureIntelligenceDraftPart, ...] = ()
-    inference_source: CaptureDraftInferenceSource = CaptureDraftInferenceSource.HEURISTIC
+    inference_source: CaptureDraftInferenceSource = (
+        CaptureDraftInferenceSource.HEURISTIC
+    )
     local_admin_model_assist_used: bool = False
     local_admin_model_assist_status: str = LocalAdminModelAssistStatus.DISABLED.value
     local_admin_model: str | None = None
     local_admin_model_assist_reason: str | None = None
+    extraction_bundle_id: str | None = None
+    extraction_document_id: str | None = None
+    extracted_source_span_ids: tuple[str, ...] = ()
+    extraction_entity_type_refs: tuple[str, ...] = ()
+    extraction_warnings_summarized: str | None = None
     trusted_opportunity_knowledge_updated: bool = False
 
 
@@ -356,7 +371,8 @@ def create_capture_intelligence_draft(
         suggestion.gaps if suggestion else (), heuristic_gaps
     )
     follow_up_questions = _merge_assist_suggestions(
-        suggestion.follow_up_questions if suggestion else (), heuristic_follow_up_questions
+        suggestion.follow_up_questions if suggestion else (),
+        heuristic_follow_up_questions,
     )
     confidence_notes = _merge_assist_suggestions(
         suggestion.confidence_notes if suggestion else (), heuristic_confidence_notes
@@ -431,7 +447,10 @@ def _build_intelligence_pieces(
         (CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION, follow_up_questions),
     ):
         for index, item in enumerate(items, start=1):
-            route, skill_chain = _suggest_piece_route(part_type, item)
+            route, skill_chain = suggest_capture_intelligence_piece_route(
+                part_type,
+                item,
+            )
             pieces.append(
                 CaptureIntelligenceDraftPart(
                     id=f"{draft_id}_{part_type.value}_{index}",
@@ -471,9 +490,7 @@ def _polish_capture(
         ("Clarification needed", follow_up_questions[:1]),
     )
     return " ".join(
-        f"{label}: {'; '.join(items)}"
-        for label, items in sections
-        if items
+        f"{label}: {'; '.join(items)}" for label, items in sections if items
     )
 
 
@@ -513,7 +530,7 @@ def _inference_source_for_assist(
     return CaptureDraftInferenceSource.HEURISTIC_FALLBACK
 
 
-def _suggest_piece_route(
+def suggest_capture_intelligence_piece_route(
     part_type: CaptureIntelligenceDraftPartType,
     content: str,
 ) -> tuple[str, tuple[str, ...]]:
@@ -644,13 +661,16 @@ def _accepted_evidence_rationale(
         rationale.append(reviewer_rationale)
     if review.intelligence_draft is not None:
         rationale.extend(
-            f"Draft claim: {claim}" for claim in review.intelligence_draft.inferred_claims
+            f"Draft claim: {claim}"
+            for claim in review.intelligence_draft.inferred_claims
         )
         rationale.extend(
             f"Draft confidence: {note}"
             for note in review.intelligence_draft.confidence_notes
         )
-    return tuple(rationale or ("Reviewer accepted raw capture item as source evidence.",))
+    return tuple(
+        rationale or ("Reviewer accepted raw capture item as source evidence.",)
+    )
 
 
 def _looks_actionable(content: str) -> bool:
@@ -666,10 +686,14 @@ def _infer_claims(lowered_content: str) -> tuple[str, ...]:
     if "transition" in lowered_content:
         claims.append("Raw note signals transition concerns that need capture review.")
     if "incumbent" in lowered_content:
-        claims.append("Raw note points to incumbent performance or positioning concerns.")
+        claims.append(
+            "Raw note points to incumbent performance or positioning concerns."
+        )
     if "customer" in lowered_content:
         claims.append("Raw note contains customer feedback that may shape strategy.")
-    return tuple(claims or ("Raw note contains capture-relevant intelligence for review.",))
+    return tuple(
+        claims or ("Raw note contains capture-relevant intelligence for review.",)
+    )
 
 
 def _infer_assumptions(
@@ -693,17 +717,23 @@ def _infer_confidence_notes(
         return (
             "Medium confidence: raw note language aligns with Reference Wiki context.",
         )
-    return ("Low confidence: draft needs reference or evidence support before promotion.",)
+    return (
+        "Low confidence: draft needs reference or evidence support before promotion.",
+    )
 
 
 def _infer_likely_risks(lowered_content: str) -> tuple[str, ...]:
     risks: list[str] = []
     if "transition" in lowered_content:
-        risks.append("Transition risk may be a customer concern or evaluation weakness.")
+        risks.append(
+            "Transition risk may be a customer concern or evaluation weakness."
+        )
     if "weak" in lowered_content or "complaint" in lowered_content:
         risks.append("Weak performance signal may need mitigation before gate review.")
     if "incumbent" in lowered_content:
-        risks.append("Incumbent positioning may create competitive or ghosting implications.")
+        risks.append(
+            "Incumbent positioning may create competitive or ghosting implications."
+        )
     return tuple(risks or ("Unvalidated capture risk may need follow-up evidence.",))
 
 
@@ -722,7 +752,9 @@ def _infer_packet_implications(lowered_content: str) -> tuple[str, ...]:
             "Packet may need a risk, mitigation, or evidence gap entry for this signal."
         )
     if "customer" in lowered_content:
-        implications.append("Customer Context section may need updated pain-point evidence.")
+        implications.append(
+            "Customer Context section may need updated pain-point evidence."
+        )
     return tuple(implications or ("Packet impact needs reviewer classification.",))
 
 
@@ -747,7 +779,11 @@ def _infer_gaps(lowered_content: str) -> tuple[str, ...]:
 def _infer_follow_up_questions(lowered_content: str) -> tuple[str, ...]:
     questions = ["Who is the source and how reliable is this signal?"]
     if "transition" in lowered_content:
-        questions.append("What transition evidence or mitigation would satisfy the customer?")
+        questions.append(
+            "What transition evidence or mitigation would satisfy the customer?"
+        )
     if "incumbent" in lowered_content:
-        questions.append("Which incumbent weakness can be substantiated without overclaiming?")
+        questions.append(
+            "Which incumbent weakness can be substantiated without overclaiming?"
+        )
     return tuple(questions)

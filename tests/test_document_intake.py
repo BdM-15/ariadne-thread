@@ -12,9 +12,11 @@ from ariadne.document_intake import (
     ExtractionStatus,
     ExtractionWarningSeverity,
     classify_uploaded_source_material,
+    create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
 )
+from ariadne.quick_capture import CaptureIntelligenceDraftPartType
 
 
 def test_document_intake_store_writes_and_reads_generic_source_material(
@@ -182,6 +184,89 @@ def test_entity_candidate_requires_source_span_trace() -> None:
             source_span_ids=(),
             confidence=0.7,
         )
+
+
+def test_extraction_bundle_creates_review_ready_draft_parts_with_provenance() -> None:
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=(
+            b"Customer needs transition proof and PM follow up.\n"
+            b"Response-time risk could affect the recompete."
+        ),
+    )
+    record = create_document_intake_record(
+        source_material,
+        opportunity_id="opp-aflcmc-recompete",
+        record_id="intake_customer_brief",
+    )
+    bundle = create_generic_extraction_bundle(
+        record,
+        source_material,
+        bundle_id="bundle_customer_brief",
+    )
+
+    draft = create_capture_intelligence_draft_from_extraction_bundle(bundle)
+
+    assert draft.id == "draft_bundle_customer_brief"
+    assert draft.raw_item_id == "intake_customer_brief"
+    assert draft.opportunity_id == "opp-aflcmc-recompete"
+    assert draft.extraction_bundle_id == "bundle_customer_brief"
+    assert draft.extraction_document_id == "intake_customer_brief"
+    assert draft.trusted_opportunity_knowledge_updated is False
+    assert draft.intelligence_pieces
+
+    by_type = {piece.part_type for piece in draft.intelligence_pieces}
+    assert CaptureIntelligenceDraftPartType.LIKELY_RISK in by_type
+    assert CaptureIntelligenceDraftPartType.ACTION_CANDIDATE in by_type
+    assert CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE in by_type
+
+    risk_piece = next(
+        piece
+        for piece in draft.intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.LIKELY_RISK
+    )
+    assert risk_piece.recommended_route == "risk_and_gap_review"
+    assert risk_piece.suggested_skill_chain == ("capture_strategy_review",)
+
+    first_piece = draft.intelligence_pieces[0]
+    assert first_piece.source_intake_record_id == record.id
+    assert first_piece.source_extraction_bundle_id == bundle.id
+    assert first_piece.source_span_ids
+    assert first_piece.recommendation
+    assert first_piece.assumptions
+    assert first_piece.confidence_notes
+    assert first_piece.review_required is True
+
+
+def test_extraction_warning_becomes_follow_up_question_draft_part() -> None:
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/plain",
+        content=b"Customer says transition risk needs follow up.",
+    )
+    record = create_document_intake_record(
+        source_material,
+        record_id="intake_warned_brief",
+    )
+    bundle = create_generic_extraction_bundle(
+        record,
+        source_material,
+        bundle_id="bundle_warned_brief",
+    )
+
+    draft = create_capture_intelligence_draft_from_extraction_bundle(bundle)
+
+    warning_piece = next(
+        piece
+        for piece in draft.intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION
+    )
+    assert "Review extraction warning" in warning_piece.content
+    assert "MIME type" in warning_piece.content
+    assert warning_piece.recommended_route == "evidence_or_knowledge_review"
+    assert draft.extraction_warnings_summarized is not None
+    assert "MIME type" in draft.extraction_warnings_summarized
 
 
 def test_create_document_intake_record_from_generic_upload() -> None:

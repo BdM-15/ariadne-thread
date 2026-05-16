@@ -32,6 +32,25 @@ class DocumentIntakeContentType(StrEnum):
     UNSUPPORTED = "unsupported"
 
 
+class ExtractionStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETE = "complete"
+    FAILED = "failed"
+
+
+class ExtractionBundleReviewStatus(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    IN_REVIEW = "in_review"
+    ACCEPTED = "accepted"
+    DISCARDED = "discarded"
+
+
+class ExtractionWarningSeverity(StrEnum):
+    INFO = "info"
+    WARN = "warn"
+    ERROR = "error"
+
+
 class DocumentIntakeCandidate(BaseModel):
     id: str
     filename: str | None = None
@@ -75,6 +94,10 @@ class DocumentIntakeRecord(BaseModel):
     opportunity_id: str | None = None
     warnings: tuple[str, ...] = ()
     capability_hint: str = "Document is recorded for intake."
+    extraction_bundle_id: str | None = None
+    extraction_status: ExtractionStatus | None = None
+    extraction_review_status: ExtractionBundleReviewStatus | None = None
+    extraction_warning_count: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -92,6 +115,136 @@ class DocumentIntakeRecord(BaseModel):
                 if self.status is DocumentIntakeStatus.PARSER_REQUIRED
                 else DocumentIntakeQueueState.READY
             )
+        return self
+
+    def with_extraction_bundle(
+        self,
+        bundle: ExtractionBundle,
+    ) -> DocumentIntakeRecord:
+        if bundle.document_id != self.id:
+            raise ValueError("extraction bundle must belong to intake record")
+        return self.model_copy(
+            update={
+                "extraction_bundle_id": bundle.id,
+                "extraction_status": bundle.extraction_status,
+                "extraction_review_status": bundle.review_status,
+                "extraction_warning_count": len(bundle.warnings),
+                "updated_at": datetime.now(UTC),
+            }
+        )
+
+
+class ParserProvenance(BaseModel):
+    adapter_name: str
+    adapter_version: str
+    extraction_method: str
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class SourceSpan(BaseModel):
+    id: str
+    document_id: str
+    span_type: str = "text"
+    text: str
+    start_offset: int
+    end_offset: int
+    confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_offsets(self) -> SourceSpan:
+        if self.end_offset < self.start_offset:
+            raise ValueError("source span end_offset must be after start_offset")
+        return self
+
+
+class EntityCandidate(BaseModel):
+    id: str
+    entity_type: str
+    text: str
+    source_span_ids: tuple[str, ...]
+    confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_source_trace(self) -> EntityCandidate:
+        if not self.source_span_ids:
+            raise ValueError("entity candidate requires source_span_ids")
+        return self
+
+
+class RelationshipCandidate(BaseModel):
+    id: str
+    relationship_type: str
+    source_entity_id: str
+    target_entity_id: str
+    source_span_ids: tuple[str, ...]
+    confidence: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_relationship_trace(self) -> RelationshipCandidate:
+        if self.source_entity_id == self.target_entity_id:
+            raise ValueError("relationship candidate must connect two entities")
+        if not self.source_span_ids:
+            raise ValueError("relationship candidate requires source_span_ids")
+        return self
+
+
+class ExtractionWarning(BaseModel):
+    id: str
+    warning_type: str
+    message: str
+    affected_span_ids: tuple[str, ...] = ()
+    severity: ExtractionWarningSeverity = ExtractionWarningSeverity.INFO
+
+
+class ExtractionBundle(BaseModel):
+    id: str
+    document_id: str
+    source_ref: str
+    filename: str | None = None
+    mime_type: str | None = None
+    byte_size: int
+    material_type: DocumentIntakeMaterialType
+    content_type: DocumentIntakeContentType
+    opportunity_id: str | None = None
+    parser_provenance: ParserProvenance
+    extraction_status: ExtractionStatus = ExtractionStatus.COMPLETE
+    review_status: ExtractionBundleReviewStatus = (
+        ExtractionBundleReviewStatus.PENDING_REVIEW
+    )
+    confidence: float = Field(ge=0, le=1)
+    source_spans: tuple[SourceSpan, ...] = ()
+    entity_candidates: tuple[EntityCandidate, ...] = ()
+    relationship_candidates: tuple[RelationshipCandidate, ...] = ()
+    warnings: tuple[ExtractionWarning, ...] = ()
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def validate_candidate_trace(self) -> ExtractionBundle:
+        span_ids = {span.id for span in self.source_spans}
+        entity_ids = {candidate.id for candidate in self.entity_candidates}
+        for candidate in self.entity_candidates:
+            missing_span_ids = set(candidate.source_span_ids) - span_ids
+            if missing_span_ids:
+                raise ValueError("entity candidate references unknown source span")
+        for relationship in self.relationship_candidates:
+            if relationship.source_entity_id not in entity_ids:
+                raise ValueError(
+                    "relationship candidate references unknown source entity"
+                )
+            if relationship.target_entity_id not in entity_ids:
+                raise ValueError(
+                    "relationship candidate references unknown target entity"
+                )
+            missing_span_ids = set(relationship.source_span_ids) - span_ids
+            if missing_span_ids:
+                raise ValueError(
+                    "relationship candidate references unknown source span"
+                )
+        for warning in self.warnings:
+            missing_span_ids = set(warning.affected_span_ids) - span_ids
+            if missing_span_ids:
+                raise ValueError("extraction warning references unknown source span")
         return self
 
 
@@ -132,10 +285,49 @@ class DocumentIntakeStore:
             records = [record for record in records if record.status is status]
         return records
 
+    def write_extraction_bundle(self, bundle: ExtractionBundle) -> ExtractionBundle:
+        self._bundle_root.mkdir(parents=True, exist_ok=True)
+        self._bundle_path(bundle.id).write_text(
+            bundle.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return bundle
+
+    def read_extraction_bundle(self, bundle_id: str) -> ExtractionBundle:
+        return ExtractionBundle.model_validate_json(
+            self._bundle_path(bundle_id).read_text(encoding="utf-8")
+        )
+
+    def list_extraction_bundles(
+        self,
+        *,
+        document_id: str | None = None,
+    ) -> list[ExtractionBundle]:
+        if not self._bundle_root.exists():
+            return []
+        bundles = [
+            self.read_extraction_bundle(path.name.removesuffix(".json"))
+            for path in sorted(self._bundle_root.glob("*.json"))
+        ]
+        if document_id is not None:
+            bundles = [
+                bundle for bundle in bundles if bundle.document_id == document_id
+            ]
+        return bundles
+
     def _path(self, record_id: str) -> Path:
         if not record_id or record_id != Path(record_id).name:
             raise ValueError("record_id must be a file-safe identifier")
         return self.root / f"{record_id}.json"
+
+    @property
+    def _bundle_root(self) -> Path:
+        return self.root / "extraction-bundles"
+
+    def _bundle_path(self, bundle_id: str) -> Path:
+        if not bundle_id or bundle_id != Path(bundle_id).name:
+            raise ValueError("bundle_id must be a file-safe identifier")
+        return self._bundle_root / f"{bundle_id}.json"
 
 
 def create_document_intake_record(
@@ -160,6 +352,61 @@ def create_document_intake_record(
     )
 
 
+def create_generic_extraction_bundle(
+    record: DocumentIntakeRecord,
+    source_material: UploadedSourceMaterial,
+    *,
+    bundle_id: str | None = None,
+) -> ExtractionBundle:
+    if record.material_type is not DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL:
+        raise ValueError("generic extraction requires generic source material")
+    if source_material.text is None:
+        raise ValueError("generic extraction requires readable source text")
+
+    resolved_bundle_id = bundle_id or f"bundle_{record.id}"
+    source_spans = _extract_text_source_spans(
+        source_material.text,
+        document_id=record.id,
+        bundle_id=resolved_bundle_id,
+    )
+    entity_candidates = _extract_entity_candidates(
+        source_spans,
+        bundle_id=resolved_bundle_id,
+    )
+    relationship_candidates = _extract_relationship_candidates(
+        source_spans,
+        entity_candidates,
+        bundle_id=resolved_bundle_id,
+    )
+    warnings = _extraction_warnings_for_generic_material(
+        source_material,
+        source_spans,
+        entity_candidates,
+        bundle_id=resolved_bundle_id,
+    )
+    return ExtractionBundle(
+        id=resolved_bundle_id,
+        document_id=record.id,
+        source_ref=record.source_ref,
+        filename=record.filename,
+        mime_type=record.mime_type,
+        byte_size=record.byte_size,
+        material_type=DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,
+        content_type=record.content_type,
+        opportunity_id=record.opportunity_id,
+        parser_provenance=ParserProvenance(
+            adapter_name="ariadne.generic_text_extractor",
+            adapter_version="0.1",
+            extraction_method="deterministic_text_span_heuristics",
+        ),
+        confidence=_bundle_confidence(source_spans, entity_candidates),
+        source_spans=source_spans,
+        entity_candidates=entity_candidates,
+        relationship_candidates=relationship_candidates,
+        warnings=warnings,
+    )
+
+
 _TEXT_EXTENSIONS = {".txt", ".text"}
 _MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdown"}
 _VISUAL_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
@@ -178,6 +425,166 @@ _SOLICITATION_TERMS = (
 )
 _TEXT_MIME_TYPES = {"text/plain"}
 _MARKDOWN_MIME_TYPES = {"text/markdown", "text/x-markdown"}
+_GENERIC_ENTITY_KEYWORDS = {
+    "customer": ("customer", "buyer", "agency", "aflcmc"),
+    "organization": ("incumbent", "partner", "prime", "team"),
+    "stakeholder": ("decision maker", "pm", "program manager", "stakeholder"),
+    "opportunity": ("opportunity", "pursuit", "recompete"),
+    "need": ("need", "needs", "requirement", "requires"),
+    "milestone": ("date", "deadline", "due", "milestone"),
+    "risk": ("concern", "risk", "weak", "weakness"),
+    "commitment": ("action", "commitment", "follow up", "follow-up"),
+    "document": ("brief", "document", "note", "source"),
+    "capability": ("capability", "proof", "solution", "transition"),
+    "discriminator": ("advantage", "discriminator", "proof point", "strength"),
+}
+
+
+def _extract_text_source_spans(
+    text: str,
+    *,
+    document_id: str,
+    bundle_id: str,
+) -> tuple[SourceSpan, ...]:
+    spans: list[SourceSpan] = []
+    current_offset = 0
+    for line in text.splitlines(keepends=True):
+        stripped_line = line.strip()
+        if stripped_line:
+            start_offset = current_offset + line.index(stripped_line)
+            end_offset = start_offset + len(stripped_line)
+            spans.append(
+                SourceSpan(
+                    id=f"span_{bundle_id}_{len(spans) + 1}",
+                    document_id=document_id,
+                    text=stripped_line,
+                    start_offset=start_offset,
+                    end_offset=end_offset,
+                    confidence=0.82,
+                )
+            )
+        current_offset += len(line)
+    return tuple(spans)
+
+
+def _extract_entity_candidates(
+    source_spans: tuple[SourceSpan, ...],
+    *,
+    bundle_id: str,
+) -> tuple[EntityCandidate, ...]:
+    candidates: list[EntityCandidate] = []
+    for span in source_spans:
+        lowered_text = span.text.lower()
+        for entity_type, keywords in _GENERIC_ENTITY_KEYWORDS.items():
+            if any(keyword in lowered_text for keyword in keywords):
+                candidates.append(
+                    EntityCandidate(
+                        id=f"entity_{bundle_id}_{len(candidates) + 1}",
+                        entity_type=entity_type,
+                        text=_candidate_text(span.text),
+                        source_span_ids=(span.id,),
+                        confidence=0.64,
+                    )
+                )
+    return tuple(candidates)
+
+
+def _extract_relationship_candidates(
+    source_spans: tuple[SourceSpan, ...],
+    entity_candidates: tuple[EntityCandidate, ...],
+    *,
+    bundle_id: str,
+) -> tuple[RelationshipCandidate, ...]:
+    relationships: list[RelationshipCandidate] = []
+    for span in source_spans:
+        span_candidates = [
+            candidate
+            for candidate in entity_candidates
+            if span.id in candidate.source_span_ids
+        ]
+        if len(span_candidates) < 2:
+            continue
+        anchor = span_candidates[0]
+        for target in span_candidates[1:]:
+            relationships.append(
+                RelationshipCandidate(
+                    id=f"relationship_{bundle_id}_{len(relationships) + 1}",
+                    relationship_type=_relationship_type(anchor, target),
+                    source_entity_id=anchor.id,
+                    target_entity_id=target.id,
+                    source_span_ids=(span.id,),
+                    confidence=0.56,
+                )
+            )
+    return tuple(relationships)
+
+
+def _relationship_type(
+    source: EntityCandidate,
+    target: EntityCandidate,
+) -> str:
+    if source.entity_type == "risk" or target.entity_type == "risk":
+        return "creates_risk"
+    if source.entity_type == "need" or target.entity_type == "need":
+        return "addresses_need"
+    return "mentions"
+
+
+def _extraction_warnings_for_generic_material(
+    source_material: UploadedSourceMaterial,
+    source_spans: tuple[SourceSpan, ...],
+    entity_candidates: tuple[EntityCandidate, ...],
+    *,
+    bundle_id: str,
+) -> tuple[ExtractionWarning, ...]:
+    warnings = [
+        ExtractionWarning(
+            id=f"warning_{bundle_id}_{index}",
+            warning_type="source_material_warning",
+            message=message,
+            severity=ExtractionWarningSeverity.WARN,
+        )
+        for index, message in enumerate(source_material.warnings, start=1)
+    ]
+    if not source_spans:
+        warnings.append(
+            ExtractionWarning(
+                id=f"warning_{bundle_id}_{len(warnings) + 1}",
+                warning_type="missing_source_spans",
+                message="No usable source spans were extracted from generic source material.",
+                severity=ExtractionWarningSeverity.ERROR,
+            )
+        )
+    elif not entity_candidates:
+        warnings.append(
+            ExtractionWarning(
+                id=f"warning_{bundle_id}_{len(warnings) + 1}",
+                warning_type="missing_context",
+                message="No initial capture knowledge entity candidates were detected.",
+                affected_span_ids=tuple(span.id for span in source_spans),
+                severity=ExtractionWarningSeverity.WARN,
+            )
+        )
+    return tuple(warnings)
+
+
+def _candidate_text(text: str) -> str:
+    return text if len(text) <= 160 else f"{text[:157]}..."
+
+
+def _bundle_confidence(
+    source_spans: tuple[SourceSpan, ...],
+    entity_candidates: tuple[EntityCandidate, ...],
+) -> float:
+    if entity_candidates:
+        return round(
+            sum(candidate.confidence for candidate in entity_candidates)
+            / len(entity_candidates),
+            2,
+        )
+    if source_spans:
+        return 0.42
+    return 0.0
 
 
 def classify_uploaded_source_material(

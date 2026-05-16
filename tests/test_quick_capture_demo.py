@@ -45,7 +45,10 @@ and ghost strategy should shape capture follow-up.
     accepted_evidence_id = demo.accepted_evidence.evidence.id
     assert demo.accepted_action.review_status == "accepted"
     assert demo.accepted_action.source_raw_item_id == demo.quick_capture.id
-    assert demo.accepted_action.source_draft_id == demo.capture_review.intelligence_draft.id
+    assert (
+        demo.accepted_action.source_draft_id
+        == demo.capture_review.intelligence_draft.id
+    )
     assert demo.accepted_action.related_evidence_ids == (accepted_evidence_id,)
 
     assert demo.accepted_packet_answer.review_status == "accepted"
@@ -57,15 +60,20 @@ and ghost strategy should shape capture follow-up.
 
     assert demo.discarded_output.status == "discarded"
     assert demo.discarded_output.source_raw_item_id == demo.quick_capture.id
-    assert demo.discarded_output.source_draft_id == demo.capture_review.intelligence_draft.id
+    assert (
+        demo.discarded_output.source_draft_id
+        == demo.capture_review.intelligence_draft.id
+    )
     assert "proof points" in (demo.discarded_output.discard_reason or "")
 
     candidate = demo.unsupported_upload.intake_candidate
     assert candidate is not None
     assert candidate.status == "parser_required"
+    assert candidate.material_type == "solicitation_document"
     assert candidate.reason == (
-        "Unsupported file type requires a document parser before Quick Capture."
+        "Solicitation Document requires a future solicitation parser before Quick Capture."
     )
+    assert "Solicitation Parser Capability" in candidate.capability_hint
     assert "Document Intake capability" in candidate.parser_hint
 
 

@@ -1,16 +1,16 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.5**
+**Product Requirements Document (PRD) v1.6**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
-**Date:** May 15, 2026  
-**Status:** First-slice domain/storage epic complete; ready for next planning grill
+**Date:** May 16, 2026  
+**Status:** Quick Capture Knowledge Processing epic complete; ready for next `grill-with-docs` planning session
 
 ---
 
-## 0. Current State Snapshot (May 15, 2026)
+## 0. Current State Snapshot (May 16, 2026)
 
 **Completed**
 
@@ -23,20 +23,21 @@
 - Project Ariadne public-source knowledge is imported under `docs/reference/project-ariadne/knowledge/` as Capture Reference Context, including company-specific public-source bid-qualification intel.
 - CLI-first harnesses are an approved architecture option for repeatable, batchable, tool-facing, or agent-facing capabilities that should not become complicated UI or bespoke tool sprawl.
 - The first-slice domain/storage epic is complete on `01-build/first-slice-domain-storage` and merged to `main`: Opportunity shell, Evidence Store, Quick Capture review routing, Living Briefing Packet skeleton/review, Capture Action Plan skeleton, read-only Capability Catalog, first Command Center shell, and packet data elements as cross-opportunity knowledge slots.
+- The Quick Capture Knowledge Processing epic is complete on `02-build/quick-capture-knowledge-processing`: Reference Wiki influences, Capture Intelligence Drafts, per-piece review/route/skill-chain controls, review-gated promotions into Evidence/Action Plan/Packet outputs, polished trusted evidence with raw trace/admin context, low-signal clarification routing, pasted text and text/Markdown upload intake, parser-required unsupported upload candidates, public call plan/risk register dictionaries, optional Local Admin Model assist through central local-model config, and an end-to-end Command Center demo thread.
 - A local FastAPI runtime exists via `uv run python app.py` or `python app.py` with `.env`; the project-standard local UI port is `9622`, while `9621` is reserved for Project Theseus.
 - The first Command Center shell is command-first: it supports pulse checks, quick actions, and AI-support entry points rather than serving as a passive metrics wall.
 - Packet data modeling now distinguishes reusable Packet Field Definitions from opportunity-specific Packet Field Answers, evidence/provenance, assumptions, confidence, gaps, Action Plan links, Shared Knowledge Entities, and Knowledge Mirror projections.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the first slice.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the Quick Capture Knowledge Processing epic.
 
 **Still Deferred**
 
-- Hermes runtime, knowledge/retrieval engine, graph visualization, MinerU document intake, huashu-design/artifact rendering, external API integrations, advanced skill installation, and full Next.js UI are not implemented yet.
-- The existing FastAPI HTML surfaces are first-slice review/runtime scaffolds, not the final frontend architecture.
+- Hermes runtime, durable knowledge/retrieval engine, graph visualization, MinerU parser-backed document intake, huashu-design/artifact rendering, external API integrations, advanced skill installation, persistent storage beyond local/demo adapters, and full Next.js UI are not implemented yet.
+- The existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Start the next iteration with a new `grill-with-docs` session. Review this PRD, `CONTEXT.md`, ADRs, `docs/architecture/phase-0-review.md`, and any future-integration notes before choosing the next epic.
-- The next epic should be chosen as a vertical product slice, not a broad infrastructure sweep. Candidate directions include durable local storage beyond in-memory/demo builders, Knowledge Processing Workflow from Quick Capture, Document Intake, Knowledge Graph sensemaking, or Hermes-assisted capture mentoring.
+- Start the next iteration with a new `grill-with-docs` session. Review this PRD, `CONTEXT.md`, ADRs, `docs/architecture/phase-0-review.md`, `docs/architecture/quick-capture-knowledge-processing-review.md`, and future-integration notes before choosing the next epic.
+- The next epic should be chosen as a vertical product slice, not a broad infrastructure sweep. Candidate directions include durable local storage beyond in-memory/demo builders, parser-backed Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, Call Plan/customer engagement workflow, or Capability Studio run/provenance workflow.
 - Before any future integration slice for Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation, run `grill-with-docs` and record any load-bearing decisions in `CONTEXT.md` or ADRs.
 
 ---
@@ -317,10 +318,23 @@ Each future slice should leave a short documentation trail before code: what is 
 - Built Packet Field Definitions, Packet Field Answers, Answer Paths, Shared Knowledge Entities, and Packet Field Review connections so briefing data elements become reusable strategic slots without reusing another Opportunity's answers as truth.
 - Closed issues #1 through #8 and merged the completed epic to `main` after validation.
 
+**Quick Capture Knowledge Processing Epic** ← **COMPLETE**
+
+- Imported Project Ariadne public-source knowledge as commit-safe Capture Reference Context and added lightweight Reference Wiki influence retrieval.
+- Built Capture Intelligence Drafts from rushed notes and uploaded source material, including inferred claims, risks, discriminator candidates, packet implications, action candidates, gaps, follow-up questions, assumptions, confidence notes, Reference Wiki influence provenance, and optional Local Admin Model assist.
+- Kept Local Admin Model config centralized through `OLLAMA_HOST` and `LOCAL_DAILY_MODEL`; local admin assist has only workflow-specific enablement and timeout controls.
+- Added per-piece draft review controls, recommended routes, skill-chain suggestions, discard handling, and documented future bulk selection.
+- Added review-gated promotions from draft parts into Evidence Items, Action Plan Items, Packet Field Answers, and packet gap updates while preserving raw item ID, draft ID, draft part ID, review rationale, evidence links, and edit history.
+- Changed trusted evidence behavior so accepted evidence saves polished Capture Intelligence Draft output, while truly raw notes remain trace/admin context only. Low-signal notes route to clarification instead of evidence.
+- Routed pasted text and text/Markdown uploads through the same Quick Capture path; unsupported uploads become parser-required Document Intake Candidates.
+- Added public Call Plan and Risk Register data dictionaries while keeping private templates/workbooks/log examples ignored.
+- Added an end-to-end Command Center demo thread showing messy input, Reference Wiki influences, draft inferences, review controls, accepted evidence/action/packet outputs, discarded output, traceability, and parser-required future Document Intake.
+- Closed issues #9 through #15 on the epic branch after validation.
+
 **Next Planning Gate**
 
 - Run a new `grill-with-docs` session before starting the next epic.
-- Decide whether the next vertical slice should deepen durable storage, Knowledge Processing Workflow, Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, or another product workflow.
+- Decide whether the next vertical slice should deepen durable storage, parser-backed Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, Call Plan/customer engagement, Capability Studio provenance, or another product workflow.
 - Keep the Command Center command-first: pulse check, quick action, and AI support should take priority over passive data display.
 
 **Phase 1 – Core Infrastructure**

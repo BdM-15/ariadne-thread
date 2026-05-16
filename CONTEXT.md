@@ -189,6 +189,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Knowledge Graph View** should begin with **Graph Sensemaking Mode** and later add **Graph Action Mode**.
 - A **Traceable Recommendation** can support action before all evidence is complete when its assumptions, gaps, and confidence are explicit.
 - **Frontier Reasoning Models** and **Local Admin Models** can both produce or enrich **Evidence Items**, but their outputs remain traceable through **Model Roles**.
+- **Local Admin Models** can assist **Capture Intelligence Draft** generation only as optional draft support; deterministic heuristic fallback remains available, and draft provenance records whether assist was used.
 - A **Backfill Need** describes missing capture work; a **Capability Gap** describes missing platform capability.
 - An **Incumbent Recompete** is a kind of **Recompete** with existing relationship, performance, and contract-history context.
 

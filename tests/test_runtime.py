@@ -412,13 +412,20 @@ def test_root_serves_command_center_shell() -> None:
     assert "Capture Intelligence Draft" in response.text
     assert "Local Admin Model Assist" in response.text
     assert "Accepted Draft Promotions" in response.text
+    assert "Accepted Evidence" in response.text
     assert "Accepted Action" in response.text
     assert "Accepted Packet Update" in response.text
+    assert "Discarded Output" in response.text
+    assert "raw_demo_rushed_capture_note" in response.text
+    assert "Draft Rationale" in response.text
+    assert "Reviewer accepted rushed customer note as source evidence" in response.text
+    assert "Reviewer discarded discriminator claim until proof points exist" in response.text
     assert "Review Status: accepted" in response.text
     assert "Per-Piece Intelligence Review" in response.text
     assert "Text / Markdown Upload" in response.text
     assert "Document Intake Candidate" in response.text
     assert "Parser Required" in response.text
+    assert "Parser required before this source can enter Quick Capture" in response.text
     assert "Accept as Evidence" in response.text
     assert "Recommend Route" in response.text
     assert "Plan Skill Chain" in response.text

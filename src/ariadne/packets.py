@@ -45,6 +45,7 @@ class PacketSectionState(BaseModel):
     evidence_status: EvidenceStatus = EvidenceStatus.GAP
     evidence_ids: tuple[str, ...] = ()
     gap_summary: str | None = None
+    gap_provenance_notes: tuple[str, ...] = ()
 
 
 class BriefingViewSection(BaseModel):
@@ -105,6 +106,7 @@ def update_packet_section_coverage(
     evidence_status: EvidenceStatus,
     evidence_ids: list[str] | tuple[str, ...] = (),
     gap_summary: str | None = None,
+    gap_provenance_notes: list[str] | tuple[str, ...] = (),
 ) -> LivingBriefingPacket:
     packet.sections[section] = packet.sections[section].model_copy(
         update={
@@ -112,6 +114,7 @@ def update_packet_section_coverage(
             "evidence_status": evidence_status,
             "evidence_ids": tuple(evidence_ids),
             "gap_summary": gap_summary,
+            "gap_provenance_notes": tuple(gap_provenance_notes),
         }
     )
     return packet

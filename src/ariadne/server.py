@@ -7,11 +7,22 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from ariadne.action_plans import ActionPlanItem
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.command_center import render_command_center_shell
 from ariadne.config import RuntimeSettings
+from ariadne.draft_promotion import (
+    DraftPartPromotionDecision,
+    discard_draft_part_promotion,
+    promote_action_candidate_to_plan_item,
+    promote_packet_implication_to_field_answer,
+)
 from ariadne.evidence import LocalEvidenceStore
-from ariadne.packet_knowledge import PacketFieldReview, build_demo_packet_field_review
+from ariadne.packet_knowledge import (
+    PacketFieldAnswer,
+    PacketFieldReview,
+    build_demo_packet_field_review,
+)
 from ariadne.packet_review import (
     build_demo_packet_briefing_view,
     build_demo_packet_coverage_view,
@@ -23,6 +34,7 @@ from ariadne.packets import (
 )
 from ariadne.quick_capture import (
     CaptureIntelligenceDraft,
+    CaptureIntelligenceDraftPartType,
     CaptureReview,
     CaptureReviewDecision,
     ProposedDestination,
@@ -40,6 +52,12 @@ class ReviewDecisionAction(StrEnum):
     ACCEPT_EVIDENCE = "accept_evidence"
     DISCARD_PROPOSAL = "discard_proposal"
     ROUTE_FOLLOW_UP_QUESTIONS = "route_follow_up_questions"
+
+
+class PromotionType(StrEnum):
+    ACTION_PLAN_ITEM = "action_plan_item"
+    PACKET_FIELD_ANSWER = "packet_field_answer"
+    DISCARD = "discard"
 
 
 class ReferenceInfluenceRequest(BaseModel):
@@ -75,6 +93,27 @@ class CaptureReviewDecisionResponse(BaseModel):
     review: CaptureReview
     decision: CaptureReviewDecision
     evidence_store_count: int
+
+
+class CapturePromotionRequest(BaseModel):
+    content: str
+    opportunity_id: str | None = None
+    raw_item_id: str | None = None
+    promotion_type: PromotionType
+    draft_part_id: str | None = None
+    field_key: str = "risks"
+    reviewer_rationale: str
+    edited_content: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    discard_reason: str | None = None
+
+
+class CapturePromotionResponse(BaseModel):
+    review: CaptureReview
+    action_item: ActionPlanItem | None = None
+    packet_answer: PacketFieldAnswer | None = None
+    decision: DraftPartPromotionDecision | None = None
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -196,6 +235,62 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             evidence_store_count=len(evidence_store.list()),
         )
 
+    @app.post("/api/quick-capture/promotions")
+    def quick_capture_promotion(
+        request: CapturePromotionRequest,
+    ) -> CapturePromotionResponse:
+        wiki = load_reference_wiki(
+            _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+        )
+        raw_item = capture_raw_item(
+            request.content,
+            opportunity_id=request.opportunity_id,
+            raw_item_id=request.raw_item_id,
+        )
+        review = process_raw_capture_item(raw_item, reference_wiki=wiki)
+        try:
+            if request.promotion_type is PromotionType.ACTION_PLAN_ITEM:
+                action_item = promote_action_candidate_to_plan_item(
+                    review,
+                    draft_part_id=request.draft_part_id
+                    or _draft_part_id_for_type(
+                        review,
+                        CaptureIntelligenceDraftPartType.ACTION_CANDIDATE,
+                    ),
+                    reviewer_rationale=request.reviewer_rationale,
+                    edited_content=request.edited_content,
+                    evidence_ids=request.evidence_ids,
+                )
+                return CapturePromotionResponse(review=review, action_item=action_item)
+            if request.promotion_type is PromotionType.PACKET_FIELD_ANSWER:
+                packet_answer = promote_packet_implication_to_field_answer(
+                    review,
+                    draft_part_id=request.draft_part_id
+                    or _draft_part_id_for_type(
+                        review,
+                        CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+                    ),
+                    field_key=request.field_key,
+                    reviewer_rationale=request.reviewer_rationale,
+                    edited_value=request.edited_content,
+                    evidence_ids=request.evidence_ids,
+                    confidence=request.confidence,
+                )
+                return CapturePromotionResponse(review=review, packet_answer=packet_answer)
+
+            decision = discard_draft_part_promotion(
+                review,
+                draft_part_id=request.draft_part_id
+                or _draft_part_id_for_type(
+                    review,
+                    CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+                ),
+                discard_reason=request.discard_reason or request.reviewer_rationale,
+            )
+            return CapturePromotionResponse(review=review, decision=decision)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
     return app
 
 
@@ -213,3 +308,15 @@ def _proposal_id_for_destination(
         if proposal.destination is destination:
             return proposal.id
     raise ValueError(f"capture review has no proposal for {destination.value}")
+
+
+def _draft_part_id_for_type(
+    review: CaptureReview,
+    part_type: CaptureIntelligenceDraftPartType,
+) -> str:
+    if review.intelligence_draft is None:
+        raise ValueError("capture review has no intelligence draft")
+    for part in review.intelligence_draft.intelligence_pieces:
+        if part.part_type is part_type:
+            return part.id
+    raise ValueError(f"capture review has no draft part for {part_type.value}")

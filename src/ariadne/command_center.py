@@ -10,6 +10,10 @@ from ariadne.action_plans import (
 )
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.config import RuntimeSettings
+from ariadne.draft_promotion import (
+  promote_action_candidate_to_plan_item,
+  promote_packet_implication_to_field_answer,
+)
 from ariadne.opportunities import (
     CoreCaptureWorkstream,
     EntryContext,
@@ -26,7 +30,11 @@ from ariadne.packets import (
     EvidenceStatus,
     PacketReadiness,
 )
-from ariadne.quick_capture import capture_raw_item, process_raw_capture_item
+from ariadne.quick_capture import (
+  CaptureIntelligenceDraftPartType,
+  capture_raw_item,
+  process_raw_capture_item,
+)
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 
 
@@ -63,11 +71,6 @@ def render_command_center_shell(
         evidence_ids=["ev_customer_call"],
         gap_summary="Need validated customer pain and decision-maker map.",
     )
-    action_plan = add_packet_gap_actions(
-        create_capture_action_plan(opportunity),
-        packet,
-    )
-    action_view = build_action_plan_view(action_plan)
     quick_capture = capture_raw_item(
       "Customer said incumbent transition plan is weak. Need follow up with PM next week.",
         opportunity_id="opp-aflcmc-recompete",
@@ -80,6 +83,35 @@ def render_command_center_shell(
       quick_capture,
       reference_wiki=reference_wiki,
     )
+    accepted_action = promote_action_candidate_to_plan_item(
+      capture_review,
+      draft_part_id=_draft_part_id_for_type(
+        capture_review,
+        CaptureIntelligenceDraftPartType.ACTION_CANDIDATE,
+      ),
+      reviewer_rationale="Reviewer accepted PM follow-up as next capture action.",
+      evidence_ids=("ev_customer_call",),
+    )
+    accepted_packet_answer = promote_packet_implication_to_field_answer(
+      capture_review,
+      draft_part_id=_draft_part_id_for_type(
+        capture_review,
+        CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+      ),
+      field_key="risks",
+      reviewer_rationale="Reviewer accepted transition risk as packet update.",
+      edited_value="Transition risk needs mitigation evidence before gate review.",
+      evidence_ids=("ev_customer_call",),
+      confidence=0.64,
+    )
+    action_plan = add_packet_gap_actions(
+        create_capture_action_plan(opportunity),
+        packet,
+    )
+    action_plan = action_plan.model_copy(
+      update={"items": action_plan.items + (accepted_action,)}
+    )
+    action_view = build_action_plan_view(action_plan)
     reference_influences = capture_review.reference_influences
     coverage_view = build_coverage_view(packet)
     catalog = discover_local_capability_catalog(root)
@@ -350,6 +382,7 @@ def render_command_center_shell(
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
+        {_render_accepted_promotions_panel(accepted_action, accepted_packet_answer)}
         {_render_packet_panel(packet, coverage_view)}
         {_render_action_plan_panel(action_view)}
         {_render_capability_panel(catalog)}
@@ -447,6 +480,25 @@ def _render_intelligence_piece_row(piece) -> str:
 
 def _render_inline_items(items: tuple[str, ...]) -> str:
     return "<br>".join(escape(item) for item in items)
+
+
+def _render_accepted_promotions_panel(action_item, packet_answer) -> str:
+  return f"""<section class="panel" id="accepted-promotions" aria-labelledby="accepted-promotions-heading">
+    <div class="panel-heading"><h2 id="accepted-promotions-heading">Accepted Draft Promotions</h2><span class="status-chip green">Review Status: accepted</span></div>
+    <div class="row-list">
+    <div class="row"><strong>Accepted Action</strong><span>{escape(action_item.action)}</span><span>Evidence: {escape(", ".join(action_item.related_evidence_ids))}</span></div>
+    <div class="row"><strong>Accepted Packet Update</strong><span>{escape(packet_answer.value or "")}</span><span>Field: {escape(packet_answer.field_key)} - Confidence: {packet_answer.confidence}</span></div>
+    </div>
+  </section>"""
+
+
+def _draft_part_id_for_type(review, part_type: CaptureIntelligenceDraftPartType) -> str:
+  if review.intelligence_draft is None:
+    raise ValueError("capture review has no intelligence draft")
+  for part in review.intelligence_draft.intelligence_pieces:
+    if part.part_type is part_type:
+      return part.id
+  raise ValueError(f"capture review has no draft part for {part_type.value}")
 
 
 def _reference_wiki_root(path: Path, workspace_root: Path) -> Path:

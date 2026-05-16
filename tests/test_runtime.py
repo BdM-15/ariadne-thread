@@ -158,6 +158,57 @@ def test_quick_capture_review_decision_api_writes_evidence_after_acceptance(
     assert len(LocalEvidenceStore(evidence_root).list()) == 1
 
 
+def test_quick_capture_promotion_api_creates_action_plan_item() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/promotions",
+        json={
+            "content": "Need follow up with PM to validate transition proof points.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_action_promotion",
+            "promotion_type": "action_plan_item",
+            "reviewer_rationale": "Reviewer accepted PM follow-up as next action.",
+            "evidence_ids": ["ev_customer_transition_note"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["action_item"]["review_status"] == "accepted"
+    assert body["action_item"]["source_raw_item_id"] == "raw_api_action_promotion"
+    assert body["action_item"]["related_evidence_ids"] == [
+        "ev_customer_transition_note"
+    ]
+    assert body["packet_answer"] is None
+
+
+def test_quick_capture_promotion_api_creates_packet_field_answer_with_edit() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/promotions",
+        json={
+            "content": "Customer says transition risk needs packet gap.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_packet_promotion",
+            "promotion_type": "packet_field_answer",
+            "field_key": "risks",
+            "reviewer_rationale": "Reviewer accepted as risk field update.",
+            "edited_content": "Transition risk needs mitigation evidence.",
+            "evidence_ids": ["ev_transition_risk"],
+            "confidence": 0.61,
+        },
+    )
+
+    assert response.status_code == 200
+    answer = response.json()["packet_answer"]
+    assert answer["field_key"] == "risks"
+    assert answer["value"] == "Transition risk needs mitigation evidence."
+    assert answer["review_status"] == "accepted"
+    assert answer["review_edits"]
+
+
 def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -224,6 +275,10 @@ def test_root_serves_command_center_shell() -> None:
     assert "Reference Wiki influences" in response.text
     assert "Incumbent Analysis Strategy" in response.text
     assert "Capture Intelligence Draft" in response.text
+    assert "Accepted Draft Promotions" in response.text
+    assert "Accepted Action" in response.text
+    assert "Accepted Packet Update" in response.text
+    assert "Review Status: accepted" in response.text
     assert "Per-Piece Intelligence Review" in response.text
     assert "Accept as Evidence" in response.text
     assert "Recommend Route" in response.text

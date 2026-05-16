@@ -26,7 +26,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Command Center: the single working surface for opportunities, decision gates, knowledge, HITL sessions, plans, agents, and artifacts.
 - Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
-- Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate.
+- Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate. Pasted text and supported text or Markdown uploads should preserve source metadata.
 - Knowledge Processing Workflow: the workflow that turns raw capture items and uploaded documents into structured evidence, opportunity knowledge, action items, and reusable insight candidates.
 - Capture Intelligence Draft: an AI-prepared, reviewable synthesis inferred from raw capture material or source material before it becomes trusted evidence, opportunity knowledge, packet answers, action items, or reusable insight candidates.
 - Capture Intelligence Draft Part: one reviewable piece inside a Capture Intelligence Draft, such as a claim, risk, discriminator candidate, packet implication, action candidate, or follow-up question.
@@ -34,6 +34,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Draft Part Promotion: the review-gated act of turning a Capture Intelligence Draft Part into an Action Plan Item, Packet Field Answer, packet gap update, or other trusted workflow output.
 - Follow-Up Question Route: an explicit routing decision that turns draft questions into a next research, customer engagement, call plan, or skill-run prompt without writing trusted evidence.
 - Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
+- Risk Register: a review-gated workflow and artifact that tracks pursuit risks and upside opportunities, their probability, impact, response plan, owner, cost or schedule exposure, and links to evidence, packet fields, and action plan items.
+- Risk Register Item: one risk or opportunity row in the Risk Register, framed as a threat or opportunity, measurable impact, response, score, and current review status.
+- Risk Response Plan: the accepted mitigation, acceptance, costing, avoidance, or opportunity-capture approach for a Risk Register Item.
 - Capture Reference Context: reusable background capture knowledge that can guide Ariadne's inference without serving as opportunity-specific evidence by itself.
 - Reference Wiki: a human-readable, interlinked note corpus that organizes Capture Reference Context for lightweight retrieval and reasoning.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
@@ -50,6 +53,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Derived Evidence: an evidence item produced by Ariadne interpretation, extraction, summarization, synthesis, or model reasoning.
 - Evidence Store: the local-first home for evidence items used by opportunity knowledge, packet generation, and traceable recommendations.
 - Document Intake: the process of accepting uploaded files and extracting useful source evidence from them.
+- Document Intake Candidate: an uploaded file recorded for later parser-backed intake because Ariadne cannot safely extract text from it yet.
 - Traceable Recommendation: an AI recommendation that cites its supporting sources, assumptions, confidence, gaps, and rationale.
 - Capability Gap: a missing Ariadne workflow, skill, view, adapter, or automation that would materially improve capture execution.
 - Model Role: the intended responsibility level for a model, separating frontier reasoning work from local or administrative work.
@@ -138,10 +142,13 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Hermes Agent** can observe saved product, studio, and exploratory sessions for **Operational Learning** while preserving human approval for durable changes.
 - **Operational Learning** can become an **Improvement Proposal**, but durable Ariadne changes require human approval.
 - A **Quick Capture Inbox** contains **Raw Capture Items** that can be handled by a **Knowledge Processing Workflow**.
+- Pasted text and supported text or Markdown uploads can become **Raw Capture Items** with source metadata before entering the **Knowledge Processing Workflow**.
 - A **Knowledge Processing Workflow** can create **Capture Intelligence Drafts** from **Raw Capture Items** or uploaded source material.
 - A **Capture Intelligence Draft** contains **Capture Intelligence Draft Parts** so each piece of intelligence can be accepted, discarded, routed, skill-chained, or recommended independently.
 - A **Capture Review Decision** is required before **Capture Intelligence Draft** parts become trusted **Source Evidence**, **Opportunity Knowledge**, **Action Plan Items**, or **Packet Field Answers**.
 - **Draft Part Promotion** preserves raw item ID, draft ID, draft part ID, review rationale, evidence links, confidence or gap notes, and edit history on promoted outputs.
+- **Risk Register Items** can be drafted from **Capture Intelligence Draft Parts**, **Call Plan** notes, **Packet Field Answers**, or **Evidence Items**, but they require review before becoming trusted pursuit risk records.
+- **Risk Response Plans** can create or update **Action Plan Items** and can support **Packet Field Answers** for risks, mitigation approach, pricing exposure, schedule exposure, and gate recommendations.
 - A **Follow-Up Question Route** can launch customer engagement preparation, a **Call Plan**, research, or a **Capability Module** without treating the routed question as trusted evidence.
 - A **Skill Chain Recommendation** can point to existing **Capability Modules**, recommend a **Product Workflow**, or become a **Capability Gap** or **Improvement Proposal** when Hermes detects that no suitable skill exists.
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
@@ -153,6 +160,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Call Plan Action Commitment** can become an **Action Plan Item** after user review.
 - Call plan fields such as customer, opportunity name, CRM identifier, funding status, owner, due date, customer needs, and action commitments can connect to existing **Packet Field Answers** without automatically updating them.
 - **Document Intake** creates **Source Evidence** from uploaded files before Ariadne derives summaries, tags, dates, or recommendations.
+- Unsupported uploads become **Document Intake Candidates** with parser-required status rather than trusted source text.
 - A **Guided Capture Mentor** supports the user by executing work, recommending next steps, and teaching the capture reasoning behind those recommendations.
 - **Assisted Execution** lets Ariadne complete low-risk work, prepare insights, and teach the user while **Autonomy Tiers** protect strategic, sensitive, and external-facing decisions.
 - Every **Opportunity** has a **Capture Action Plan** made of **Action Plan Items**.

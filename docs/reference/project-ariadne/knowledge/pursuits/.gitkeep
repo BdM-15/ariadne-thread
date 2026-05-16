@@ -1,0 +1,7 @@
+Per-pursuit wikis land here. One subfolder per pursuit slug, e.g.:
+
+  pursuits/
+    israel2/
+      raw/
+      wiki/
+      evergreen_ontology.json

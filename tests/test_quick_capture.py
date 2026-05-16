@@ -1,12 +1,15 @@
-from ariadne.evidence import EvidenceKind
+from ariadne.evidence import EvidenceKind, LocalEvidenceStore
 from ariadne.quick_capture import (
     CaptureIntelligenceDraftStatus,
     CaptureReviewStatus,
     ProposalStatus,
     ProposedDestination,
+    accept_capture_review_proposal,
     RawCaptureStatus,
     capture_raw_item,
+    discard_capture_review_proposal,
     process_raw_capture_item,
+    route_capture_follow_up_questions,
 )
 from ariadne.reference_wiki import load_reference_wiki
 
@@ -154,6 +157,101 @@ and ghost strategy should shape capture follow-up.
     assert draft.gaps
     assert draft.follow_up_questions
     assert draft.trusted_opportunity_knowledge_updated is False
+
+
+def test_accepting_evidence_review_proposal_writes_source_evidence_with_provenance(
+    tmp_path,
+) -> None:
+    store = LocalEvidenceStore(tmp_path / "evidence")
+    raw_item = capture_raw_item(
+        "Customer says incumbent response times are weak.",
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_customer_response_note",
+    )
+    review = process_raw_capture_item(raw_item)
+    evidence_proposal = next(
+        proposal
+        for proposal in review.proposals
+        if proposal.destination is ProposedDestination.EVIDENCE_ITEM_REVIEW
+    )
+
+    assert store.list() == []
+
+    decision = accept_capture_review_proposal(
+        review,
+        evidence_proposal.id,
+        evidence_store=store,
+        reviewer_rationale="Customer call note accepted as source evidence.",
+    )
+
+    assert decision.status is ProposalStatus.ACCEPTED
+    assert decision.proposal_id == evidence_proposal.id
+    assert decision.raw_item_id == "raw_customer_response_note"
+    assert decision.draft_id == review.intelligence_draft.id
+    assert decision.evidence is not None
+    assert decision.evidence.kind is EvidenceKind.SOURCE
+    assert decision.evidence.raw_item_id == "raw_customer_response_note"
+    assert decision.evidence.draft_id == review.intelligence_draft.id
+    assert decision.evidence.rationale[0] == (
+        "Customer call note accepted as source evidence."
+    )
+    assert store.list() == [decision.evidence]
+
+
+def test_discarding_review_proposal_tracks_decision_without_writing_evidence(
+    tmp_path,
+) -> None:
+    store = LocalEvidenceStore(tmp_path / "evidence")
+    raw_item = capture_raw_item(
+        "Customer signal is too vague to use yet. Need follow up.",
+        raw_item_id="raw_vague_customer_signal",
+    )
+    review = process_raw_capture_item(raw_item)
+    action_proposal = next(
+        proposal
+        for proposal in review.proposals
+        if proposal.destination is ProposedDestination.ACTION_PLAN_ITEM_REVIEW
+    )
+
+    decision = discard_capture_review_proposal(
+        review,
+        action_proposal.id,
+        discard_reason="Not actionable until the customer source is confirmed.",
+    )
+
+    assert decision.status is ProposalStatus.DISCARDED
+    assert decision.proposal_id == action_proposal.id
+    assert decision.raw_item_id == "raw_vague_customer_signal"
+    assert decision.discard_reason == "Not actionable until the customer source is confirmed."
+    assert decision.trusted_evidence_written is False
+    assert decision.evidence is None
+    assert store.list() == []
+
+
+def test_follow_up_questions_can_be_explicitly_routed_without_writing_evidence(
+    tmp_path,
+) -> None:
+    store = LocalEvidenceStore(tmp_path / "evidence")
+    raw_item = capture_raw_item(
+        "Customer says transition risk needs proof from PM.",
+        raw_item_id="raw_transition_question",
+    )
+    review = process_raw_capture_item(raw_item)
+
+    route = route_capture_follow_up_questions(
+        review,
+        reviewer_rationale="Need customer engagement prep before evidence promotion.",
+    )
+
+    assert route.raw_item_id == "raw_transition_question"
+    assert route.draft_id == review.intelligence_draft.id
+    assert route.status is ProposalStatus.ROUTED
+    assert route.routed_follow_up_questions == review.intelligence_draft.follow_up_questions
+    assert route.reviewer_rationale == (
+        "Need customer engagement prep before evidence promotion."
+    )
+    assert route.trusted_evidence_written is False
+    assert store.list() == []
 
 
 def _write_reference_note(path, content: str) -> None:

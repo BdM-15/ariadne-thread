@@ -270,6 +270,26 @@ def render_command_center_shell(
       text-decoration: none;
       font-weight: 900;
     }}
+    .action-strip {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }}
+    .action-button {{
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid rgba(34, 211, 238, 0.7);
+      border-radius: 8px;
+      background: rgba(34, 211, 238, 0.12);
+      color: var(--cyan);
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }}
+    .action-button.secondary {{ border-color: rgba(251, 191, 36, 0.7); background: rgba(251, 191, 36, 0.12); color: var(--amber); }}
+    .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
+    .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
     @media (max-width: 1100px) {{
       .shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -283,6 +303,7 @@ def render_command_center_shell(
       .runtime-pill {{ margin-top: 12px; }}
       .nav,
       .metric-grid {{ grid-template-columns: 1fr; }}
+      .action-strip {{ grid-template-columns: 1fr; }}
       .hero h2 {{ font-size: 1.55rem; }}
     }}
     @media (prefers-reduced-motion: reduce) {{
@@ -414,6 +435,7 @@ def _render_capture_intelligence_draft_panel(draft) -> str:
         <div class="row"><strong>Gaps</strong><span>{_render_inline_items(draft.gaps)}</span></div>
         <div class="row"><strong>Follow-Up Questions</strong><span>{_render_inline_items(draft.follow_up_questions)}</span></div>
         <div class="row"><strong>{len(draft.reference_influences)} reference influences</strong><span>No trusted opportunity knowledge updated.</span></div>
+        <div class="row"><strong>Review Actions</strong><span>Trusted writes require reviewer action.</span><div class="action-strip" aria-label="Capture intelligence review actions"><button class="action-button" type="button">Accept as Evidence</button><button class="action-button secondary" type="button">Route Follow-Up Questions</button><button class="action-button danger" type="button">Discard Draft Part</button></div></div>
       </div>
     </section>"""
 

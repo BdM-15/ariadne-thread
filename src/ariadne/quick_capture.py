@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from ariadne.evidence import EvidenceItem, create_source_evidence
+from ariadne.evidence import EvidenceItem, LocalEvidenceStore, create_source_evidence
 from ariadne.reference_wiki import ReferenceWiki, ReferenceWikiInfluence
 
 
@@ -21,6 +21,9 @@ class ProposedDestination(StrEnum):
 
 class ProposalStatus(StrEnum):
     PENDING_REVIEW = "pending_review"
+    ACCEPTED = "accepted"
+    DISCARDED = "discarded"
+    ROUTED = "routed"
 
 
 class CaptureReviewStatus(StrEnum):
@@ -66,6 +69,21 @@ class CaptureIntelligenceDraft(BaseModel):
     gaps: tuple[str, ...]
     follow_up_questions: tuple[str, ...]
     trusted_opportunity_knowledge_updated: bool = False
+
+
+class CaptureReviewDecision(BaseModel):
+    id: str
+    proposal_id: str | None = None
+    raw_item_id: str
+    draft_id: str | None = None
+    destination: ProposedDestination | None = None
+    status: ProposalStatus
+    reviewer_rationale: str | None = None
+    discard_reason: str | None = None
+    evidence: EvidenceItem | None = None
+    routed_follow_up_questions: tuple[str, ...] = ()
+    trusted_evidence_written: bool = False
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CaptureReview(BaseModel):
@@ -156,6 +174,114 @@ def create_capture_intelligence_draft(
         gaps=_infer_gaps(lowered),
         follow_up_questions=_infer_follow_up_questions(lowered),
     )
+
+
+def accept_capture_review_proposal(
+    review: CaptureReview,
+    proposal_id: str,
+    *,
+    evidence_store: LocalEvidenceStore,
+    reviewer_rationale: str | None = None,
+) -> CaptureReviewDecision:
+    proposal = _find_review_proposal(review, proposal_id)
+    if proposal.destination is not ProposedDestination.EVIDENCE_ITEM_REVIEW:
+        raise ValueError("only evidence review proposals can write source evidence")
+    if proposal.evidence is None:
+        raise ValueError("evidence review proposal is missing evidence draft")
+
+    evidence = EvidenceItem.model_validate(
+        proposal.evidence.model_dump()
+        | {
+            "raw_item_id": review.raw_item_id,
+            "draft_id": _review_draft_id(review),
+            "rationale": _accepted_evidence_rationale(review, reviewer_rationale),
+        }
+    )
+    written = evidence_store.write(evidence)
+    return CaptureReviewDecision(
+        id=f"decision_{uuid4().hex}",
+        proposal_id=proposal.id,
+        raw_item_id=review.raw_item_id,
+        draft_id=_review_draft_id(review),
+        destination=proposal.destination,
+        status=ProposalStatus.ACCEPTED,
+        reviewer_rationale=reviewer_rationale,
+        evidence=written,
+        trusted_evidence_written=True,
+    )
+
+
+def discard_capture_review_proposal(
+    review: CaptureReview,
+    proposal_id: str,
+    *,
+    discard_reason: str,
+) -> CaptureReviewDecision:
+    proposal = _find_review_proposal(review, proposal_id)
+    return CaptureReviewDecision(
+        id=f"decision_{uuid4().hex}",
+        proposal_id=proposal.id,
+        raw_item_id=review.raw_item_id,
+        draft_id=_review_draft_id(review),
+        destination=proposal.destination,
+        status=ProposalStatus.DISCARDED,
+        discard_reason=discard_reason,
+        trusted_evidence_written=False,
+    )
+
+
+def route_capture_follow_up_questions(
+    review: CaptureReview,
+    *,
+    reviewer_rationale: str | None = None,
+    selected_questions: tuple[str, ...] | None = None,
+) -> CaptureReviewDecision:
+    if review.intelligence_draft is None:
+        raise ValueError("capture review has no intelligence draft to route")
+    questions = selected_questions or review.intelligence_draft.follow_up_questions
+    return CaptureReviewDecision(
+        id=f"decision_{uuid4().hex}",
+        raw_item_id=review.raw_item_id,
+        draft_id=review.intelligence_draft.id,
+        status=ProposalStatus.ROUTED,
+        reviewer_rationale=reviewer_rationale,
+        routed_follow_up_questions=questions,
+        trusted_evidence_written=False,
+    )
+
+
+def _find_review_proposal(
+    review: CaptureReview,
+    proposal_id: str,
+) -> CaptureReviewProposal:
+    for proposal in review.proposals:
+        if proposal.id == proposal_id:
+            return proposal
+    raise ValueError(f"unknown review proposal: {proposal_id}")
+
+
+def _review_draft_id(review: CaptureReview) -> str | None:
+    if review.intelligence_draft is None:
+        return None
+    return review.intelligence_draft.id
+
+
+def _accepted_evidence_rationale(
+    review: CaptureReview,
+    reviewer_rationale: str | None,
+) -> tuple[str, ...]:
+    rationale: list[str] = []
+    if reviewer_rationale:
+        rationale.append(reviewer_rationale)
+    if review.intelligence_draft is not None:
+        rationale.extend(
+            f"Draft claim: {claim}" for claim in review.intelligence_draft.inferred_claims
+        )
+        rationale.extend(
+            f"Draft confidence: {note}"
+            for note in review.intelligence_draft.confidence_notes
+        )
+    return tuple(rationale or ("Reviewer accepted raw capture item as source evidence.",))
 
 
 def _looks_actionable(content: str) -> bool:

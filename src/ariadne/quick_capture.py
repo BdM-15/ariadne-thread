@@ -7,6 +7,10 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore, create_source_evidence
+from ariadne.local_admin_model import (
+    LocalAdminDraftAssist,
+    LocalAdminModelAssistStatus,
+)
 from ariadne.reference_wiki import ReferenceWiki, ReferenceWikiInfluence
 
 
@@ -38,6 +42,12 @@ class CaptureReviewStatus(StrEnum):
 
 class CaptureIntelligenceDraftStatus(StrEnum):
     PENDING_REVIEW = "pending_review"
+
+
+class CaptureDraftInferenceSource(StrEnum):
+    HEURISTIC = "heuristic"
+    LOCAL_ADMIN_MODEL = "local_admin_model"
+    HEURISTIC_FALLBACK = "heuristic_fallback"
 
 
 class CaptureIntelligenceDraftPartType(StrEnum):
@@ -105,6 +115,11 @@ class CaptureIntelligenceDraft(BaseModel):
     gaps: tuple[str, ...]
     follow_up_questions: tuple[str, ...]
     intelligence_pieces: tuple[CaptureIntelligenceDraftPart, ...] = ()
+    inference_source: CaptureDraftInferenceSource = CaptureDraftInferenceSource.HEURISTIC
+    local_admin_model_assist_used: bool = False
+    local_admin_model_assist_status: str = LocalAdminModelAssistStatus.DISABLED.value
+    local_admin_model: str | None = None
+    local_admin_model_assist_reason: str | None = None
     trusted_opportunity_knowledge_updated: bool = False
 
 
@@ -203,6 +218,7 @@ def process_raw_capture_item(
     raw_item: RawCaptureItem,
     *,
     reference_wiki: ReferenceWiki | None = None,
+    local_admin_model_assist: LocalAdminDraftAssist | None = None,
 ) -> CaptureReview:
     destinations = [ProposedDestination.EVIDENCE_ITEM_REVIEW]
     if _looks_actionable(raw_item.content):
@@ -214,6 +230,7 @@ def process_raw_capture_item(
     intelligence_draft = create_capture_intelligence_draft(
         raw_item,
         reference_influences=reference_influences,
+        local_admin_model_assist=local_admin_model_assist,
     )
 
     return CaptureReview(
@@ -245,16 +262,52 @@ def create_capture_intelligence_draft(
     raw_item: RawCaptureItem,
     *,
     reference_influences: tuple[ReferenceWikiInfluence, ...] = (),
+    local_admin_model_assist: LocalAdminDraftAssist | None = None,
 ) -> CaptureIntelligenceDraft:
     content = raw_item.content
     lowered = content.lower()
     draft_id = f"draft_{uuid4().hex}"
-    inferred_claims = _infer_claims(lowered)
-    likely_risks = _infer_likely_risks(lowered)
-    discriminator_candidates = _infer_discriminator_candidates(lowered)
-    packet_implications = _infer_packet_implications(lowered)
-    action_candidates = _infer_action_candidates(content)
-    follow_up_questions = _infer_follow_up_questions(lowered)
+    heuristic_inferred_claims = _infer_claims(lowered)
+    heuristic_likely_risks = _infer_likely_risks(lowered)
+    heuristic_discriminator_candidates = _infer_discriminator_candidates(lowered)
+    heuristic_packet_implications = _infer_packet_implications(lowered)
+    heuristic_action_candidates = _infer_action_candidates(content)
+    heuristic_gaps = _infer_gaps(lowered)
+    heuristic_follow_up_questions = _infer_follow_up_questions(lowered)
+    heuristic_confidence_notes = _infer_confidence_notes(reference_influences)
+    assist = local_admin_model_assist or LocalAdminDraftAssist(
+        status=LocalAdminModelAssistStatus.DISABLED,
+        used=False,
+        reason="local admin model disabled",
+    )
+    suggestion = assist.suggestion if assist.used else None
+    inferred_claims = _merge_assist_suggestions(
+        suggestion.inferred_claims if suggestion else (), heuristic_inferred_claims
+    )
+    likely_risks = _merge_assist_suggestions(
+        suggestion.likely_risks if suggestion else (), heuristic_likely_risks
+    )
+    discriminator_candidates = _merge_assist_suggestions(
+        suggestion.discriminator_candidates if suggestion else (),
+        heuristic_discriminator_candidates,
+    )
+    packet_implications = _merge_assist_suggestions(
+        suggestion.packet_implications if suggestion else (),
+        heuristic_packet_implications,
+    )
+    action_candidates = _merge_assist_suggestions(
+        suggestion.action_candidates if suggestion else (), heuristic_action_candidates
+    )
+    gaps = _merge_assist_suggestions(
+        suggestion.gaps if suggestion else (), heuristic_gaps
+    )
+    follow_up_questions = _merge_assist_suggestions(
+        suggestion.follow_up_questions if suggestion else (), heuristic_follow_up_questions
+    )
+    confidence_notes = _merge_assist_suggestions(
+        suggestion.confidence_notes if suggestion else (), heuristic_confidence_notes
+    )
+    inference_source = _inference_source_for_assist(assist)
     return CaptureIntelligenceDraft(
         id=draft_id,
         raw_item_id=raw_item.id,
@@ -263,13 +316,18 @@ def create_capture_intelligence_draft(
         inferred_claims=inferred_claims,
         reference_influences=reference_influences,
         assumptions=_infer_assumptions(reference_influences),
-        confidence_notes=_infer_confidence_notes(reference_influences),
+        confidence_notes=confidence_notes,
         likely_risks=likely_risks,
         discriminator_candidates=discriminator_candidates,
         packet_implications=packet_implications,
         action_candidates=action_candidates,
-        gaps=_infer_gaps(lowered),
+        gaps=gaps,
         follow_up_questions=follow_up_questions,
+        inference_source=inference_source,
+        local_admin_model_assist_used=assist.used,
+        local_admin_model_assist_status=assist.status.value,
+        local_admin_model=assist.model,
+        local_admin_model_assist_reason=assist.reason,
         intelligence_pieces=_build_intelligence_pieces(
             draft_id=draft_id,
             inferred_claims=inferred_claims,
@@ -316,6 +374,27 @@ def _build_intelligence_pieces(
                 )
             )
     return tuple(pieces)
+
+
+def _merge_assist_suggestions(
+    assist_items: tuple[str, ...],
+    heuristic_items: tuple[str, ...],
+) -> tuple[str, ...]:
+    merged: list[str] = []
+    for item in assist_items + heuristic_items:
+        if item not in merged:
+            merged.append(item)
+    return tuple(merged)
+
+
+def _inference_source_for_assist(
+    assist: LocalAdminDraftAssist,
+) -> CaptureDraftInferenceSource:
+    if assist.used:
+        return CaptureDraftInferenceSource.LOCAL_ADMIN_MODEL
+    if assist.status is LocalAdminModelAssistStatus.DISABLED:
+        return CaptureDraftInferenceSource.HEURISTIC
+    return CaptureDraftInferenceSource.HEURISTIC_FALLBACK
 
 
 def _suggest_piece_route(

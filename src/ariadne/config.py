@@ -6,6 +6,13 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 
+class LocalAdminModelSettings(BaseModel):
+    enabled: bool = False
+    ollama_base_url: str = "http://localhost:11434"
+    model: str = "qwen3.5:9b"
+    timeout_seconds: int = 30
+
+
 class RuntimeSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 9621
@@ -15,6 +22,9 @@ class RuntimeSettings(BaseModel):
     ariadne_evidence_dir: Path = Field(default=Path(".ariadne/evidence"))
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
+    )
+    local_admin_model: LocalAdminModelSettings = Field(
+        default_factory=LocalAdminModelSettings
     )
 
     @property
@@ -51,6 +61,25 @@ class RuntimeSettings(BaseModel):
                     str(cls.model_fields["ariadne_reference_wiki_dir"].default),
                 )
             ),
+            local_admin_model=LocalAdminModelSettings(
+                enabled=_parse_bool(values.get("LOCAL_ADMIN_MODEL_ENABLED", "false")),
+                ollama_base_url=values.get(
+                    "OLLAMA_HOST",
+                    LocalAdminModelSettings.model_fields["ollama_base_url"].default,
+                ),
+                model=values.get(
+                    "LOCAL_DAILY_MODEL",
+                    LocalAdminModelSettings.model_fields["model"].default,
+                ),
+                timeout_seconds=int(
+                    values.get(
+                        "LOCAL_ADMIN_MODEL_TIMEOUT_SECONDS",
+                        LocalAdminModelSettings.model_fields[
+                            "timeout_seconds"
+                        ].default,
+                    )
+                ),
+            ),
         )
 
 
@@ -66,3 +95,7 @@ def _read_env_file(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key.strip()] = value.strip().strip('"').strip("'")
     return values
+
+
+def _parse_bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}

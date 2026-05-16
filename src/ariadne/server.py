@@ -23,6 +23,7 @@ from ariadne.document_intake import (
     classify_uploaded_source_material,
 )
 from ariadne.evidence import LocalEvidenceStore
+from ariadne.local_admin_model import request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
     PacketFieldReview,
@@ -155,6 +156,12 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             "host": runtime_settings.host,
             "port": runtime_settings.port,
             "local_url": runtime_settings.local_url,
+            "local_admin_model": {
+                "enabled": runtime_settings.local_admin_model.enabled,
+                "model": runtime_settings.local_admin_model.model,
+                "ollama_base_url": runtime_settings.local_admin_model.ollama_base_url,
+                "timeout_seconds": runtime_settings.local_admin_model.timeout_seconds,
+            },
             "status": "online",
         }
 
@@ -210,6 +217,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 request.content,
                 limit=request.limit,
             ),
+            local_admin_model_assist=_local_admin_model_assist(
+                request.content,
+                runtime_settings,
+            ),
         )
         return CaptureIntelligenceDraftResponse(draft=draft)
 
@@ -227,7 +238,14 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             opportunity_id=request.opportunity_id,
             raw_item_id=request.raw_item_id,
         )
-        review = process_raw_capture_item(raw_item, reference_wiki=wiki)
+        review = process_raw_capture_item(
+            raw_item,
+            reference_wiki=wiki,
+            local_admin_model_assist=_local_admin_model_assist(
+                raw_item.content,
+                runtime_settings,
+            ),
+        )
         return QuickCaptureSourceMaterialResponse(raw_item=raw_item, review=review)
 
     @app.post("/api/quick-capture/uploads")
@@ -261,7 +279,14 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             warnings=source_material.warnings,
             opportunity_id=opportunity_id,
         )
-        review = process_raw_capture_item(raw_item, reference_wiki=wiki)
+        review = process_raw_capture_item(
+            raw_item,
+            reference_wiki=wiki,
+            local_admin_model_assist=_local_admin_model_assist(
+                raw_item.content,
+                runtime_settings,
+            ),
+        )
         return QuickCaptureUploadResponse(
             status=source_material.status,
             raw_item=raw_item,
@@ -283,6 +308,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         review = process_raw_capture_item(
             raw_item,
             reference_wiki=wiki,
+            local_admin_model_assist=_local_admin_model_assist(
+                raw_item.content,
+                runtime_settings,
+            ),
         )
         evidence_store = LocalEvidenceStore(
             _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
@@ -328,7 +357,14 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             opportunity_id=request.opportunity_id,
             raw_item_id=request.raw_item_id,
         )
-        review = process_raw_capture_item(raw_item, reference_wiki=wiki)
+        review = process_raw_capture_item(
+            raw_item,
+            reference_wiki=wiki,
+            local_admin_model_assist=_local_admin_model_assist(
+                raw_item.content,
+                runtime_settings,
+            ),
+        )
         try:
             if request.promotion_type is PromotionType.ACTION_PLAN_ITEM:
                 action_item = promote_action_candidate_to_plan_item(
@@ -379,6 +415,13 @@ def _resolve_runtime_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _local_admin_model_assist(content: str, settings: RuntimeSettings):
+    return request_local_admin_draft_assist(
+        content,
+        settings=settings.local_admin_model,
+    )
 
 
 def _proposal_id_for_destination(

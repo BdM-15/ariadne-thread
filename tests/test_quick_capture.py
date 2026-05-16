@@ -1,6 +1,12 @@
 from ariadne.evidence import EvidenceKind, LocalEvidenceStore
+from ariadne.local_admin_model import (
+    LocalAdminDraftAssist,
+    LocalAdminDraftSuggestion,
+    LocalAdminModelAssistStatus,
+)
 from ariadne.quick_capture import (
     CaptureIntelligenceDraftStatus,
+    CaptureDraftInferenceSource,
     CaptureReviewStatus,
     ProposalStatus,
     ProposedDestination,
@@ -195,6 +201,64 @@ and ghost strategy should shape capture follow-up.
     assert draft.gaps
     assert draft.follow_up_questions
     assert draft.trusted_opportunity_knowledge_updated is False
+    assert draft.inference_source is CaptureDraftInferenceSource.HEURISTIC
+    assert draft.local_admin_model_assist_used is False
+    assert draft.local_admin_model_assist_status == "disabled"
+
+
+def test_local_admin_model_assist_can_enrich_capture_intelligence_draft() -> None:
+    raw_item = capture_raw_item(
+        "Customer says transition proof is weak. Need PM follow up.",
+        raw_item_id="raw_local_model_note",
+    )
+    assist = LocalAdminDraftAssist(
+        status=LocalAdminModelAssistStatus.USED,
+        used=True,
+        model="qwen3.5:9b",
+        reason="local model returned draft support",
+        suggestion=LocalAdminDraftSuggestion(
+            inferred_claims=("Model claim: transition proof gap is explicit.",),
+            likely_risks=("Model risk: transition proof gap may weaken score.",),
+            action_candidates=("Ask PM for transition proof points.",),
+            confidence_notes=("Model confidence: explicit transition proof language.",),
+        ),
+    )
+
+    review = process_raw_capture_item(raw_item, local_admin_model_assist=assist)
+    draft = review.intelligence_draft
+
+    assert draft is not None
+    assert draft.inference_source is CaptureDraftInferenceSource.LOCAL_ADMIN_MODEL
+    assert draft.local_admin_model_assist_used is True
+    assert draft.local_admin_model_assist_status == "used"
+    assert draft.local_admin_model == "qwen3.5:9b"
+    assert "Model claim" in draft.inferred_claims[0]
+    assert "Model risk" in draft.likely_risks[0]
+    assert "Ask PM" in draft.action_candidates[0]
+
+
+def test_unavailable_local_admin_model_preserves_deterministic_fallback() -> None:
+    raw_item = capture_raw_item(
+        "Customer says transition proof is weak. Need PM follow up.",
+        raw_item_id="raw_local_model_fallback_note",
+    )
+    assist = LocalAdminDraftAssist(
+        status=LocalAdminModelAssistStatus.UNAVAILABLE,
+        used=False,
+        model="qwen3.5:9b",
+        reason="local model unavailable; heuristic fallback used",
+    )
+
+    review = process_raw_capture_item(raw_item, local_admin_model_assist=assist)
+    draft = review.intelligence_draft
+
+    assert draft is not None
+    assert draft.inference_source is CaptureDraftInferenceSource.HEURISTIC_FALLBACK
+    assert draft.local_admin_model_assist_used is False
+    assert draft.local_admin_model_assist_status == "unavailable"
+    assert draft.inferred_claims[0] == (
+        "Raw note signals transition concerns that need capture review."
+    )
 
 
 def test_intelligence_draft_breaks_outputs_into_reviewable_pieces() -> None:

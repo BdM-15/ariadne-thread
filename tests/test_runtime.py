@@ -1,5 +1,10 @@
 from ariadne.config import RuntimeSettings
 from ariadne.evidence import LocalEvidenceStore
+from ariadne.local_admin_model import (
+    LocalAdminDraftAssist,
+    LocalAdminDraftSuggestion,
+    LocalAdminModelAssistStatus,
+)
 from ariadne.server import create_app
 
 
@@ -287,6 +292,38 @@ def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) ->
     assert settings.local_url == "http://127.0.0.1:9622"
 
 
+def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "LOCAL_ADMIN_MODEL_ENABLED": "true",
+            "OLLAMA_HOST": "http://127.0.0.1:11434",
+            "LOCAL_DAILY_MODEL": "qwen3.5:9b",
+            "LOCAL_ADMIN_MODEL_TIMEOUT_SECONDS": "5",
+        }
+    )
+
+    assert settings.local_admin_model.enabled is True
+    assert settings.local_admin_model.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.local_admin_model.model == "qwen3.5:9b"
+    assert settings.local_admin_model.timeout_seconds == 5
+
+
+def test_local_admin_model_config_reuses_central_local_model_settings() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "LOCAL_ADMIN_MODEL_ENABLED": "true",
+            "OLLAMA_HOST": "http://127.0.0.1:11434",
+            "LOCAL_DAILY_MODEL": "qwen3.5:9b",
+            "LOCAL_ADMIN_MODEL": "redundant-model-ignored",
+            "LOCAL_ADMIN_MODEL_OLLAMA_BASE_URL": "http://ignored:11434",
+        }
+    )
+
+    assert settings.local_admin_model.enabled is True
+    assert settings.local_admin_model.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.local_admin_model.model == "qwen3.5:9b"
+
+
 def test_runtime_api_reports_configured_app_status() -> None:
     settings = RuntimeSettings.from_mapping(
         {
@@ -310,8 +347,43 @@ def test_runtime_api_reports_configured_app_status() -> None:
         "host": "127.0.0.1",
         "port": 9622,
         "local_url": "http://127.0.0.1:9622",
+        "local_admin_model": {
+            "enabled": False,
+            "model": "qwen3.5:9b",
+            "ollama_base_url": "http://localhost:11434",
+            "timeout_seconds": 30,
+        },
         "status": "online",
     }
+
+
+def test_quick_capture_api_can_use_local_admin_model_assist(monkeypatch) -> None:
+    def fake_assist(content, *, settings, client=None):
+        return LocalAdminDraftAssist(
+            status=LocalAdminModelAssistStatus.USED,
+            used=True,
+            model=settings.model,
+            reason="fake adapter used",
+            suggestion=LocalAdminDraftSuggestion(
+                inferred_claims=("Model claim: local adapter shaped draft.",),
+            ),
+        )
+
+    monkeypatch.setattr("ariadne.server.request_local_admin_draft_assist", fake_assist)
+    settings = RuntimeSettings.from_mapping({"LOCAL_ADMIN_MODEL_ENABLED": "true"})
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/intelligence-drafts",
+        json={"content": "Customer says transition risk needs proof."},
+    )
+
+    assert response.status_code == 200
+    draft = response.json()["draft"]
+    assert draft["local_admin_model_assist_used"] is True
+    assert draft["local_admin_model_assist_status"] == "used"
+    assert draft["inferred_claims"][0] == "Model claim: local adapter shaped draft."
 
 
 def test_root_serves_command_center_shell() -> None:
@@ -338,6 +410,7 @@ def test_root_serves_command_center_shell() -> None:
     assert "Reference Wiki influences" in response.text
     assert "Incumbent Analysis Strategy" in response.text
     assert "Capture Intelligence Draft" in response.text
+    assert "Local Admin Model Assist" in response.text
     assert "Accepted Draft Promotions" in response.text
     assert "Accepted Action" in response.text
     assert "Accepted Packet Update" in response.text

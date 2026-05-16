@@ -11,11 +11,13 @@ from ariadne.document_intake import (
     ExtractionBundleReviewStatus,
     ExtractionStatus,
     ExtractionWarningSeverity,
+    accept_source_spans_to_evidence,
     classify_uploaded_source_material,
     create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
 )
+from ariadne.evidence import LocalEvidenceStore
 from ariadne.quick_capture import CaptureIntelligenceDraftPartType
 
 
@@ -267,6 +269,83 @@ def test_extraction_warning_becomes_follow_up_question_draft_part() -> None:
     assert warning_piece.recommended_route == "evidence_or_knowledge_review"
     assert draft.extraction_warnings_summarized is not None
     assert "MIME type" in draft.extraction_warnings_summarized
+
+
+def test_accept_source_span_to_evidence_preserves_lineage_and_link(tmp_path) -> None:
+    intake_store = DocumentIntakeStore(tmp_path / "document-intake")
+    evidence_store = LocalEvidenceStore(tmp_path / "evidence")
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/plain",
+        content=b"Customer needs transition proof. Risk needs PM follow up.",
+    )
+    record = intake_store.write(
+        create_document_intake_record(
+            source_material,
+            opportunity_id="opp-aflcmc-recompete",
+            record_id="intake_customer_brief",
+        )
+    )
+    bundle = intake_store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            record,
+            source_material,
+            bundle_id="bundle_customer_brief",
+        )
+    )
+    span = bundle.source_spans[0]
+
+    assert evidence_store.list() == []
+
+    result = accept_source_spans_to_evidence(
+        bundle,
+        source_span_ids=(span.id,),
+        reviewer_rationale="Reviewer accepted source span as trusted customer signal.",
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+        draft_part_id="draft_part_customer_need",
+        evidence_id="ev_document_customer_need",
+    )
+
+    evidence = result.evidence
+    assert evidence.id == "ev_document_customer_need"
+    assert evidence.content == span.text
+    assert evidence.source_ref == bundle.source_ref
+    assert evidence.opportunity_id == "opp-aflcmc-recompete"
+    assert evidence.source_intake_record_id == record.id
+    assert evidence.source_extraction_bundle_id == bundle.id
+    assert evidence.source_span_ids == (span.id,)
+    assert evidence.parser_adapter == "ariadne.generic_text_extractor"
+    assert evidence.parser_version == "0.1"
+    assert evidence.parser_method == "deterministic_text_span_heuristics"
+    assert evidence.source_confidence == span.confidence
+    assert evidence.source_warnings == (
+        "Filename looks like Markdown, but MIME type was not Markdown.",
+    )
+    assert "Reviewer accepted source span" in evidence.rationale[0]
+
+    loaded_evidence = evidence_store.read("ev_document_customer_need")
+    assert loaded_evidence == evidence
+    links = intake_store.list_accepted_evidence_links(bundle_id=bundle.id)
+    assert links == [result.accepted_link]
+    assert links[0].evidence_id == evidence.id
+    assert links[0].draft_part_id == "draft_part_customer_need"
+    assert links[0].source_span_ids == (span.id,)
+    assert links[0].warnings == evidence.source_warnings
+    assert result.duplicate is False
+
+    duplicate_result = accept_source_spans_to_evidence(
+        bundle,
+        source_span_ids=(span.id,),
+        reviewer_rationale="Reviewer clicked accept again.",
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+    )
+
+    assert duplicate_result.duplicate is True
+    assert duplicate_result.evidence.id == "ev_document_customer_need"
+    assert len(evidence_store.list()) == 1
+    assert intake_store.list_accepted_evidence_links(bundle_id=bundle.id) == links
 
 
 def test_create_document_intake_record_from_generic_upload() -> None:

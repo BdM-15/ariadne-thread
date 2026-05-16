@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 
 class DocumentIntakeStatus(StrEnum):
     READY_FOR_QUICK_CAPTURE = "ready_for_quick_capture"
     PARSER_REQUIRED = "parser_required"
+
+
+class DocumentIntakeQueueState(StrEnum):
+    ACTIVE = "active"
+    READY = "ready"
+    WAITING = "waiting"
 
 
 class DocumentIntakeContentType(StrEnum):
@@ -40,6 +47,93 @@ class UploadedSourceMaterial(BaseModel):
     text: str | None = None
     warnings: tuple[str, ...] = ()
     intake_candidate: DocumentIntakeCandidate | None = None
+
+
+class DocumentIntakeRecord(BaseModel):
+    id: str
+    source_ref: str
+    filename: str | None = None
+    mime_type: str | None = None
+    byte_size: int
+    content_type: DocumentIntakeContentType
+    status: DocumentIntakeStatus
+    queue_state: DocumentIntakeQueueState | None = None
+    opportunity_id: str | None = None
+    warnings: tuple[str, ...] = ()
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def derive_queue_state(self) -> DocumentIntakeRecord:
+        if self.queue_state is None:
+            self.queue_state = (
+                DocumentIntakeQueueState.WAITING
+                if self.status is DocumentIntakeStatus.PARSER_REQUIRED
+                else DocumentIntakeQueueState.READY
+            )
+        return self
+
+
+class DocumentIntakeStore:
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root)
+
+    def write(self, record: DocumentIntakeRecord) -> DocumentIntakeRecord:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._path(record.id).write_text(
+            record.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return record
+
+    def read(self, record_id: str) -> DocumentIntakeRecord:
+        return DocumentIntakeRecord.model_validate_json(
+            self._path(record_id).read_text(encoding="utf-8")
+        )
+
+    def list(
+        self,
+        *,
+        opportunity_id: str | None = None,
+        status: DocumentIntakeStatus | None = None,
+    ) -> list[DocumentIntakeRecord]:
+        if not self.root.exists():
+            return []
+        records = [
+            self.read(path.name.removesuffix(".json"))
+            for path in sorted(self.root.glob("*.json"))
+        ]
+        if opportunity_id is not None:
+            records = [
+                record for record in records if record.opportunity_id == opportunity_id
+            ]
+        if status is not None:
+            records = [record for record in records if record.status is status]
+        return records
+
+    def _path(self, record_id: str) -> Path:
+        if not record_id or record_id != Path(record_id).name:
+            raise ValueError("record_id must be a file-safe identifier")
+        return self.root / f"{record_id}.json"
+
+
+def create_document_intake_record(
+    source_material: UploadedSourceMaterial,
+    *,
+    opportunity_id: str | None = None,
+    record_id: str | None = None,
+) -> DocumentIntakeRecord:
+    return DocumentIntakeRecord(
+        id=record_id or source_material.source_ref.replace(":", "_"),
+        source_ref=source_material.source_ref,
+        filename=source_material.filename,
+        mime_type=source_material.mime_type,
+        byte_size=source_material.byte_size,
+        content_type=source_material.content_type,
+        status=source_material.status,
+        opportunity_id=opportunity_id,
+        warnings=source_material.warnings,
+    )
 
 
 _TEXT_EXTENSIONS = {".txt", ".text"}

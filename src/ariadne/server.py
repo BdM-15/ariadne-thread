@@ -18,11 +18,27 @@ from ariadne.draft_promotion import (
     promote_packet_implication_to_field_answer,
 )
 from ariadne.document_intake import (
+    AcceptedDocumentEvidenceLink,
+    AcceptedSourceSpanEvidenceResult,
+    DocumentIntakeAdapterDeclaration,
+    DocumentIntakeAdapterStatus,
+    DocumentIntakeCaptureCandidate,
     DocumentIntakeCandidate,
+    DocumentIntakeRecord,
     DocumentIntakeStatus,
+    DocumentIntakeStore,
+    KnowledgeNoteProjection,
+    UploadedSourceMaterial,
+    accept_source_spans_to_evidence,
     classify_uploaded_source_material,
+    create_capture_intelligence_draft_from_extraction_bundle,
+    create_document_intake_record,
+    create_generic_extraction_bundle,
+    create_knowledge_note_projection_from_accepted_evidence,
+    create_review_gated_capture_candidates_from_extraction_bundle,
+    list_document_intake_adapter_declarations,
 )
-from ariadne.evidence import LocalEvidenceStore
+from ariadne.evidence import EvidenceItem, LocalEvidenceStore
 from ariadne.local_admin_model import request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
@@ -104,6 +120,70 @@ class QuickCaptureUploadResponse(BaseModel):
     raw_item: RawCaptureItem | None = None
     review: CaptureReview | None = None
     intake_candidate: DocumentIntakeCandidate | None = None
+
+
+class DocumentIntakeUploadResponse(BaseModel):
+    record: DocumentIntakeRecord
+
+
+class DocumentIntakeQueueResponse(BaseModel):
+    records: tuple[DocumentIntakeRecord, ...]
+
+
+class DocumentIntakeExtractionDraftsResponse(BaseModel):
+    drafts: tuple[CaptureIntelligenceDraft, ...]
+
+
+class DocumentIntakeCaptureCandidatesResponse(BaseModel):
+    candidates: tuple[DocumentIntakeCaptureCandidate, ...]
+
+
+class DocumentIntakeCapabilitiesResponse(BaseModel):
+    capabilities: tuple[DocumentIntakeAdapterDeclaration, ...]
+    available_count: int
+    deferred_count: int
+    extraction_bundle_boundary: str = (
+        "Document Intake adapters must produce reviewable Extraction Bundles; "
+        "deferred declarations do not invoke external tools."
+    )
+
+
+class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
+    extraction_bundle_id: str
+    projection_id: str | None = None
+
+
+class DocumentIntakeKnowledgeNoteProjectionResponse(BaseModel):
+    projection: KnowledgeNoteProjection | None = None
+
+
+class DocumentIntakeKnowledgeNoteProjectionsResponse(BaseModel):
+    projections: tuple[KnowledgeNoteProjection, ...]
+
+
+class DocumentIntakeReviewDecisionRequest(BaseModel):
+    action: ReviewDecisionAction
+    extraction_bundle_id: str
+    source_span_ids: tuple[str, ...]
+    reviewer_rationale: str
+    draft_part_id: str | None = None
+    evidence_content: str | None = None
+    opportunity_id: str | None = None
+    evidence_id: str | None = None
+
+
+class DocumentIntakeReviewDecisionResponse(BaseModel):
+    evidence: EvidenceItem
+    accepted_link: AcceptedDocumentEvidenceLink
+    duplicate: bool = False
+    evidence_store_count: int
+
+
+class DocumentIntakeSourceMaterialRequest(BaseModel):
+    content: str
+    filename: str | None = None
+    mime_type: str | None = None
+    opportunity_id: str | None = None
 
 
 class CaptureReviewDecisionRequest(BaseModel):
@@ -188,6 +268,188 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     @app.get("/api/capabilities/catalog")
     def capability_catalog() -> CapabilityCatalog:
         return discover_local_capability_catalog(Path.cwd())
+
+    @app.get("/api/document-intake/capabilities")
+    def document_intake_capabilities() -> DocumentIntakeCapabilitiesResponse:
+        capabilities = list_document_intake_adapter_declarations()
+        return DocumentIntakeCapabilitiesResponse(
+            capabilities=capabilities,
+            available_count=sum(
+                capability.status is DocumentIntakeAdapterStatus.AVAILABLE
+                for capability in capabilities
+            ),
+            deferred_count=sum(
+                capability.status is DocumentIntakeAdapterStatus.DEFERRED
+                for capability in capabilities
+            ),
+        )
+
+    @app.get("/api/document-intake/queue")
+    def document_intake_queue() -> DocumentIntakeQueueResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeQueueResponse(records=tuple(store.list()))
+
+    @app.get("/api/document-intake/extraction-drafts")
+    def document_intake_extraction_drafts() -> DocumentIntakeExtractionDraftsResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeExtractionDraftsResponse(
+            drafts=tuple(
+                create_capture_intelligence_draft_from_extraction_bundle(bundle)
+                for bundle in store.list_extraction_bundles()
+            )
+        )
+
+    @app.get("/api/document-intake/capture-candidates")
+    def document_intake_capture_candidates() -> DocumentIntakeCaptureCandidatesResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeCaptureCandidatesResponse(
+            candidates=tuple(store.list_capture_candidates())
+        )
+
+    @app.get("/api/document-intake/knowledge-note-projections")
+    def document_intake_knowledge_note_projections(
+        bundle_id: str | None = None,
+        intake_record_id: str | None = None,
+        evidence_id: str | None = None,
+    ) -> DocumentIntakeKnowledgeNoteProjectionsResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeKnowledgeNoteProjectionsResponse(
+            projections=tuple(
+                store.list_knowledge_note_projections(
+                    bundle_id=bundle_id,
+                    intake_record_id=intake_record_id,
+                    evidence_id=evidence_id,
+                )
+            )
+        )
+
+    @app.post("/api/document-intake/knowledge-note-projections")
+    def generate_document_intake_knowledge_note_projection(
+        request: DocumentIntakeKnowledgeNoteProjectionRequest,
+    ) -> DocumentIntakeKnowledgeNoteProjectionResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        evidence_store = LocalEvidenceStore(
+            _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
+        )
+        try:
+            bundle = store.read_extraction_bundle(request.extraction_bundle_id)
+            projection = create_knowledge_note_projection_from_accepted_evidence(
+                bundle,
+                intake_store=store,
+                evidence_store=evidence_store,
+                projection_id=request.projection_id,
+            )
+            if projection is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="accepted document evidence is required before projection",
+                )
+            store.write_knowledge_note_projection(projection)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="extraction bundle not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return DocumentIntakeKnowledgeNoteProjectionResponse(projection=projection)
+
+    @app.post("/api/document-intake/review-decisions")
+    def document_intake_review_decision(
+        request: DocumentIntakeReviewDecisionRequest,
+    ) -> DocumentIntakeReviewDecisionResponse:
+        if request.action is not ReviewDecisionAction.ACCEPT_EVIDENCE:
+            raise HTTPException(
+                status_code=400,
+                detail="document intake currently supports accept_evidence only",
+            )
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        evidence_store = LocalEvidenceStore(
+            _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
+        )
+        try:
+            bundle = store.read_extraction_bundle(request.extraction_bundle_id)
+            result = accept_source_spans_to_evidence(
+                bundle,
+                source_span_ids=request.source_span_ids,
+                reviewer_rationale=request.reviewer_rationale,
+                intake_store=store,
+                evidence_store=evidence_store,
+                draft_part_id=request.draft_part_id,
+                evidence_content=request.evidence_content,
+                opportunity_id=request.opportunity_id,
+                evidence_id=request.evidence_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="extraction bundle not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        return _document_intake_review_response(result, evidence_store)
+
+    @app.post("/api/document-intake/uploads")
+    async def document_intake_upload(
+        file: UploadFile = File(...),
+        opportunity_id: str | None = Form(default=None),
+    ) -> DocumentIntakeUploadResponse:
+        source_material = classify_uploaded_source_material(
+            filename=file.filename,
+            mime_type=file.content_type,
+            content=await file.read(),
+        )
+        record = create_document_intake_record(
+            source_material,
+            opportunity_id=opportunity_id,
+        )
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeUploadResponse(
+            record=_write_intake_record_and_generic_bundle(
+                store,
+                record,
+                source_material,
+            )
+        )
+
+    @app.post("/api/document-intake/source-material")
+    def document_intake_source_material(
+        request: DocumentIntakeSourceMaterialRequest,
+    ) -> DocumentIntakeUploadResponse:
+        if not request.content.strip():
+            raise HTTPException(status_code=400, detail="source material is empty")
+        source_material = classify_uploaded_source_material(
+            filename=request.filename,
+            mime_type=request.mime_type,
+            content=request.content.encode("utf-8"),
+        )
+        record = create_document_intake_record(
+            source_material,
+            opportunity_id=request.opportunity_id,
+        )
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeUploadResponse(
+            record=_write_intake_record_and_generic_bundle(
+                store,
+                record,
+                source_material,
+            )
+        )
 
     @app.post("/api/quick-capture/reference-influences")
     def quick_capture_reference_influences(
@@ -393,7 +655,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                     evidence_ids=request.evidence_ids,
                     confidence=request.confidence,
                 )
-                return CapturePromotionResponse(review=review, packet_answer=packet_answer)
+                return CapturePromotionResponse(
+                    review=review, packet_answer=packet_answer
+                )
 
             decision = discard_draft_part_promotion(
                 review,
@@ -415,6 +679,35 @@ def _resolve_runtime_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _write_intake_record_and_generic_bundle(
+    store: DocumentIntakeStore,
+    record: DocumentIntakeRecord,
+    source_material: UploadedSourceMaterial,
+) -> DocumentIntakeRecord:
+    persisted_record = store.write(record)
+    if source_material.text is None:
+        return persisted_record
+    bundle = create_generic_extraction_bundle(persisted_record, source_material)
+    store.write_extraction_bundle(bundle)
+    for candidate in create_review_gated_capture_candidates_from_extraction_bundle(
+        bundle
+    ):
+        store.write_capture_candidate(candidate)
+    return store.write(persisted_record.with_extraction_bundle(bundle))
+
+
+def _document_intake_review_response(
+    result: AcceptedSourceSpanEvidenceResult,
+    evidence_store: LocalEvidenceStore,
+) -> DocumentIntakeReviewDecisionResponse:
+    return DocumentIntakeReviewDecisionResponse(
+        evidence=result.evidence,
+        accepted_link=result.accepted_link,
+        duplicate=result.duplicate,
+        evidence_store_count=len(evidence_store.list()),
+    )
 
 
 def _local_admin_model_assist(content: str, settings: RuntimeSettings):

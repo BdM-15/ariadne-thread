@@ -1,4 +1,5 @@
 from ariadne.config import RuntimeSettings
+from ariadne.document_intake import DocumentIntakeStore
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.local_admin_model import (
     LocalAdminDraftAssist,
@@ -72,7 +73,9 @@ Follow-up actions after customer calls should become capture-plan inputs.
     assert body["influences"][0]["influence_type"] == "capture_methodology"
 
 
-def test_quick_capture_intelligence_draft_api_returns_reviewable_draft(tmp_path) -> None:
+def test_quick_capture_intelligence_draft_api_returns_reviewable_draft(
+    tmp_path,
+) -> None:
     wiki_root = tmp_path / "knowledge"
     _write_reference_note(
         wiki_root / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
@@ -159,7 +162,9 @@ def test_quick_capture_upload_api_processes_markdown_as_raw_capture_material() -
     assert body["intake_candidate"] is None
 
 
-def test_quick_capture_upload_api_records_unsupported_document_intake_candidate() -> None:
+def test_quick_capture_upload_api_records_unsupported_document_intake_candidate() -> (
+    None
+):
     from fastapi.testclient import TestClient
 
     response = TestClient(create_app()).post(
@@ -176,7 +181,460 @@ def test_quick_capture_upload_api_records_unsupported_document_intake_candidate(
     assert body["intake_candidate"]["status"] == "parser_required"
 
 
-def test_quick_capture_draft_api_does_not_write_evidence_before_review(tmp_path) -> None:
+def test_document_intake_upload_api_persists_generic_source_material(tmp_path) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"# Brief\n\nCustomer says transition proof needs follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert upload_response.status_code == 200
+    uploaded = upload_response.json()["record"]
+    assert uploaded["filename"] == "customer-brief.md"
+    assert uploaded["content_type"] == "markdown"
+    assert uploaded["status"] == "ready_for_quick_capture"
+    assert uploaded["queue_state"] == "ready"
+    assert uploaded["opportunity_id"] == "opp-aflcmc-recompete"
+
+    queue_response = client.get("/api/document-intake/queue")
+    assert queue_response.status_code == 200
+    queue = queue_response.json()["records"]
+    assert [record["id"] for record in queue] == [uploaded["id"]]
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_document_intake_upload_api_creates_extraction_bundle_for_generic_material(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"# Brief\n\nCustomer needs transition proof.\nRisk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    record = response.json()["record"]
+    assert record["extraction_bundle_id"] is not None
+    assert record["extraction_status"] == "complete"
+    assert record["extraction_review_status"] == "pending_review"
+    assert record["extraction_warning_count"] == 0
+
+    store = DocumentIntakeStore(intake_root)
+    bundle = store.read_extraction_bundle(record["extraction_bundle_id"])
+    assert bundle.document_id == record["id"]
+    assert bundle.source_ref == record["source_ref"]
+    assert bundle.parser_provenance.adapter_name == "ariadne.generic_text_extractor"
+    assert bundle.source_spans
+    assert bundle.entity_candidates
+    assert bundle.relationship_candidates
+
+    queue_record = client.get("/api/document-intake/queue").json()["records"][0]
+    assert queue_record["extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert queue_record["extraction_review_status"] == "pending_review"
+
+
+def test_document_intake_runtime_lists_document_derived_draft_parts(tmp_path) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+
+    response = client.get("/api/document-intake/extraction-drafts")
+
+    assert response.status_code == 200
+    drafts = response.json()["drafts"]
+    assert len(drafts) == 1
+    draft = drafts[0]
+    assert draft["raw_item_id"] == record["id"]
+    assert draft["extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert draft["extraction_document_id"] == record["id"]
+    assert draft["trusted_opportunity_knowledge_updated"] is False
+    assert draft["intelligence_pieces"]
+    first_piece = draft["intelligence_pieces"][0]
+    assert first_piece["source_intake_record_id"] == record["id"]
+    assert first_piece["source_extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert first_piece["source_span_ids"]
+    assert first_piece["recommended_route"]
+    assert first_piece["suggested_skill_chain"]
+    assert first_piece["review_required"] is True
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_document_intake_review_decision_api_accepts_spans_as_evidence(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+    response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["duplicate"] is False
+    assert body["evidence_store_count"] == 1
+    assert body["evidence"]["source_intake_record_id"] == record["id"]
+    assert (
+        body["evidence"]["source_extraction_bundle_id"]
+        == (record["extraction_bundle_id"])
+    )
+    assert body["evidence"]["source_span_ids"] == draft_part["source_span_ids"]
+    assert body["evidence"]["parser_adapter"] == "ariadne.generic_text_extractor"
+    assert body["evidence"]["source_confidence"] is not None
+    assert "Reviewer accepted source span" in body["evidence"]["rationale"][0]
+    assert body["accepted_link"]["draft_part_id"] == draft_part["id"]
+    assert body["accepted_link"]["evidence_id"] == body["evidence"]["id"]
+
+    duplicate_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "reviewer_rationale": "Reviewer clicked accept again.",
+        },
+    )
+
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.json()["duplicate"] is True
+    assert duplicate_response.json()["evidence_store_count"] == 1
+    assert len(DocumentIntakeStore(intake_root).list_accepted_evidence_links()) == 1
+
+
+def test_document_intake_runtime_generates_knowledge_note_projection(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+    accept_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+
+    generate_response = client.post(
+        "/api/document-intake/knowledge-note-projections",
+        json={"extraction_bundle_id": record["extraction_bundle_id"]},
+    )
+
+    assert accept_response.status_code == 200
+    assert generate_response.status_code == 200
+    projection = generate_response.json()["projection"]
+    assert projection["title"] == "Knowledge Note Projection: customer-brief.md"
+    assert projection["source_intake_record_id"] == record["id"]
+    assert projection["source_extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert projection["evidence_ids"] == [accept_response.json()["evidence"]["id"]]
+    assert projection["is_source_of_truth"] is False
+    assert projection["can_overwrite_structured_knowledge"] is False
+    assert (
+        "Structured Ariadne records remain the source of truth."
+        in (projection["markdown_content"])
+    )
+
+    list_response = client.get(
+        "/api/document-intake/knowledge-note-projections",
+        params={"intake_record_id": record["id"]},
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()["projections"] == [projection]
+    assert DocumentIntakeStore(intake_root).list_knowledge_note_projections(
+        intake_record_id=record["id"]
+    )
+
+
+def test_document_intake_runtime_reports_adapter_capabilities() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/api/document-intake/capabilities")
+
+    assert response.status_code == 200
+    body = response.json()
+    capabilities = body["capabilities"]
+    by_id = {capability["id"]: capability for capability in capabilities}
+    assert body["available_count"] == 1
+    assert body["deferred_count"] >= 6
+    assert by_id["ariadne.generic_text_extractor"]["status"] == "available"
+    assert by_id["ariadne.generic_text_extractor"]["expected_output_contract"] == (
+        "ExtractionBundle"
+    )
+    assert by_id["project_theseus.solicitation_parser"]["status"] == "deferred"
+    assert (
+        "solicitation_document"
+        in by_id["project_theseus.solicitation_parser"]["supported_material_types"]
+    )
+    assert by_id["opendatalab.mineru"]["status"] == "deferred"
+    assert by_id["hkuds.raganything"]["adapter_kind"] == "retrieval"
+    assert by_id["hkuds.lightrag"]["adapter_kind"] == "retrieval"
+    assert all(
+        capability["external_tool_invocation_allowed"] is False
+        for capability in capabilities
+    )
+
+
+def test_document_intake_runtime_lists_review_gated_capture_candidates(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                (
+                    b"Customer needs transition proof and PM follow up.\n"
+                    b"Response-time risk could affect the recompete.\n"
+                    b"Decision maker expects a customer meeting before the next milestone."
+                ),
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+
+    response = client.get("/api/document-intake/capture-candidates")
+
+    assert response.status_code == 200
+    candidates = response.json()["candidates"]
+    candidate_types = {candidate["candidate_type"] for candidate in candidates}
+    assert candidate_types >= {
+        "action_plan_item",
+        "packet_field_answer",
+        "risk_register_item",
+        "call_plan_signal",
+    }
+    risk_candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate["candidate_type"] == "risk_register_item"
+    )
+    assert risk_candidate["review_state"] == "pending_review"
+    assert risk_candidate["trusted_output_written"] is False
+    assert risk_candidate["target_workflow"] == "risk_register"
+    assert risk_candidate["source_intake_record_id"] == record["id"]
+    assert (
+        risk_candidate["source_extraction_bundle_id"]
+        == (record["extraction_bundle_id"])
+    )
+    assert risk_candidate["source_draft_part_id"].startswith(
+        f"draft_{record['extraction_bundle_id']}_"
+    )
+    assert risk_candidate["source_span_ids"]
+    assert risk_candidate["recommendation"]
+    assert risk_candidate["rationale"]
+    assert LocalEvidenceStore(evidence_root).list() == []
+    assert len(DocumentIntakeStore(intake_root).list_capture_candidates()) == len(
+        candidates
+    )
+
+
+def test_document_intake_source_material_api_registers_generic_text(tmp_path) -> None:
+    intake_root = tmp_path / "document-intake"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/document-intake/source-material",
+        json={
+            "content": "Customer says response-time proof needs follow up.",
+            "filename": "customer-note.txt",
+            "mime_type": "text/plain",
+            "opportunity_id": "opp-aflcmc-recompete",
+        },
+    )
+
+    assert response.status_code == 200
+    record = response.json()["record"]
+    assert record["filename"] == "customer-note.txt"
+    assert record["content_type"] == "text"
+    assert record["status"] == "ready_for_quick_capture"
+    assert record["queue_state"] == "ready"
+    assert record["extraction_status"] == "complete"
+    assert record["extraction_review_status"] == "pending_review"
+
+    queue = client.get("/api/document-intake/queue").json()["records"]
+    assert queue == [record]
+
+
+def test_document_intake_upload_api_persists_deferred_material_buckets(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    uploads = [
+        ("whiteboard-photo.png", b"\x89PNG\r\n\x1a\n", "image/png"),
+        ("draft-rfp-amendment-001.pdf", b"%PDF-1.4\n...", "application/pdf"),
+        ("mystery.bundle", b"\x00\x01\x02", "application/octet-stream"),
+    ]
+    for filename, content, mime_type in uploads:
+        response = client.post(
+            "/api/document-intake/uploads",
+            files={"file": (filename, content, mime_type)},
+        )
+        assert response.status_code == 200
+
+    records = client.get("/api/document-intake/queue").json()["records"]
+    by_filename = {record["filename"]: record for record in records}
+
+    assert by_filename["whiteboard-photo.png"]["material_type"] == (
+        "visual_source_material"
+    )
+    assert (
+        "multimodal" in by_filename["whiteboard-photo.png"]["capability_hint"].lower()
+    )
+    assert by_filename["draft-rfp-amendment-001.pdf"]["material_type"] == (
+        "solicitation_document"
+    )
+    assert (
+        "solicitation parser"
+        in by_filename["draft-rfp-amendment-001.pdf"]["capability_hint"].lower()
+    )
+    assert by_filename["mystery.bundle"]["material_type"] == "unsupported_document"
+    assert (
+        "readability adapter"
+        in by_filename["mystery.bundle"]["capability_hint"].lower()
+    )
+    assert {record["queue_state"] for record in records} == {"waiting"}
+
+
+def test_quick_capture_draft_api_does_not_write_evidence_before_review(
+    tmp_path,
+) -> None:
     evidence_root = tmp_path / "evidence"
     settings = RuntimeSettings.from_mapping(
         {"ARIADNE_EVIDENCE_DIR": str(evidence_root)}
@@ -228,9 +686,7 @@ def test_quick_capture_review_decision_api_writes_evidence_after_acceptance(
     assert body["decision"]["evidence"]["content"] != (
         "Customer says incumbent response times are weak."
     )
-    assert body["decision"]["evidence"]["content"].startswith(
-        "Interpreted signal:"
-    )
+    assert body["decision"]["evidence"]["content"].startswith("Interpreted signal:")
     assert body["evidence_store_count"] == 1
     assert len(LocalEvidenceStore(evidence_root).list()) == 1
 
@@ -438,7 +894,10 @@ def test_root_serves_command_center_shell() -> None:
     assert "raw_demo_rushed_capture_note" in response.text
     assert "Draft Rationale" in response.text
     assert "Reviewer accepted rushed customer note as source evidence" in response.text
-    assert "Reviewer discarded discriminator claim until proof points exist" in response.text
+    assert (
+        "Reviewer discarded discriminator claim until proof points exist"
+        in response.text
+    )
     assert "Review Status: accepted" in response.text
     assert "Per-Piece Intelligence Review" in response.text
     assert "Text / Markdown Upload" in response.text
@@ -459,6 +918,306 @@ def test_root_serves_command_center_shell() -> None:
     assert "AFLCMC recompete support" in response.text
     assert "Need validated customer pain" in response.text
     assert "http://127.0.0.1:9622" in response.text
+
+
+def test_command_center_shell_shows_persisted_document_intake_queue(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/source-material",
+        json={
+            "content": "Customer says transition proof needs follow up.",
+            "filename": "customer-queue-note.txt",
+            "mime_type": "text/plain",
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Document Intake Queue" in response.text
+    assert "customer-queue-note.txt" in response.text
+    assert "Queue: Ready" in response.text
+    assert "Ready For Quick Capture" in response.text
+    assert "Backed by persisted intake records" in response.text
+
+
+def test_command_center_shell_shows_extraction_bundle_queue_status(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Extraction: Complete" in response.text
+    assert "Review: Pending Review" in response.text
+    assert "Review needed" in response.text
+    assert "Extraction warnings: 0" in response.text
+
+
+def test_command_center_shell_shows_document_derived_draft_parts(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Document-Derived Draft Parts" in response.text
+    assert "Document extraction flags risk candidate" in response.text
+    assert "Source spans:" in response.text
+    assert "Recommendation:" in response.text
+    assert "Document Bundle:" in response.text
+    assert "Trusted writes still require reviewer action" in response.text
+
+
+def test_command_center_shell_shows_document_intake_accepted_evidence_status(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+            "ARIADNE_EVIDENCE_DIR": str(tmp_path / "evidence"),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+    accept_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+
+    response = client.get("/")
+
+    assert accept_response.status_code == 200
+    assert response.status_code == 200
+    assert "Accepted Evidence: 1" in response.text
+    assert "Evidence accepted" in response.text
+    assert accept_response.json()["evidence"]["id"] in response.text
+    assert "Reviewer accepted source span as trusted evidence." in response.text
+
+
+def test_command_center_shell_shows_review_gated_capture_candidates(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                (
+                    b"Customer needs transition proof and PM follow up.\n"
+                    b"Response-time risk could affect the recompete.\n"
+                    b"Decision maker expects a customer meeting before the next milestone."
+                ),
+                "text/markdown",
+            )
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Review-Gated Capture Candidates" in response.text
+    assert "Suggested next actions" in response.text
+    assert "Capture Action Plan" in response.text
+    assert "Living Briefing Packet" in response.text
+    assert "Risk Register" in response.text
+    assert "Call Plan" in response.text
+    assert "Review Candidate" in response.text
+    assert "Route Candidate" in response.text
+    assert "Ignore Candidate" in response.text
+    assert "Trusted outputs still require acceptance" in response.text
+
+
+def test_command_center_shell_shows_knowledge_note_projections(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+            "ARIADNE_EVIDENCE_DIR": str(tmp_path / "evidence"),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+    accept_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+    projection_response = client.post(
+        "/api/document-intake/knowledge-note-projections",
+        json={"extraction_bundle_id": record["extraction_bundle_id"]},
+    )
+
+    response = client.get("/")
+
+    assert accept_response.status_code == 200
+    assert projection_response.status_code == 200
+    assert response.status_code == 200
+    assert "Knowledge Note Projections" in response.text
+    assert "Human-readable one-way notes" in response.text
+    assert "Knowledge Note Projection: customer-brief.md" in response.text
+    assert accept_response.json()["evidence"]["id"] in response.text
+    assert "Structured Ariadne records remain source of truth" in response.text
+    assert "Open Markdown Projection" in response.text
+    assert "Cannot overwrite structured knowledge" in response.text
+
+
+def test_command_center_shell_shows_document_intake_adapter_hooks() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.status_code == 200
+    assert "Document Intake Capabilities" in response.text
+    assert "Ariadne Generic Text Extractor" in response.text
+    assert "Project Theseus Solicitation Parser Hook" in response.text
+    assert "MinerU Layout Extraction Hook" in response.text
+    assert "RAGAnything Retrieval Hook" in response.text
+    assert "LightRAG Knowledge Layer Hook" in response.text
+    assert "Deferred hooks do not invoke external tools" in response.text
+    assert "ExtractionBundle boundary" in response.text
+    assert "/api/document-intake/capabilities" in response.text
+
+
+def test_command_center_shell_shows_document_intake_demo_thread() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.status_code == 200
+    assert "Document Intake Demo Thread" in response.text
+    assert "customer-capture-brief.md" in response.text
+    assert "Classification: Ready For Quick Capture - Generic Source Material" in (
+        response.text
+    )
+    assert "Extraction Bundle: Complete - Pending Review" in response.text
+    assert "Source spans:" in response.text
+    assert "Extraction warnings: 0" in response.text
+    assert "Document extraction flags risk candidate" in response.text
+    assert "Skill-chain options" in response.text
+    assert "Accepted source-span evidence" in response.text
+    assert "ev_demo_document_transition_risk" in response.text
+    assert "Review-gated next actions" in response.text
+    assert "Capture Action Plan" in response.text
+    assert "Living Briefing Packet" in response.text
+    assert "Risk Register" in response.text
+    assert "Call Plan" in response.text
+    assert "Knowledge Note Projection: customer-capture-brief.md" in response.text
+    assert "Open Markdown Projection" in response.text
+
+
+def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    for filename, content, mime_type in (
+        ("whiteboard-photo.png", b"\x89PNG\r\n\x1a\n", "image/png"),
+        ("draft-rfp-amendment-001.pdf", b"%PDF-1.4\n...", "application/pdf"),
+        ("mystery.bundle", b"\x00\x01\x02", "application/octet-stream"),
+    ):
+        client.post(
+            "/api/document-intake/uploads",
+            files={"file": (filename, content, mime_type)},
+        )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Visual Source Material" in response.text
+    assert "OCR and multimodal extraction remain deferred" in response.text
+    assert "Solicitation Document" in response.text
+    assert "Solicitation Parser Capability" in response.text
+    assert "Unsupported Document" in response.text
+    assert "Parser or readability adapter required" in response.text
 
 
 def test_packet_review_page_serves_deck_shaped_packet_workspace() -> None:

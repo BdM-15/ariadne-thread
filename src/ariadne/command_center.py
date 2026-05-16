@@ -5,11 +5,26 @@ from pathlib import Path
 
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
+from ariadne.document_intake import (
+    AcceptedDocumentEvidenceLink,
+    DocumentIntakeAdapterDeclaration,
+    DocumentIntakeCaptureCandidate,
+    DocumentIntakeRecord,
+    DocumentIntakeStore,
+    ExtractionBundleReviewStatus,
+    KnowledgeNoteProjection,
+    create_capture_intelligence_draft_from_extraction_bundle,
+    list_document_intake_adapter_declarations,
+)
 from ariadne.packets import (
     CanonicalPacketSection,
     EvidenceStatus,
 )
-from ariadne.quick_capture_demo import build_quick_capture_demo_thread
+from ariadne.quick_capture import CaptureIntelligenceDraft
+from ariadne.quick_capture_demo import (
+    DocumentIntakeDemoThread,
+    build_quick_capture_demo_thread,
+)
 from ariadne.reference_wiki import ReferenceWikiInfluence
 
 
@@ -29,6 +44,27 @@ def render_command_center_shell(
     uploaded_capture = demo.uploaded_capture
     uploaded_review = demo.uploaded_review
     unsupported_upload = demo.unsupported_upload
+    document_intake_demo = demo.document_intake
+    document_intake_store = DocumentIntakeStore(
+        _resolve_runtime_path(root, settings.ariadne_document_intake_dir)
+    )
+    document_intake_records = [
+        document_intake_demo.record
+    ] + document_intake_store.list()
+    accepted_document_evidence_links = [
+        document_intake_demo.accepted_evidence.accepted_link
+    ] + document_intake_store.list_accepted_evidence_links()
+    document_intake_drafts = [document_intake_demo.draft] + [
+        create_capture_intelligence_draft_from_extraction_bundle(bundle)
+        for bundle in document_intake_store.list_extraction_bundles()
+    ]
+    document_intake_capture_candidates = list(document_intake_demo.candidates) + (
+        document_intake_store.list_capture_candidates()
+    )
+    document_intake_knowledge_note_projections = [
+        document_intake_demo.projection
+    ] + document_intake_store.list_knowledge_note_projections()
+    document_intake_adapter_declarations = list_document_intake_adapter_declarations()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -244,6 +280,7 @@ def render_command_center_shell(
     .action-button.secondary {{ border-color: rgba(251, 191, 36, 0.7); background: rgba(251, 191, 36, 0.12); color: var(--amber); }}
     .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
     .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+    .action-button[disabled] {{ cursor: not-allowed; opacity: 0.72; }}
     .upload-form {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) auto;
@@ -294,6 +331,7 @@ def render_command_center_shell(
       <nav class="nav" aria-label="First-slice surfaces">
         <a href="#opportunity">Opportunity <small>active</small></a>
         <a href="#quick-capture">Quick Capture <small>review</small></a>
+        <a href="#document-intake">Document Intake <small>{len(document_intake_records)}</small></a>
         <a href="/packets/review">Living Briefing Packet <small>deck</small></a>
         <a href="#action-plan">Capture Action Plan <small>{len(action_view.items)}</small></a>
       </nav>
@@ -320,6 +358,12 @@ def render_command_center_shell(
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
+        {_render_document_intake_demo_thread_panel(document_intake_demo)}
+        {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
+        {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
+        {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
+        {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
+        {_render_knowledge_note_projections_panel(document_intake_knowledge_note_projections)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
@@ -330,6 +374,12 @@ def render_command_center_shell(
   </div>
 </body>
 </html>"""
+
+
+def _resolve_runtime_path(workspace_root: Path, path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return workspace_root / path
 
 
 def _render_metrics(
@@ -391,14 +441,14 @@ def _render_quick_capture_panel(
         else "Parser Required"
     )
     candidate_reason = (
-      intake_candidate.reason
-      if intake_candidate is not None
-      else "Unsupported file requires future Document Intake."
+        intake_candidate.reason
+        if intake_candidate is not None
+        else "Unsupported file requires future Document Intake."
     )
     candidate_hint = (
-      intake_candidate.parser_hint
-      if intake_candidate is not None
-      else "Parser required before Quick Capture can trust this source."
+        intake_candidate.parser_hint
+        if intake_candidate is not None
+        else "Parser required before Quick Capture can trust this source."
     )
     return f"""<section class="panel" id="quick-capture" aria-labelledby="quick-capture-heading">
       <div class="panel-heading"><h2 id="quick-capture-heading">Quick Capture</h2><span class="status-chip amber">Needs Review</span></div>
@@ -417,6 +467,294 @@ def _render_quick_capture_panel(
         {influence_rows}
       </div>
     </section>"""
+
+
+def _render_document_intake_queue_panel(
+    records: list[DocumentIntakeRecord],
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> str:
+    if records:
+        rows = "".join(
+            _render_document_intake_record_row(record, accepted_links)
+            for record in records
+        )
+    else:
+        rows = """<div class="row"><strong>No persisted intake records</strong><span>Upload or register source material to start Document Intake.</span></div>"""
+
+    return f"""<section class="panel" id="document-intake" aria-labelledby="document-intake-heading">
+      <div class="panel-heading"><h2 id="document-intake-heading">Document Intake Queue</h2><span class="status-chip cyan">{len(records)} persisted</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Backed by persisted intake records</strong><span>Queue state survives runtime restarts and stays separate from trusted evidence.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_record_row(
+    record: DocumentIntakeRecord,
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> str:
+    filename = record.filename or record.source_ref
+    status = record.status.value.replace("_", " ").title()
+    queue_state = record.queue_state.value.title() if record.queue_state else "Ready"
+    material_type = (
+        record.material_type.value.replace("_", " ").title()
+        if record.material_type
+        else "Generic Source Material"
+    )
+    content_type = record.content_type.value.replace("_", " ").title()
+    extraction_status = (
+        record.extraction_status.value.replace("_", " ").title()
+        if record.extraction_status
+        else "Not Started"
+    )
+    review_status = (
+        record.extraction_review_status.value.replace("_", " ").title()
+        if record.extraction_review_status
+        else "Not Ready"
+    )
+    review_need = (
+        "Review needed"
+        if record.extraction_review_status
+        in {
+            ExtractionBundleReviewStatus.PENDING_REVIEW,
+            ExtractionBundleReviewStatus.IN_REVIEW,
+        }
+        else "No extraction review queued"
+    )
+    opportunity = record.opportunity_id or "unassigned"
+    warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
+    accepted_count = sum(link.intake_record_id == record.id for link in accepted_links)
+    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count} - Accepted Evidence: {accepted_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+
+
+def _render_document_intake_demo_thread_panel(
+    document_thread: DocumentIntakeDemoThread,
+) -> str:
+    source_material = document_thread.source_material
+    record = document_thread.record
+    bundle = document_thread.bundle
+    draft = document_thread.draft
+    accepted_result = document_thread.accepted_evidence
+    projection = document_thread.projection
+    first_piece = draft.intelligence_pieces[0]
+    skill_chain = " -> ".join(first_piece.suggested_skill_chain)
+    workflow_labels = _demo_capture_candidate_workflow_labels(
+        document_thread.candidates
+    )
+    classification = (
+        f"Classification: {source_material.status.value.replace('_', ' ').title()} - "
+        f"{record.material_type.value.replace('_', ' ').title()}"
+    )
+    extraction_state = (
+        f"Extraction Bundle: {bundle.extraction_status.value.replace('_', ' ').title()} - "
+        f"{bundle.review_status.value.replace('_', ' ').title()}"
+    )
+    projection_href = (
+        "/api/document-intake/knowledge-note-projections?bundle_id="
+        f"{projection.source_extraction_bundle_id}"
+    )
+    return f"""<section class="panel" id="document-intake-demo-thread" aria-labelledby="document-intake-demo-thread-heading">
+      <div class="panel-heading"><h2 id="document-intake-demo-thread-heading">Document Intake Demo Thread</h2><span class="status-chip green">Real behavior path</span></div>
+      <div class="row-list">
+      <div class="row"><strong>{escape(source_material.filename or record.source_ref)}</strong><span>{escape(classification)}</span><span>{escape(source_material.capability_hint or record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span></div>
+      <div class="row"><strong>{escape(extraction_state)}</strong><span>Source spans: {len(bundle.source_spans)} - Entity candidates: {len(bundle.entity_candidates)} - Relationship candidates: {len(bundle.relationship_candidates)}</span><span>Extraction warnings: {len(bundle.warnings)}</span><span>Parser provenance: {escape(bundle.parser_provenance.adapter_name)} {escape(bundle.parser_provenance.adapter_version)}</span></div>
+      <div class="row"><strong>Recommended document-derived action</strong><span>{escape(first_piece.content)}</span><span>Recommended Route: {escape(first_piece.recommended_route.replace("_", " "))}</span><span>Skill-chain options: {escape(skill_chain or "needs capability match")}</span><span>{escape(first_piece.recommendation or "Review before promotion.")}</span></div>
+      <div class="row"><strong>Accepted source-span evidence</strong><span>{escape(accepted_result.evidence.content)}</span><span>Evidence: {escape(accepted_result.evidence.id)} - Accepted link: {escape(accepted_result.accepted_link.id)}</span><span>Reviewer rationale: {escape(accepted_result.accepted_link.reviewer_rationale)}</span></div>
+      <div class="row"><strong>Review-gated next actions</strong><span>{escape(workflow_labels)}</span><span>Document-derived candidates stay review-gated until the user accepts, routes, or discards them.</span><div class="action-strip" aria-label="Document Intake demo actions"><button class="action-button" type="button">Review Candidate</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button secondary" type="button">Route Candidate</button><button class="action-button danger" type="button">Discard Candidate</button></div></div>
+      <div class="row"><strong>{escape(projection.title)}</strong><span>{escape(projection.summary)}</span><span>Structured Ariadne records remain source of truth.</span><div class="action-strip" aria-label="Document Intake demo projection actions"><a class="action-button" href="{escape(projection_href)}">Open Markdown Projection</a><button class="action-button secondary" type="button" disabled>Cannot overwrite structured knowledge</button></div></div>
+      </div>
+    </section>"""
+
+
+def _demo_capture_candidate_workflow_labels(
+    candidates: tuple[DocumentIntakeCaptureCandidate, ...],
+) -> str:
+    labels: list[str] = []
+    for candidate in candidates:
+        label = _capture_candidate_workflow_label(candidate.target_workflow)
+        if label not in labels:
+            labels.append(label)
+    return ", ".join(labels)
+
+
+def _render_document_intake_capabilities_panel(
+    declarations: tuple[DocumentIntakeAdapterDeclaration, ...],
+) -> str:
+    deferred_count = sum(
+        declaration.status.value == "deferred" for declaration in declarations
+    )
+    rows = "".join(
+        _render_document_intake_capability_row(declaration)
+        for declaration in declarations
+    )
+    return f"""<section class="panel" id="document-intake-capabilities" aria-labelledby="document-intake-capabilities-heading">
+      <div class="panel-heading"><h2 id="document-intake-capabilities-heading">Document Intake Capabilities</h2><span class="status-chip amber">{deferred_count} deferred</span></div>
+      <div class="row-list">
+        <div class="row"><strong>ExtractionBundle boundary</strong><span>Future parser and retrieval hooks must produce reviewable Extraction Bundles before anything becomes trusted knowledge.</span><span>Deferred hooks do not invoke external tools.</span><a class="action-button secondary" href="/api/document-intake/capabilities">Open capability report</a></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_capability_row(
+    declaration: DocumentIntakeAdapterDeclaration,
+) -> str:
+    material_types = ", ".join(
+        material_type.value.replace("_", " ").title()
+        for material_type in declaration.supported_material_types
+    )
+    status = declaration.status.value.replace("_", " ").title()
+    adapter_kind = declaration.adapter_kind.value.replace("_", " ").title()
+    deferred_reason = declaration.deferred_reason or "available for current intake"
+    return f"""<div class="row"><strong>{escape(declaration.name)}</strong><span>{escape(status)} - {escape(adapter_kind)} - {escape(material_types)}</span><span>Output contract: {escape(declaration.expected_output_contract)} with parser provenance fields.</span><span>{escape(declaration.capability_hint)}</span><span>{escape(deferred_reason)}</span></div>"""
+
+
+def _render_document_intake_draft_parts_panel(
+    drafts: list[CaptureIntelligenceDraft],
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> str:
+    if drafts:
+        rows = "".join(
+            _render_document_intake_draft_part_row(draft, piece, accepted_links)
+            for draft in drafts
+            for piece in draft.intelligence_pieces[:6]
+        )
+    else:
+        rows = """<div class="row"><strong>No document-derived draft parts</strong><span>Create an Extraction Bundle from generic source material to queue document-derived review parts.</span></div>"""
+
+    piece_count = sum(len(draft.intelligence_pieces) for draft in drafts)
+    return f"""<section class="panel" id="document-draft-parts" aria-labelledby="document-draft-parts-heading">
+      <div class="panel-heading"><h2 id="document-draft-parts-heading">Document-Derived Draft Parts</h2><span class="status-chip amber">{piece_count} review parts</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Extraction review surface</strong><span>Document-derived parts stay separate from manual Quick Capture input. Trusted writes still require reviewer action.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_draft_part_row(
+    draft,
+    piece,
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> str:
+    label = piece.part_type.value.replace("_", " ").title()
+    skill_chain = " -> ".join(piece.suggested_skill_chain) or "needs capability match"
+    source_spans = ", ".join(piece.source_span_ids) or "none"
+    recommendation = piece.recommendation or "Review before promotion."
+    accepted_link = _accepted_document_evidence_link_for_piece(
+        piece,
+        accepted_links,
+    )
+    accepted_status = _render_document_intake_evidence_status(accepted_link)
+    accept_button = (
+        '<button class="action-button green" type="button" disabled>'
+        "Accepted as Evidence</button>"
+        if accepted_link is not None
+        else '<button class="action-button" type="button">Accept as Evidence</button>'
+    )
+    return f"""<div class="row"><strong>{escape(label)}</strong><span>{escape(piece.content)}</span><span>Recommended Route: {escape(piece.recommended_route.replace("_", " "))}</span><span>Suggested Skill Chain: {escape(skill_chain)}</span><span>Recommendation: {escape(recommendation)}</span><span>Document Bundle: {escape(draft.extraction_bundle_id or "none")} - Intake Record: {escape(piece.source_intake_record_id or draft.extraction_document_id or "none")}</span><span>Source spans: {escape(source_spans)}</span>{accepted_status}<div class="action-strip" aria-label="{escape(label)} document actions">{accept_button}<button class="action-button secondary" type="button">Recommend Route</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Discard Piece</button></div></div>"""
+
+
+def _accepted_document_evidence_link_for_piece(
+    piece,
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> AcceptedDocumentEvidenceLink | None:
+    piece_span_ids = set(piece.source_span_ids)
+    for link in accepted_links:
+        if link.draft_part_id == piece.id:
+            return link
+        if (
+            link.extraction_bundle_id == piece.source_extraction_bundle_id
+            and piece_span_ids.intersection(link.source_span_ids)
+        ):
+            return link
+    return None
+
+
+def _render_document_intake_evidence_status(
+    accepted_link: AcceptedDocumentEvidenceLink | None,
+) -> str:
+    if accepted_link is None:
+        return "<span>Evidence status: pending reviewer acceptance</span>"
+    return f"""<span>Evidence accepted - {escape(accepted_link.evidence_id)}</span><span>Reviewer rationale: {escape(accepted_link.reviewer_rationale)}</span>"""
+
+
+def _render_document_intake_capture_candidates_panel(
+    candidates: list[DocumentIntakeCaptureCandidate],
+) -> str:
+    pending_candidates = [
+        candidate for candidate in candidates if not candidate.trusted_output_written
+    ]
+    if pending_candidates:
+        rows = "".join(
+            _render_document_intake_capture_candidate_row(candidate)
+            for candidate in pending_candidates[:8]
+        )
+    else:
+        rows = """<div class="row"><strong>No suggested next actions</strong><span>Create document-derived draft parts to queue review-gated downstream candidates.</span></div>"""
+    return f"""<section class="panel" id="document-capture-candidates" aria-labelledby="document-capture-candidates-heading">
+      <div class="panel-heading"><h2 id="document-capture-candidates-heading">Review-Gated Capture Candidates</h2><span class="status-chip amber">{len(pending_candidates)} pending</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Suggested next actions</strong><span>Trusted outputs still require acceptance; these candidates are prepared for review, routing, or dismissal.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_capture_candidate_row(
+    candidate: DocumentIntakeCaptureCandidate,
+) -> str:
+    workflow_label = _capture_candidate_workflow_label(candidate.target_workflow)
+    confidence = (
+        f"{candidate.confidence:.2f}" if candidate.confidence is not None else "unknown"
+    )
+    skill_chain = (
+        " -> ".join(candidate.suggested_skill_chain) or "needs capability match"
+    )
+    source_spans = ", ".join(candidate.source_span_ids)
+    return f"""<div class="row"><strong>{escape(workflow_label)}</strong><span>{escape(candidate.title)}</span><span>{escape(candidate.content)}</span><span>Review State: {escape(candidate.review_state.value.replace("_", " ").title())} - Confidence: {escape(confidence)}</span><span>Target workflow: {escape(workflow_label)} - Suggested Skill Chain: {escape(skill_chain)}</span><span>Trace: draft {escape(candidate.source_draft_id)} - part {escape(candidate.source_draft_part_id)} - bundle {escape(candidate.source_extraction_bundle_id)}</span><span>Source spans: {escape(source_spans)}</span><span>{escape(candidate.recommendation)}</span><div class="action-strip" aria-label="{escape(workflow_label)} candidate actions"><button class="action-button" type="button">Review Candidate</button><button class="action-button secondary" type="button">Route Candidate</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Ignore Candidate</button></div></div>"""
+
+
+def _capture_candidate_workflow_label(target_workflow: str) -> str:
+    labels = {
+        "capture_action_plan": "Capture Action Plan",
+        "living_briefing_packet": "Living Briefing Packet",
+        "risk_register": "Risk Register",
+        "call_plan": "Call Plan",
+    }
+    return labels.get(target_workflow, target_workflow.replace("_", " ").title())
+
+
+def _render_knowledge_note_projections_panel(
+    projections: list[KnowledgeNoteProjection],
+) -> str:
+    if projections:
+        rows = "".join(
+            _render_knowledge_note_projection_row(projection)
+            for projection in projections[:8]
+        )
+    else:
+        rows = """<div class="row"><strong>No note projections generated</strong><span>Accept document-derived evidence, then generate a one-way note projection for lightweight browsing.</span></div>"""
+    return f"""<section class="panel" id="knowledge-note-projections" aria-labelledby="knowledge-note-projections-heading">
+    <div class="panel-heading"><h2 id="knowledge-note-projections-heading">Knowledge Note Projections</h2><span class="status-chip cyan">{len(projections)} notes</span></div>
+    <div class="row-list">
+    <div class="row"><strong>Human-readable one-way notes</strong><span>Structured Ariadne records remain source of truth. Cannot overwrite structured knowledge.</span></div>
+    {rows}
+    </div>
+  </section>"""
+
+
+def _render_knowledge_note_projection_row(
+    projection: KnowledgeNoteProjection,
+) -> str:
+    evidence_ids = ", ".join(projection.evidence_ids)
+    source_spans = ", ".join(projection.source_span_ids)
+    projection_href = (
+        "/api/document-intake/knowledge-note-projections?bundle_id="
+        f"{projection.source_extraction_bundle_id}"
+    )
+    return f"""<div class="row"><strong>{escape(projection.title)}</strong><span>{escape(projection.summary)}</span><span>Evidence: {escape(evidence_ids)}</span><span>Trace: intake {escape(projection.source_intake_record_id)} - bundle {escape(projection.source_extraction_bundle_id)} - source spans {escape(source_spans)}</span><span>Structured Ariadne records remain source of truth; projection markdown is a readable mirror only.</span><div class="action-strip" aria-label="{escape(projection.title)} projection actions"><a class="action-button" href="{escape(projection_href)}">Open Markdown Projection</a><button class="action-button secondary" type="button" disabled>Cannot overwrite structured knowledge</button></div></div>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:
@@ -440,7 +778,9 @@ def _render_capture_intelligence_draft_panel(draft) -> str:
 
 
 def _render_intelligence_piece_rows(draft) -> str:
-    return "".join(_render_intelligence_piece_row(piece) for piece in draft.intelligence_pieces)
+    return "".join(
+        _render_intelligence_piece_row(piece) for piece in draft.intelligence_pieces
+    )
 
 
 def _render_intelligence_piece_row(piece) -> str:

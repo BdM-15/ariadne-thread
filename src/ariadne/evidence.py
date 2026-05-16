@@ -22,6 +22,14 @@ class EvidenceItem(BaseModel):
     derived_from_ids: tuple[str, ...] = ()
     raw_item_id: str | None = None
     draft_id: str | None = None
+    source_intake_record_id: str | None = None
+    source_extraction_bundle_id: str | None = None
+    source_span_ids: tuple[str, ...] = ()
+    parser_adapter: str | None = None
+    parser_version: str | None = None
+    parser_method: str | None = None
+    source_confidence: float | None = Field(default=None, ge=0, le=1)
+    source_warnings: tuple[str, ...] = ()
     rationale: tuple[str, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -31,6 +39,10 @@ class EvidenceItem(BaseModel):
             raise ValueError("source evidence requires source_ref")
         if self.kind is EvidenceKind.DERIVED and not self.derived_from_ids:
             raise ValueError("derived evidence requires derived_from_ids")
+        if self.source_span_ids and not self.source_extraction_bundle_id:
+            raise ValueError(
+                "source span evidence requires source_extraction_bundle_id"
+            )
         return self
 
 
@@ -73,6 +85,14 @@ def create_source_evidence(
     evidence_id: str | None = None,
     raw_item_id: str | None = None,
     draft_id: str | None = None,
+    source_intake_record_id: str | None = None,
+    source_extraction_bundle_id: str | None = None,
+    source_span_ids: list[str] | tuple[str, ...] = (),
+    parser_adapter: str | None = None,
+    parser_version: str | None = None,
+    parser_method: str | None = None,
+    source_confidence: float | None = None,
+    source_warnings: list[str] | tuple[str, ...] = (),
     rationale: list[str] | tuple[str, ...] = (),
 ) -> EvidenceItem:
     return EvidenceItem(
@@ -83,6 +103,14 @@ def create_source_evidence(
         opportunity_id=opportunity_id,
         raw_item_id=raw_item_id,
         draft_id=draft_id,
+        source_intake_record_id=source_intake_record_id,
+        source_extraction_bundle_id=source_extraction_bundle_id,
+        source_span_ids=tuple(source_span_ids),
+        parser_adapter=parser_adapter,
+        parser_version=parser_version,
+        parser_method=parser_method,
+        source_confidence=source_confidence,
+        source_warnings=tuple(source_warnings),
         rationale=tuple(rationale),
     )
 

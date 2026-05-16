@@ -23,7 +23,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 
 ## Domain Language
 
-- Capture Command Center: the single working surface for opportunities, decision gates, knowledge, HITL sessions, plans, agents, and artifacts.
+- Capture Command Center: the single working surface where opportunity data, evidence, recommendations, decisions, actions, HITL sessions, plans, agents, and artifacts are connected for active capture work.
 - Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate. Pasted text and supported text or Markdown uploads should preserve source metadata.
@@ -40,10 +40,12 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Risk Response Plan: the accepted mitigation, acceptance, costing, avoidance, or opportunity-capture approach for a Risk Register Item.
 - Capture Reference Context: reusable background capture knowledge that can guide Ariadne's inference without serving as opportunity-specific evidence by itself.
 - Reference Wiki: a human-readable, interlinked note corpus that organizes Capture Reference Context for lightweight retrieval and reasoning.
+- Capture Knowledge Foundation: a shared set of capture entities, relationships, provenance rules, and data patterns that can support capture intelligence, milestone briefings, risk registers, call plans, solicitation parsing, and later proposal workflows without creating separate phase-specific knowledge structures.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
 - Pursuit: the active capture phase of an opportunity once serious work begins toward a bid decision and award.
 - Decision Gate: a disciplined checkpoint that turns evidence into a go/no-go/hold action.
 - Lifecycle State: the current maturity position of an opportunity in the capture lifecycle.
+- Shipley Phase: a methodology phase label that can map onto Ariadne lifecycle work without becoming the canonical Ariadne lifecycle model.
 - Entry Context: the starting maturity context for an opportunity when it is first entered into Ariadne.
 - Capture Workstream: a recurring body of capture work, such as customer insight, competitive intelligence, partner strategy, solution shaping, pricing, compliance, or artifact development, that can be revisited at any lifecycle state.
 - Core Capture Workstream: one of the stable capture workstreams present on every opportunity so evidence, gaps, maturity, and next actions stay comparable.
@@ -54,7 +56,21 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Derived Evidence: an evidence item produced by Ariadne interpretation, extraction, summarization, synthesis, or model reasoning.
 - Evidence Store: the local-first home for evidence items used by opportunity knowledge, packet generation, and traceable recommendations.
 - Document Intake: the process of accepting uploaded files and extracting useful source evidence from them.
+- Document Intake Command Surface: the product workflow for turning uploaded source material into extraction provenance, capture intelligence, recommendations, skill-chain options, and review-gated actions.
+- Document Intake Queue: the Command Center surface for uploaded source material that needs classification, extraction status, parser requirements, source-span review, warnings, and document-derived action.
 - Document Intake Candidate: an uploaded file recorded for later parser-backed intake because Ariadne cannot safely extract text from it yet.
+- Document Intake Store: the local-first structured home for document intake candidates, extraction bundles, review decisions, accepted evidence links, and generated note projections.
+- Extraction Bundle: a reviewable output from document intake that carries document metadata, source spans, candidate entities, candidate relationships, confidence, warnings, parser provenance, and review state before anything becomes trusted knowledge.
+- Source Span: a traceable excerpt, page region, timestamp range, slide, table, or other located portion of a source document that supports extraction, evidence, or review.
+- Entity Candidate: a possible capture knowledge entity extracted from source material, such as a customer, organization, stakeholder, opportunity, need, milestone, risk, commitment, document, capability, or discriminator.
+- Relationship Candidate: a possible connection extracted from source material, such as mentions, supports, creates risk, addresses need, owned by, due on, related to opportunity, or evidence for.
+- Extraction Warning: a caution produced during document intake when source quality, parser confidence, ambiguity, missing context, or document type limits how safely Ariadne can use the extraction.
+- Generic Source Material: non-solicitation material such as an article, customer slide deck, conference material, transcript, briefing, note, screenshot, or photo that can inform capture work through generic extraction and review.
+- Visual Source Material: an image, screenshot, scan, or photo of physical or digital material that may require OCR, layout extraction, visual interpretation, or multimodal model support before Ariadne can create source spans.
+- Solicitation Document: a buyer-issued opportunity document such as an RFI, Sources Sought, draft RFP, final RFP, amendment, instruction, requirement attachment, or evaluation-related file.
+- Unsupported Document: a source document Ariadne records but cannot extract with current adapters because it is unreadable, encrypted, unknown, or lacks a suitable parser.
+- Multimodal Extraction Capability: a capability module that extracts useful source spans, text, layout, and visual meaning from visual source material.
+- Solicitation Parser Capability: a capability module that extracts solicitation-specific entities, requirements, instructions, evaluation criteria, compliance obligations, amendments, and relationships from solicitation documents.
 - Traceable Recommendation: an AI recommendation that cites its supporting sources, assumptions, confidence, gaps, and rationale.
 - Capability Gap: a missing Ariadne workflow, skill, view, adapter, or automation that would materially improve capture execution.
 - Model Role: the intended responsibility level for a model, separating frontier reasoning work from local or administrative work.
@@ -64,6 +80,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Incumbent Recompete: a recompete for work currently held by the user or their organization.
 - Knowledge Layer: the local-first retrieval and graph context behind opportunity-specific reasoning.
 - Knowledge Mirror: an optional human-readable export or integration, such as Obsidian, that reflects Ariadne knowledge without becoming the primary source of truth.
+- Knowledge Note Projection: a one-way Markdown-style note generated from accepted Ariadne knowledge so humans and lightweight retrieval can browse connected context without making the note the source of truth.
 - Mirror Update Proposal: a proposed Ariadne knowledge update derived from edits made in a knowledge mirror.
 - Knowledge Graph View: a visual exploration surface for Ariadne's primary knowledge connections across opportunities, evidence, workstreams, actions, artifacts, and reusable insights.
 - Graph Sensemaking Mode: the first-stage knowledge graph mode for exploring and understanding relationships without changing capture records.
@@ -125,6 +142,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 
 - An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
 - An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
+- **Shipley Phases** can map to **Lifecycle States**, but **Lifecycle State** remains Ariadne's canonical maturity model.
 - A later **Lifecycle State** does not imply all earlier **Capture Workstreams** are complete; the **Entry Context** can create **Backfill Needs**.
 - Every **Opportunity** has the same **Core Capture Workstreams**, even when some workstreams are lightweight, inactive, or need backfill.
 - **Opportunity Knowledge** can become **Reusable Capture Insight** when it remains useful beyond the original opportunity.
@@ -132,6 +150,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Capture Intelligence Workflow** can produce **Reusable Capture Insight**, a **Capture Action Plan**, an **Engagement Artifact**, or a **Milestone Decision Briefing Packet**.
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
+- The **Capture Command Center** should turn data into decisions and actions rather than behaving like a passive data display.
 - The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.
 - The first **Capability Studio** stage focuses on a local **Capability Catalog**, testing, refinement, validation, run history, artifacts, and provenance before third-party plugin installation.
 - The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.
@@ -157,6 +176,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
 - A **Reference Wiki** can organize **Capture Reference Context** for lightweight retrieval without becoming the primary **Knowledge Layer** or a **Knowledge Mirror**.
 - A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.
+- Accepted document-derived source spans become trusted **Evidence Items**, while recommendations, skill-chain options, inferred tasks, packet updates, risks, call-plan signals, and note projections remain review-gated command-surface candidates until the user accepts or routes them.
 - A **Call Plan** can create or consume **Raw Capture Items**, **Capture Intelligence Drafts**, **Customer Insight Profiles**, **Call Plan Action Commitments**, and **Packet Field Answers**.
 - A **Customer Meeting** can belong to an **Opportunity** or begin as an **Exploratory Capture Session** before an opportunity is known.
 - A **Customer Insight Profile** can guide **Capture Intelligence Drafts**, but its subjective fields require review before becoming **Opportunity Knowledge**.
@@ -164,6 +184,22 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Call plan fields such as customer, opportunity name, CRM identifier, funding status, owner, due date, customer needs, and action commitments can connect to existing **Packet Field Answers** without automatically updating them.
 - **Document Intake** creates **Source Evidence** from uploaded files before Ariadne derives summaries, tags, dates, or recommendations.
 - Unsupported uploads become **Document Intake Candidates** with parser-required status rather than trusted source text.
+- The first **Document Intake Store** should persist only the records needed for the Document Intake workflow, not become a general database platform.
+- The **Document Intake Command Surface** should be built functionality-first: domain models, store, extraction bundle creation, and review inputs before UI rendering.
+- The **Document Intake Queue** is the primary surface for heavier document workflows, while the **Quick Capture Inbox** remains the low-friction note and lightweight upload entry point.
+- The **Document Intake Command Surface** should make document-derived evidence, recommendations, skill-chain options, and next actions visible together so intake supports active capture work.
+- **Document Intake** should produce an **Extraction Bundle** before Ariadne promotes extracted content into trusted workflow records.
+- An **Extraction Bundle** contains **Source Spans**, **Entity Candidates**, **Relationship Candidates**, and **Extraction Warnings**.
+- An **Extraction Bundle** provides trace context for **Capture Intelligence Draft Parts**, while the draft parts remain the primary user review and command surface.
+- A **Generic Source Material** can enter **Document Intake** through generic extraction before Ariadne routes useful signals into capture review.
+- **Visual Source Material** can require a **Multimodal Extraction Capability** before Ariadne can reliably create source spans or draft capture intelligence from it.
+- In the first Document Intake slice, **Visual Source Material** should be recorded, classified, and preserved with provenance, while OCR, image understanding, and multimodal extraction remain deferred capability work.
+- A **Solicitation Document** can require a **Solicitation Parser Capability** before Ariadne can reliably use its solicitation-specific structure.
+- An **Unsupported Document** remains a **Document Intake Candidate** until Ariadne has enough readable content or a suitable parser; unsupported means an adapter or readability gap, not a refusal to process the document.
+- Document sensitivity should affect **Autonomy Tier**, review, approval, and trace handling rather than whether Ariadne is willing to record the document for intake.
+- Low-risk document intake work such as local ingestion, extraction, classification, source-span capture, and draft preparation may run automatically, while trusted promotion, external calls, deletion, sensitive label changes, and customer-facing outputs require approval.
+- A **Solicitation Parser Capability** should produce reviewable extraction results before they become trusted **Evidence Items**, **Packet Field Answers**, **Risk Register Items**, or proposal-facing outputs.
+- The **Capture Knowledge Foundation** should let capture-phase workflows and solicitation/proposal-phase workflows share entities, relationships, provenance, and review rules instead of maintaining separate phase-specific knowledge structures.
 - A **Guided Capture Mentor** supports the user by executing work, recommending next steps, and teaching the capture reasoning behind those recommendations.
 - **Assisted Execution** lets Ariadne complete low-risk work, prepare insights, and teach the user while **Autonomy Tiers** protect strategic, sensitive, and external-facing decisions.
 - Every **Opportunity** has a **Capture Action Plan** made of **Action Plan Items**.
@@ -187,6 +223,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Evidence Items** live in the **Evidence Store** and can support **Opportunity Knowledge**, **Reusable Capture Insight**, and **Milestone Decision Briefing Packets**.
 - **Derived Evidence** should point back to the **Source Evidence** or earlier **Derived Evidence** that produced it.
 - A **Knowledge Mirror** can reflect Ariadne knowledge for human browsing, but Ariadne's primary knowledge remains structured in the **Evidence Store** and **Knowledge Layer**.
+- A **Knowledge Note Projection** can make accepted **Extraction Bundle** content readable and linkable while preserving Ariadne's structured records as the source of truth.
 - Edits made in a **Knowledge Mirror** return to Ariadne as **Mirror Update Proposals**, not direct source-of-truth overwrites.
 - A **Knowledge Graph View** visualizes relationships in Ariadne's primary knowledge rather than depending on mirror-specific graph behavior.
 - A **Knowledge Graph View** should begin with **Graph Sensemaking Mode** and later add **Graph Action Mode**.
@@ -200,13 +237,16 @@ Build one elegant, powerful capture command center that lets a single capture pr
 
 - "opportunity" and "pursuit" were used as potentially separate lifecycle objects — resolved: **Opportunity** is the single durable record, and **Pursuit** is its active capture phase.
 - "ground zero," "Phase 1," and "Phase 2" were used to describe different opportunity maturity points — resolved: use **Lifecycle State** for the maturity position and **Entry Context** for why the opportunity starts there.
+- "Shipley phases 0-3" and "phases 4-6" were used to describe lifecycle coverage — resolved: **Lifecycle State** remains Ariadne's canonical lifecycle model, while **Shipley Phase** is a methodology mapping.
 - "mature opportunity" could imply earlier research is already complete — resolved: **Lifecycle State** describes decision maturity, while **Capture Workstreams** can still have **Backfill Needs**.
 - "LLM wiki" was used to mean connected capture knowledge for reuse — resolved: use **Knowledge Layer** for the retrieval context, **Opportunity Knowledge** for opportunity-specific material, and **Reusable Capture Insight** for knowledge that can help future opportunities.
 - "Obsidian" was used as both a possible knowledge workspace and possible source of truth — resolved: use **Knowledge Mirror** for optional human-readable sync, while Ariadne keeps primary knowledge in the **Evidence Store** and **Knowledge Layer**.
+- "LLM-wiki/Obsidian style" was used to mean a lightweight pseudo knowledge graph or vector database for connected sensemaking — resolved: use **Knowledge Note Projection** for one-way readable notes over accepted Ariadne knowledge, while retrieval engines remain future **Knowledge Layer** adapters.
 - "edit in Obsidian" could imply direct writes to Ariadne knowledge — resolved: mirror edits become **Mirror Update Proposals** that Ariadne can classify, validate, and apply.
 - "skills" was used to mean repeatable AI/tool workflows — resolved: use **Capture Intelligence Workflow** for the domain workflow, with implementation left open to skills, skill chaining, agents, CLI harnesses, or UI actions.
 - "skills page" was used to mean advanced management of underlying tool capabilities — resolved: use **Capability Studio** for managing **Capability Modules** outside the main capture workflow.
 - "plugin" was used generically for underlying capabilities, not as a promise of portable app-plugin packaging — resolved: use **Capability Module** as the architecture-neutral term.
+- "Command Center as data center" was rejected — resolved: the **Capture Command Center** is data connected to recommendations, decisions, and actions, not passive reporting.
 - "click and run" was too narrow for skills that require follow-up input — resolved: use **Interactive Capability Session** for multi-turn capability runs.
 - "general exploring" was used for work not tied to a specific opportunity — resolved: use **Exploratory Capture Session** for strategy, learning, research, or ideation before an opportunity exists.
 - "self-improvement" was sharpened to mean Hermes learning from actual platform use — resolved: use **Operational Learning** for patterns that may improve workflows, capability modules, action plans, or mentoring behavior.
@@ -221,5 +261,19 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "chicken scratch" was used to mean rough, unstructured user input — resolved: use **Raw Capture Item** for unprocessed notes, ideas, meeting fragments, and rough thoughts in the **Quick Capture Inbox**.
 - "quick intel" was used to mean AI-heavy interpretation of rushed notes or uploaded material — resolved: use **Capture Intelligence Draft** for reviewable synthesized intelligence before promotion into trusted Ariadne knowledge.
 - "foundation knowledge" was used to mean public-source background material that helps Ariadne infer capture implications — resolved: use **Capture Reference Context**, which can guide drafts without becoming opportunity-specific evidence by itself.
+- "ontology" was used to mean a shared entity/relationship/data-pattern foundation across capture and solicitation workflows — resolved: use **Capture Knowledge Foundation** for the shared Ariadne knowledge model, not separate phase-specific ontologies.
+- "RFP parser" and "document parser" were used interchangeably — resolved: use **Solicitation Parser Capability** for solicitation-specific extraction and **Document Intake** for the broader source-document workflow.
+- "RFP-like docs" was used to include RFIs, Sources Sought, draft RFPs, final RFPs, and amendments — resolved: use **Solicitation Document** for buyer-issued opportunity documents with solicitation-specific structure.
+- "too risky to process" was rejected as a document classification — resolved: use **Unsupported Document** only for adapter, readability, encryption, or parser gaps; sensitivity is handled through review and autonomy tiers.
+- "generic document" was broadened after image/photo scenarios — resolved: use **Generic Source Material** for non-solicitation source material and **Visual Source Material** for photos, screenshots, scans, or images that may need multimodal extraction.
+- "photo intake" was resolved as first recording and classifying **Visual Source Material**, while full OCR or multimodal extraction waits for a **Multimodal Extraction Capability**.
+- "shared extraction contract" was used to mean the reviewable parser output Ariadne can route into capture workflows — resolved: use **Extraction Bundle**.
+- "ontology core" was used to mean the first shared extraction concepts — resolved: start with **Source Span**, **Entity Candidate**, **Relationship Candidate**, and **Extraction Warning** inside an **Extraction Bundle**.
+- "review the parser output" was resolved as showing **Extraction Bundle** provenance while keeping **Capture Intelligence Draft Parts** as the user's main review, recommendation, skill-chain, and assisted-execution surface.
+- "document-derived intelligence destinations" was resolved as trusted **Evidence Items** first, plus review-gated recommendations, skill-chain options, Action Plan, Packet, Risk Register, Call Plan, and Knowledge Note Projection candidates that help Ariadne manage capture work.
+- "durable storage for document intake" was resolved as a narrow **Document Intake Store** for intake records, extraction bundles, review decisions, accepted evidence links, and note projections, not a broad storage-platform epic.
+- "documents in quick capture" was resolved as **Quick Capture Inbox** accepting lightweight uploads, with heavier source material moving into a **Document Intake Queue** for classification, extraction, review, and routing.
+- "Document Intake" as an epic name was sharpened to **Document Intake Command Surface** to signal file intake plus extraction, review, recommendations, skill-chain options, and action routing.
+- "functionality foundation first then UI" was resolved for the **Document Intake Command Surface**: prove domain/store/extraction behavior through tests before rendering the Command Center view.
 - "Obsidian-like LLM wiki" was used to mean lightweight retrieval over interlinked reference notes — resolved: use **Reference Wiki** for the note corpus and keep **Knowledge Mirror** for optional Obsidian-style exports or sync.
 - "call plan template" was used to mean both private document skin and reusable engagement workflow — resolved: keep private templates as **Artifact Export Profiles** or ignored reference material, and use **Call Plan** for the product workflow and data model.

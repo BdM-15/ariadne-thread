@@ -308,6 +308,22 @@ def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     assert settings.local_admin_model.timeout_seconds == 5
 
 
+def test_local_admin_model_config_reuses_central_local_model_settings() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "LOCAL_ADMIN_MODEL_ENABLED": "true",
+            "OLLAMA_HOST": "http://127.0.0.1:11434",
+            "LOCAL_DAILY_MODEL": "qwen3.5:9b",
+            "LOCAL_ADMIN_MODEL": "redundant-model-ignored",
+            "LOCAL_ADMIN_MODEL_OLLAMA_BASE_URL": "http://ignored:11434",
+        }
+    )
+
+    assert settings.local_admin_model.enabled is True
+    assert settings.local_admin_model.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.local_admin_model.model == "qwen3.5:9b"
+
+
 def test_runtime_api_reports_configured_app_status() -> None:
     settings = RuntimeSettings.from_mapping(
         {

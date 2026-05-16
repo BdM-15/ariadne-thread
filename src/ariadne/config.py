@@ -64,20 +64,12 @@ class RuntimeSettings(BaseModel):
             local_admin_model=LocalAdminModelSettings(
                 enabled=_parse_bool(values.get("LOCAL_ADMIN_MODEL_ENABLED", "false")),
                 ollama_base_url=values.get(
-                    "LOCAL_ADMIN_MODEL_OLLAMA_BASE_URL",
-                    values.get(
-                        "OLLAMA_HOST",
-                        LocalAdminModelSettings.model_fields[
-                            "ollama_base_url"
-                        ].default,
-                    ),
+                    "OLLAMA_HOST",
+                    LocalAdminModelSettings.model_fields["ollama_base_url"].default,
                 ),
                 model=values.get(
-                    "LOCAL_ADMIN_MODEL",
-                    values.get(
-                        "LOCAL_DAILY_MODEL",
-                        LocalAdminModelSettings.model_fields["model"].default,
-                    ),
+                    "LOCAL_DAILY_MODEL",
+                    LocalAdminModelSettings.model_fields["model"].default,
                 ),
                 timeout_seconds=int(
                     values.get(

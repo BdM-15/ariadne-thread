@@ -24,6 +24,7 @@ from ariadne.document_intake import (
     DocumentIntakeStore,
     UploadedSourceMaterial,
     classify_uploaded_source_material,
+    create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
 )
@@ -117,6 +118,10 @@ class DocumentIntakeUploadResponse(BaseModel):
 
 class DocumentIntakeQueueResponse(BaseModel):
     records: tuple[DocumentIntakeRecord, ...]
+
+
+class DocumentIntakeExtractionDraftsResponse(BaseModel):
+    drafts: tuple[CaptureIntelligenceDraft, ...]
 
 
 class DocumentIntakeSourceMaterialRequest(BaseModel):
@@ -215,6 +220,18 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
         )
         return DocumentIntakeQueueResponse(records=tuple(store.list()))
+
+    @app.get("/api/document-intake/extraction-drafts")
+    def document_intake_extraction_drafts() -> DocumentIntakeExtractionDraftsResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeExtractionDraftsResponse(
+            drafts=tuple(
+                create_capture_intelligence_draft_from_extraction_bundle(bundle)
+                for bundle in store.list_extraction_bundles()
+            )
+        )
 
     @app.post("/api/document-intake/uploads")
     async def document_intake_upload(

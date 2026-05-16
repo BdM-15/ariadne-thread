@@ -7,6 +7,14 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
 
+from ariadne.quick_capture import (
+    CaptureDraftInferenceSource,
+    CaptureIntelligenceDraft,
+    CaptureIntelligenceDraftPart,
+    CaptureIntelligenceDraftPartType,
+    suggest_capture_intelligence_piece_route,
+)
+
 
 class DocumentIntakeStatus(StrEnum):
     READY_FOR_QUICK_CAPTURE = "ready_for_quick_capture"
@@ -407,6 +415,76 @@ def create_generic_extraction_bundle(
     )
 
 
+def create_capture_intelligence_draft_from_extraction_bundle(
+    bundle: ExtractionBundle,
+) -> CaptureIntelligenceDraft:
+    intelligence_pieces = _build_extraction_intelligence_pieces(bundle)
+    inferred_claims = tuple(
+        piece.content
+        for piece in intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.INFERRED_CLAIM
+    )
+    likely_risks = tuple(
+        piece.content
+        for piece in intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.LIKELY_RISK
+    )
+    discriminator_candidates = tuple(
+        piece.content
+        for piece in intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE
+    )
+    packet_implications = tuple(
+        piece.content
+        for piece in intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.PACKET_IMPLICATION
+    )
+    action_candidates = tuple(
+        piece.content
+        for piece in intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.ACTION_CANDIDATE
+    )
+    follow_up_questions = tuple(
+        piece.content
+        for piece in intelligence_pieces
+        if piece.part_type is CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION
+    )
+    assumptions = _extraction_draft_assumptions(bundle)
+    confidence_notes = _extraction_draft_confidence_notes(bundle)
+    return CaptureIntelligenceDraft(
+        id=f"draft_{bundle.id}",
+        raw_item_id=bundle.document_id,
+        opportunity_id=bundle.opportunity_id,
+        raw_source_content=_bundle_raw_source_preview(bundle),
+        polished_capture=_extraction_polished_capture(
+            inferred_claims=inferred_claims,
+            likely_risks=likely_risks,
+            packet_implications=packet_implications,
+            action_candidates=action_candidates,
+            follow_up_questions=follow_up_questions,
+        ),
+        inferred_claims=inferred_claims
+        or ("Document extraction needs reviewer classification.",),
+        assumptions=assumptions,
+        confidence_notes=confidence_notes,
+        likely_risks=likely_risks,
+        discriminator_candidates=discriminator_candidates,
+        packet_implications=packet_implications,
+        action_candidates=action_candidates,
+        gaps=_extraction_draft_gaps(bundle),
+        follow_up_questions=follow_up_questions,
+        intelligence_pieces=intelligence_pieces,
+        inference_source=CaptureDraftInferenceSource.HEURISTIC,
+        extraction_bundle_id=bundle.id,
+        extraction_document_id=bundle.document_id,
+        extracted_source_span_ids=tuple(span.id for span in bundle.source_spans),
+        extraction_entity_type_refs=tuple(
+            sorted({candidate.entity_type for candidate in bundle.entity_candidates})
+        ),
+        extraction_warnings_summarized=_summarize_extraction_warnings(bundle),
+    )
+
+
 _TEXT_EXTENSIONS = {".txt", ".text"}
 _MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdown"}
 _VISUAL_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
@@ -438,6 +516,238 @@ _GENERIC_ENTITY_KEYWORDS = {
     "capability": ("capability", "proof", "solution", "transition"),
     "discriminator": ("advantage", "discriminator", "proof point", "strength"),
 }
+_EXTRACTION_DRAFT_CONFIDENCE_THRESHOLD = 0.6
+_EXTRACTION_ENTITY_PART_TYPES = {
+    "capability": CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE,
+    "commitment": CaptureIntelligenceDraftPartType.ACTION_CANDIDATE,
+    "customer": CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+    "discriminator": CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE,
+    "milestone": CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+    "need": CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+    "opportunity": CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+    "organization": CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+    "risk": CaptureIntelligenceDraftPartType.LIKELY_RISK,
+    "stakeholder": CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+}
+_EXTRACTION_RELATIONSHIP_PART_TYPES = {
+    "addresses_need": CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+    "creates_risk": CaptureIntelligenceDraftPartType.LIKELY_RISK,
+    "evidence_for": CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+    "mentions": CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+}
+
+
+def _build_extraction_intelligence_pieces(
+    bundle: ExtractionBundle,
+) -> tuple[CaptureIntelligenceDraftPart, ...]:
+    pieces: list[CaptureIntelligenceDraftPart] = []
+    seen_content: set[tuple[CaptureIntelligenceDraftPartType, str]] = set()
+    for candidate in bundle.entity_candidates:
+        if candidate.confidence < _EXTRACTION_DRAFT_CONFIDENCE_THRESHOLD:
+            continue
+        part_type = _EXTRACTION_ENTITY_PART_TYPES.get(
+            candidate.entity_type,
+            CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+        )
+        content = _entity_candidate_draft_content(candidate, part_type)
+        _append_extraction_piece(
+            pieces,
+            seen_content,
+            bundle=bundle,
+            part_type=part_type,
+            content=content,
+            source_span_ids=candidate.source_span_ids,
+            confidence=candidate.confidence,
+            sequence_ref=candidate.id,
+        )
+    for relationship in bundle.relationship_candidates:
+        if relationship.confidence < _EXTRACTION_DRAFT_CONFIDENCE_THRESHOLD:
+            continue
+        part_type = _EXTRACTION_RELATIONSHIP_PART_TYPES.get(
+            relationship.relationship_type,
+            CaptureIntelligenceDraftPartType.INFERRED_CLAIM,
+        )
+        content = _relationship_candidate_draft_content(bundle, relationship)
+        _append_extraction_piece(
+            pieces,
+            seen_content,
+            bundle=bundle,
+            part_type=part_type,
+            content=content,
+            source_span_ids=relationship.source_span_ids,
+            confidence=relationship.confidence,
+            sequence_ref=relationship.id,
+        )
+    if bundle.warnings:
+        warning_span_ids = tuple(
+            span_id
+            for warning in bundle.warnings
+            for span_id in warning.affected_span_ids
+        )
+        _append_extraction_piece(
+            pieces,
+            seen_content,
+            bundle=bundle,
+            part_type=CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION,
+            content=f"Review extraction warning before promotion: {_summarize_extraction_warnings(bundle)}",
+            source_span_ids=warning_span_ids,
+            confidence=max(bundle.confidence, 0.1),
+            sequence_ref="warnings",
+        )
+    if not pieces:
+        _append_extraction_piece(
+            pieces,
+            seen_content,
+            bundle=bundle,
+            part_type=CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION,
+            content="Which extracted source span is useful enough to review for capture intelligence?",
+            source_span_ids=tuple(span.id for span in bundle.source_spans),
+            confidence=bundle.confidence,
+            sequence_ref="fallback",
+        )
+    return tuple(pieces)
+
+
+def _append_extraction_piece(
+    pieces: list[CaptureIntelligenceDraftPart],
+    seen_content: set[tuple[CaptureIntelligenceDraftPartType, str]],
+    *,
+    bundle: ExtractionBundle,
+    part_type: CaptureIntelligenceDraftPartType,
+    content: str,
+    source_span_ids: tuple[str, ...],
+    confidence: float,
+    sequence_ref: str,
+) -> None:
+    key = (part_type, content)
+    if key in seen_content:
+        return
+    seen_content.add(key)
+    route, skill_chain = suggest_capture_intelligence_piece_route(part_type, content)
+    pieces.append(
+        CaptureIntelligenceDraftPart(
+            id=f"draft_{bundle.id}_{part_type.value}_{len(pieces) + 1}_{sequence_ref}",
+            part_type=part_type,
+            content=content,
+            recommended_route=route,
+            suggested_skill_chain=skill_chain,
+            source_intake_record_id=bundle.document_id,
+            source_extraction_bundle_id=bundle.id,
+            source_span_ids=source_span_ids,
+            recommendation=_recommendation_for_extraction_piece(part_type),
+            assumptions=_extraction_draft_assumptions(bundle),
+            confidence_notes=(
+                f"Extraction candidate confidence {confidence:.2f}; bundle confidence {bundle.confidence:.2f}.",
+                f"Parser provenance: {bundle.parser_provenance.adapter_name} {bundle.parser_provenance.adapter_version}.",
+            ),
+        )
+    )
+
+
+def _entity_candidate_draft_content(
+    candidate: EntityCandidate,
+    part_type: CaptureIntelligenceDraftPartType,
+) -> str:
+    if part_type is CaptureIntelligenceDraftPartType.LIKELY_RISK:
+        return f"Document extraction flags risk candidate: {candidate.text}"
+    if part_type is CaptureIntelligenceDraftPartType.ACTION_CANDIDATE:
+        return f"Document extraction suggests action candidate: {candidate.text}"
+    if part_type is CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE:
+        return f"Document extraction suggests discriminator candidate: {candidate.text}"
+    if part_type is CaptureIntelligenceDraftPartType.PACKET_IMPLICATION:
+        return f"Document extraction may update packet context: {candidate.text}"
+    return f"Document extraction found capture-relevant source signal: {candidate.text}"
+
+
+def _relationship_candidate_draft_content(
+    bundle: ExtractionBundle,
+    relationship: RelationshipCandidate,
+) -> str:
+    source = _entity_text_for_relationship(bundle, relationship.source_entity_id)
+    target = _entity_text_for_relationship(bundle, relationship.target_entity_id)
+    relationship_label = relationship.relationship_type.replace("_", " ")
+    return f"Document extraction links {source} to {target} as {relationship_label}."
+
+
+def _entity_text_for_relationship(bundle: ExtractionBundle, entity_id: str) -> str:
+    for candidate in bundle.entity_candidates:
+        if candidate.id == entity_id:
+            return candidate.text
+    return entity_id
+
+
+def _recommendation_for_extraction_piece(
+    part_type: CaptureIntelligenceDraftPartType,
+) -> str:
+    if part_type is CaptureIntelligenceDraftPartType.LIKELY_RISK:
+        return "Review as a risk signal before routing to Risk Register or packet gaps."
+    if part_type is CaptureIntelligenceDraftPartType.ACTION_CANDIDATE:
+        return "Review as a possible Capture Action Plan item before assigning work."
+    if part_type is CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE:
+        return "Review evidence strength before treating this as a discriminator."
+    if part_type is CaptureIntelligenceDraftPartType.PACKET_IMPLICATION:
+        return "Review against packet fields before updating opportunity knowledge."
+    if part_type is CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION:
+        return "Resolve extraction uncertainty before promotion."
+    return "Review source-span provenance before accepting as evidence."
+
+
+def _extraction_draft_assumptions(bundle: ExtractionBundle) -> tuple[str, ...]:
+    return (
+        "Draft treats Extraction Bundle findings as untrusted parser output.",
+        "Reviewer must accept, route, or discard each document-derived part before promotion.",
+        f"Source material remains traceable through intake record {bundle.document_id}.",
+    )
+
+
+def _extraction_draft_confidence_notes(bundle: ExtractionBundle) -> tuple[str, ...]:
+    warning_note = (
+        f"{len(bundle.warnings)} extraction warning(s) require review."
+        if bundle.warnings
+        else "No extraction warnings were recorded for this bundle."
+    )
+    return (
+        f"Bundle confidence is {bundle.confidence:.2f}; parser output is review-gated.",
+        warning_note,
+        f"Parser provenance: {bundle.parser_provenance.adapter_name} via {bundle.parser_provenance.extraction_method}.",
+    )
+
+
+def _extraction_draft_gaps(bundle: ExtractionBundle) -> tuple[str, ...]:
+    gaps = ["Need reviewer validation before promotion into trusted knowledge."]
+    if bundle.warnings:
+        gaps.append("Need reviewer attention to extraction warnings before promotion.")
+    return tuple(gaps)
+
+
+def _bundle_raw_source_preview(bundle: ExtractionBundle) -> str:
+    return "\n".join(span.text for span in bundle.source_spans[:8])
+
+
+def _extraction_polished_capture(
+    *,
+    inferred_claims: tuple[str, ...],
+    likely_risks: tuple[str, ...],
+    packet_implications: tuple[str, ...],
+    action_candidates: tuple[str, ...],
+    follow_up_questions: tuple[str, ...],
+) -> str:
+    sections = (
+        ("Document signal", inferred_claims[:2]),
+        ("Document-derived risk", likely_risks[:2]),
+        ("Packet implication", packet_implications[:1]),
+        ("Recommended action", action_candidates[:1]),
+        ("Review question", follow_up_questions[:1]),
+    )
+    return " ".join(
+        f"{label}: {'; '.join(items)}" for label, items in sections if items
+    )
+
+
+def _summarize_extraction_warnings(bundle: ExtractionBundle) -> str | None:
+    if not bundle.warnings:
+        return None
+    return " | ".join(warning.message for warning in bundle.warnings)
 
 
 def _extract_text_source_spans(

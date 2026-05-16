@@ -265,6 +265,53 @@ def test_document_intake_upload_api_creates_extraction_bundle_for_generic_materi
     assert queue_record["extraction_review_status"] == "pending_review"
 
 
+def test_document_intake_runtime_lists_document_derived_draft_parts(tmp_path) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+
+    response = client.get("/api/document-intake/extraction-drafts")
+
+    assert response.status_code == 200
+    drafts = response.json()["drafts"]
+    assert len(drafts) == 1
+    draft = drafts[0]
+    assert draft["raw_item_id"] == record["id"]
+    assert draft["extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert draft["extraction_document_id"] == record["id"]
+    assert draft["trusted_opportunity_knowledge_updated"] is False
+    assert draft["intelligence_pieces"]
+    first_piece = draft["intelligence_pieces"][0]
+    assert first_piece["source_intake_record_id"] == record["id"]
+    assert first_piece["source_extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert first_piece["source_span_ids"]
+    assert first_piece["recommended_route"]
+    assert first_piece["suggested_skill_chain"]
+    assert first_piece["review_required"] is True
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
 def test_document_intake_source_material_api_registers_generic_text(tmp_path) -> None:
     intake_root = tmp_path / "document-intake"
     settings = RuntimeSettings.from_mapping(
@@ -684,6 +731,36 @@ def test_command_center_shell_shows_extraction_bundle_queue_status(tmp_path) -> 
     assert "Review: Pending Review" in response.text
     assert "Review needed" in response.text
     assert "Extraction warnings: 0" in response.text
+
+
+def test_command_center_shell_shows_document_derived_draft_parts(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Document-Derived Draft Parts" in response.text
+    assert "Document extraction flags risk candidate" in response.text
+    assert "Source spans:" in response.text
+    assert "Recommendation:" in response.text
+    assert "Document Bundle:" in response.text
+    assert "Trusted writes still require reviewer action" in response.text
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

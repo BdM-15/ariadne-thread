@@ -9,11 +9,13 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStore,
     ExtractionBundleReviewStatus,
+    create_capture_intelligence_draft_from_extraction_bundle,
 )
 from ariadne.packets import (
     CanonicalPacketSection,
     EvidenceStatus,
 )
+from ariadne.quick_capture import CaptureIntelligenceDraft
 from ariadne.quick_capture_demo import build_quick_capture_demo_thread
 from ariadne.reference_wiki import ReferenceWikiInfluence
 
@@ -34,9 +36,14 @@ def render_command_center_shell(
     uploaded_capture = demo.uploaded_capture
     uploaded_review = demo.uploaded_review
     unsupported_upload = demo.unsupported_upload
-    document_intake_records = DocumentIntakeStore(
+    document_intake_store = DocumentIntakeStore(
         _resolve_runtime_path(root, settings.ariadne_document_intake_dir)
-    ).list()
+    )
+    document_intake_records = document_intake_store.list()
+    document_intake_drafts = [
+        create_capture_intelligence_draft_from_extraction_bundle(bundle)
+        for bundle in document_intake_store.list_extraction_bundles()
+    ]
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -330,6 +337,7 @@ def render_command_center_shell(
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_document_intake_queue_panel(document_intake_records)}
+        {_render_document_intake_draft_parts_panel(document_intake_drafts)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
@@ -484,6 +492,36 @@ def _render_document_intake_record_row(record: DocumentIntakeRecord) -> str:
     opportunity = record.opportunity_id or "unassigned"
     warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
     return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+
+
+def _render_document_intake_draft_parts_panel(
+    drafts: list[CaptureIntelligenceDraft],
+) -> str:
+    if drafts:
+        rows = "".join(
+            _render_document_intake_draft_part_row(draft, piece)
+            for draft in drafts
+            for piece in draft.intelligence_pieces[:6]
+        )
+    else:
+        rows = """<div class="row"><strong>No document-derived draft parts</strong><span>Create an Extraction Bundle from generic source material to queue document-derived review parts.</span></div>"""
+
+    piece_count = sum(len(draft.intelligence_pieces) for draft in drafts)
+    return f"""<section class="panel" id="document-draft-parts" aria-labelledby="document-draft-parts-heading">
+      <div class="panel-heading"><h2 id="document-draft-parts-heading">Document-Derived Draft Parts</h2><span class="status-chip amber">{piece_count} review parts</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Extraction review surface</strong><span>Document-derived parts stay separate from manual Quick Capture input. Trusted writes still require reviewer action.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_draft_part_row(draft, piece) -> str:
+    label = piece.part_type.value.replace("_", " ").title()
+    skill_chain = " -> ".join(piece.suggested_skill_chain) or "needs capability match"
+    source_spans = ", ".join(piece.source_span_ids) or "none"
+    recommendation = piece.recommendation or "Review before promotion."
+    return f"""<div class="row"><strong>{escape(label)}</strong><span>{escape(piece.content)}</span><span>Recommended Route: {escape(piece.recommended_route.replace("_", " "))}</span><span>Suggested Skill Chain: {escape(skill_chain)}</span><span>Recommendation: {escape(recommendation)}</span><span>Document Bundle: {escape(draft.extraction_bundle_id or "none")} - Intake Record: {escape(piece.source_intake_record_id or draft.extraction_document_id or "none")}</span><span>Source spans: {escape(source_spans)}</span><div class="action-strip" aria-label="{escape(label)} document actions"><button class="action-button" type="button">Accept as Evidence</button><button class="action-button secondary" type="button">Recommend Route</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Discard Piece</button></div></div>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:

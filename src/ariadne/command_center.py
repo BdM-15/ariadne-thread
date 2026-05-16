@@ -270,6 +270,26 @@ def render_command_center_shell(
       text-decoration: none;
       font-weight: 900;
     }}
+    .action-strip {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }}
+    .action-button {{
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid rgba(34, 211, 238, 0.7);
+      border-radius: 8px;
+      background: rgba(34, 211, 238, 0.12);
+      color: var(--cyan);
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }}
+    .action-button.secondary {{ border-color: rgba(251, 191, 36, 0.7); background: rgba(251, 191, 36, 0.12); color: var(--amber); }}
+    .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
+    .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
     @media (max-width: 1100px) {{
       .shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -283,6 +303,7 @@ def render_command_center_shell(
       .runtime-pill {{ margin-top: 12px; }}
       .nav,
       .metric-grid {{ grid-template-columns: 1fr; }}
+      .action-strip {{ grid-template-columns: 1fr; }}
       .hero h2 {{ font-size: 1.55rem; }}
     }}
     @media (prefers-reduced-motion: reduce) {{
@@ -404,18 +425,24 @@ def _render_capture_intelligence_draft_panel(draft) -> str:
       <div class="panel-heading"><h2 id="capture-intelligence-draft-heading">Capture Intelligence Draft</h2><span class="status-chip amber">{escape(draft.status.value.replace("_", " ").title())}</span></div>
       <div class="row-list">
         <div class="row"><strong>Raw Source</strong><span>{escape(draft.raw_source_content)}</span></div>
-        <div class="row"><strong>Inferred Claims</strong><span>{_render_inline_items(draft.inferred_claims)}</span></div>
-        <div class="row"><strong>Likely Risks</strong><span>{_render_inline_items(draft.likely_risks)}</span></div>
-        <div class="row"><strong>Discriminator Candidates</strong><span>{_render_inline_items(draft.discriminator_candidates)}</span></div>
-        <div class="row"><strong>Packet Implications</strong><span>{_render_inline_items(draft.packet_implications)}</span></div>
-        <div class="row"><strong>Action Candidates</strong><span>{_render_inline_items(draft.action_candidates)}</span></div>
+        <div class="row"><strong>Per-Piece Intelligence Review</strong><span>Each draft part gets its own review, route, skill-chain, and discard controls. Trusted writes require reviewer action.</span></div>
+        {_render_intelligence_piece_rows(draft)}
         <div class="row"><strong>Assumptions</strong><span>{_render_inline_items(draft.assumptions)}</span></div>
         <div class="row"><strong>Confidence Notes</strong><span>{_render_inline_items(draft.confidence_notes)}</span></div>
         <div class="row"><strong>Gaps</strong><span>{_render_inline_items(draft.gaps)}</span></div>
-        <div class="row"><strong>Follow-Up Questions</strong><span>{_render_inline_items(draft.follow_up_questions)}</span></div>
         <div class="row"><strong>{len(draft.reference_influences)} reference influences</strong><span>No trusted opportunity knowledge updated.</span></div>
       </div>
     </section>"""
+
+
+def _render_intelligence_piece_rows(draft) -> str:
+    return "".join(_render_intelligence_piece_row(piece) for piece in draft.intelligence_pieces)
+
+
+def _render_intelligence_piece_row(piece) -> str:
+    skill_chain = " -> ".join(piece.suggested_skill_chain) or "needs capability match"
+    label = piece.part_type.value.replace("_", " ").title()
+    return f"""<div class="row"><strong>{escape(label)}</strong><span>{escape(piece.content)}</span><span>Recommended Route: {escape(piece.recommended_route.replace("_", " "))}</span><span>Suggested Skill Chain: {escape(skill_chain)}</span><div class="action-strip" aria-label="{escape(label)} actions"><button class="action-button" type="button">Accept as Evidence</button><button class="action-button secondary" type="button">Recommend Route</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Discard Piece</button></div></div>"""
 
 
 def _render_inline_items(items: tuple[str, ...]) -> str:

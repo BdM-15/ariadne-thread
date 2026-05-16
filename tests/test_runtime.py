@@ -1,4 +1,5 @@
 from ariadne.config import RuntimeSettings
+from ariadne.evidence import LocalEvidenceStore
 from ariadne.server import create_app
 
 
@@ -104,6 +105,59 @@ and ghost strategy should shape capture follow-up.
     assert draft["trusted_opportunity_knowledge_updated"] is False
 
 
+def test_quick_capture_draft_api_does_not_write_evidence_before_review(tmp_path) -> None:
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_EVIDENCE_DIR": str(evidence_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/intelligence-drafts",
+        json={
+            "content": "Customer says transition risk needs PM follow up.",
+            "opportunity_id": "opp-aflcmc-recompete",
+        },
+    )
+
+    assert response.status_code == 200
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_quick_capture_review_decision_api_writes_evidence_after_acceptance(
+    tmp_path,
+) -> None:
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_EVIDENCE_DIR": str(evidence_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/review-decisions",
+        json={
+            "content": "Customer says incumbent response times are weak.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_customer_response_note",
+            "action": "accept_evidence",
+            "reviewer_rationale": "Accepted from customer call notes.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"]["status"] == "accepted"
+    assert body["decision"]["trusted_evidence_written"] is True
+    assert body["decision"]["evidence"]["raw_item_id"] == (
+        "raw_api_customer_response_note"
+    )
+    assert body["decision"]["evidence"]["draft_id"] == body["decision"]["draft_id"]
+    assert body["evidence_store_count"] == 1
+    assert len(LocalEvidenceStore(evidence_root).list()) == 1
+
+
 def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -170,9 +224,16 @@ def test_root_serves_command_center_shell() -> None:
     assert "Reference Wiki influences" in response.text
     assert "Incumbent Analysis Strategy" in response.text
     assert "Capture Intelligence Draft" in response.text
-    assert "Inferred Claims" in response.text
-    assert "Likely Risks" in response.text
-    assert "Follow-Up Questions" in response.text
+    assert "Per-Piece Intelligence Review" in response.text
+    assert "Accept as Evidence" in response.text
+    assert "Recommend Route" in response.text
+    assert "Plan Skill Chain" in response.text
+    assert "Discard Piece" in response.text
+    assert "Suggested Skill Chain" in response.text
+    assert "Trusted writes require reviewer action" in response.text
+    assert "Inferred Claim" in response.text
+    assert "Likely Risk" in response.text
+    assert "Follow Up Question" in response.text
     assert "Advanced / read-only" in response.text
     assert "/api/capabilities/catalog" in response.text
     assert "AFLCMC recompete support" in response.text

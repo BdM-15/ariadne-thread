@@ -7,8 +7,13 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStatus,
     DocumentIntakeStore,
+    EntityCandidate,
+    ExtractionBundleReviewStatus,
+    ExtractionStatus,
+    ExtractionWarningSeverity,
     classify_uploaded_source_material,
     create_document_intake_record,
+    create_generic_extraction_bundle,
 )
 
 
@@ -78,6 +83,105 @@ def test_document_intake_store_rejects_non_file_safe_ids(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="record_id must be a file-safe identifier"):
         store.read("../escape")
+
+
+def test_generic_source_material_creates_persisted_extraction_bundle(tmp_path) -> None:
+    store = DocumentIntakeStore(tmp_path / "document-intake")
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=(
+            b"# Customer brief\n\n"
+            b"Customer needs transition proof and PM follow up.\n\n"
+            b"Response-time risk could affect the recompete."
+        ),
+    )
+    record = store.write(
+        create_document_intake_record(
+            source_material,
+            opportunity_id="opp-aflcmc-recompete",
+            record_id="intake_customer_brief",
+        )
+    )
+
+    bundle = create_generic_extraction_bundle(
+        record,
+        source_material,
+        bundle_id="bundle_customer_brief",
+    )
+    store.write_extraction_bundle(bundle)
+
+    loaded = store.read_extraction_bundle("bundle_customer_brief")
+    assert loaded == bundle
+    assert loaded.document_id == record.id
+    assert loaded.source_ref == record.source_ref
+    assert loaded.material_type is DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL
+    assert loaded.extraction_status is ExtractionStatus.COMPLETE
+    assert loaded.review_status is ExtractionBundleReviewStatus.PENDING_REVIEW
+    assert loaded.parser_provenance.adapter_name == "ariadne.generic_text_extractor"
+    assert loaded.source_spans[0].text == "# Customer brief"
+    assert {candidate.entity_type for candidate in loaded.entity_candidates} >= {
+        "customer",
+        "need",
+        "risk",
+    }
+    assert loaded.relationship_candidates
+    assert loaded.confidence > 0
+
+
+def test_extraction_bundle_preserves_warnings_and_lists_by_document_id(
+    tmp_path,
+) -> None:
+    store = DocumentIntakeStore(tmp_path / "document-intake")
+    warned_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/plain",
+        content=b"Customer says transition risk needs follow up.",
+    )
+    other_material = classify_uploaded_source_material(
+        filename="customer-note.txt",
+        mime_type="text/plain",
+        content=b"Customer needs proof points.",
+    )
+    warned_record = store.write(
+        create_document_intake_record(warned_material, record_id="intake_warned")
+    )
+    other_record = store.write(
+        create_document_intake_record(other_material, record_id="intake_other")
+    )
+    warned_bundle = store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            warned_record,
+            warned_material,
+            bundle_id="bundle_warned",
+        )
+    )
+    store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            other_record,
+            other_material,
+            bundle_id="bundle_other",
+        )
+    )
+
+    loaded = store.read_extraction_bundle("bundle_warned")
+    assert loaded.warnings[0].warning_type == "source_material_warning"
+    assert loaded.warnings[0].severity is ExtractionWarningSeverity.WARN
+    assert "MIME type" in loaded.warnings[0].message
+    assert store.list_extraction_bundles(document_id=warned_record.id) == [
+        warned_bundle
+    ]
+
+
+def test_entity_candidate_requires_source_span_trace() -> None:
+    with pytest.raises(ValueError, match="entity candidate requires source_span_ids"):
+        EntityCandidate(
+            id="entity_untraced_customer",
+            entity_type="customer",
+            text="Customer",
+            source_span_ids=(),
+            confidence=0.7,
+        )
 
 
 def test_create_document_intake_record_from_generic_upload() -> None:

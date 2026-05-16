@@ -22,8 +22,10 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStatus,
     DocumentIntakeStore,
+    UploadedSourceMaterial,
     classify_uploaded_source_material,
     create_document_intake_record,
+    create_generic_extraction_bundle,
 )
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.local_admin_model import request_local_admin_draft_assist
@@ -231,7 +233,13 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         store = DocumentIntakeStore(
             _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
         )
-        return DocumentIntakeUploadResponse(record=store.write(record))
+        return DocumentIntakeUploadResponse(
+            record=_write_intake_record_and_generic_bundle(
+                store,
+                record,
+                source_material,
+            )
+        )
 
     @app.post("/api/document-intake/source-material")
     def document_intake_source_material(
@@ -251,7 +259,13 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         store = DocumentIntakeStore(
             _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
         )
-        return DocumentIntakeUploadResponse(record=store.write(record))
+        return DocumentIntakeUploadResponse(
+            record=_write_intake_record_and_generic_bundle(
+                store,
+                record,
+                source_material,
+            )
+        )
 
     @app.post("/api/quick-capture/reference-influences")
     def quick_capture_reference_influences(
@@ -481,6 +495,19 @@ def _resolve_runtime_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _write_intake_record_and_generic_bundle(
+    store: DocumentIntakeStore,
+    record: DocumentIntakeRecord,
+    source_material: UploadedSourceMaterial,
+) -> DocumentIntakeRecord:
+    persisted_record = store.write(record)
+    if source_material.text is None:
+        return persisted_record
+    bundle = create_generic_extraction_bundle(persisted_record, source_material)
+    store.write_extraction_bundle(bundle)
+    return store.write(persisted_record.with_extraction_bundle(bundle))
 
 
 def _local_admin_model_assist(content: str, settings: RuntimeSettings):

@@ -1,4 +1,5 @@
 from ariadne.config import RuntimeSettings
+from ariadne.document_intake import DocumentIntakeStore
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.local_admin_model import (
     LocalAdminDraftAssist,
@@ -220,6 +221,50 @@ def test_document_intake_upload_api_persists_generic_source_material(tmp_path) -
     assert LocalEvidenceStore(evidence_root).list() == []
 
 
+def test_document_intake_upload_api_creates_extraction_bundle_for_generic_material(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"# Brief\n\nCustomer needs transition proof.\nRisk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    record = response.json()["record"]
+    assert record["extraction_bundle_id"] is not None
+    assert record["extraction_status"] == "complete"
+    assert record["extraction_review_status"] == "pending_review"
+    assert record["extraction_warning_count"] == 0
+
+    store = DocumentIntakeStore(intake_root)
+    bundle = store.read_extraction_bundle(record["extraction_bundle_id"])
+    assert bundle.document_id == record["id"]
+    assert bundle.source_ref == record["source_ref"]
+    assert bundle.parser_provenance.adapter_name == "ariadne.generic_text_extractor"
+    assert bundle.source_spans
+    assert bundle.entity_candidates
+    assert bundle.relationship_candidates
+
+    queue_record = client.get("/api/document-intake/queue").json()["records"][0]
+    assert queue_record["extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert queue_record["extraction_review_status"] == "pending_review"
+
+
 def test_document_intake_source_material_api_registers_generic_text(tmp_path) -> None:
     intake_root = tmp_path / "document-intake"
     settings = RuntimeSettings.from_mapping(
@@ -245,6 +290,8 @@ def test_document_intake_source_material_api_registers_generic_text(tmp_path) ->
     assert record["content_type"] == "text"
     assert record["status"] == "ready_for_quick_capture"
     assert record["queue_state"] == "ready"
+    assert record["extraction_status"] == "complete"
+    assert record["extraction_review_status"] == "pending_review"
 
     queue = client.get("/api/document-intake/queue").json()["records"]
     assert queue == [record]
@@ -609,6 +656,34 @@ def test_command_center_shell_shows_persisted_document_intake_queue(tmp_path) ->
     assert "Queue: Ready" in response.text
     assert "Ready For Quick Capture" in response.text
     assert "Backed by persisted intake records" in response.text
+
+
+def test_command_center_shell_shows_extraction_bundle_queue_status(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Extraction: Complete" in response.text
+    assert "Review: Pending Review" in response.text
+    assert "Review needed" in response.text
+    assert "Extraction warnings: 0" in response.text
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

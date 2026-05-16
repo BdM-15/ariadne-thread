@@ -5,7 +5,11 @@ from pathlib import Path
 
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
-from ariadne.document_intake import DocumentIntakeRecord, DocumentIntakeStore
+from ariadne.document_intake import (
+    DocumentIntakeRecord,
+    DocumentIntakeStore,
+    ExtractionBundleReviewStatus,
+)
 from ariadne.packets import (
     CanonicalPacketSection,
     EvidenceStatus,
@@ -458,9 +462,28 @@ def _render_document_intake_record_row(record: DocumentIntakeRecord) -> str:
         else "Generic Source Material"
     )
     content_type = record.content_type.value.replace("_", " ").title()
+    extraction_status = (
+        record.extraction_status.value.replace("_", " ").title()
+        if record.extraction_status
+        else "Not Started"
+    )
+    review_status = (
+        record.extraction_review_status.value.replace("_", " ").title()
+        if record.extraction_review_status
+        else "Not Ready"
+    )
+    review_need = (
+        "Review needed"
+        if record.extraction_review_status
+        in {
+            ExtractionBundleReviewStatus.PENDING_REVIEW,
+            ExtractionBundleReviewStatus.IN_REVIEW,
+        }
+        else "No extraction review queued"
+    )
     opportunity = record.opportunity_id or "unassigned"
     warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
-    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:

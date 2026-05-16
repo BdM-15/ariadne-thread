@@ -11,6 +11,7 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStore,
     ExtractionBundleReviewStatus,
+    KnowledgeNoteProjection,
     create_capture_intelligence_draft_from_extraction_bundle,
 )
 from ariadne.packets import (
@@ -50,6 +51,9 @@ def render_command_center_shell(
         for bundle in document_intake_store.list_extraction_bundles()
     ]
     document_intake_capture_candidates = document_intake_store.list_capture_candidates()
+    document_intake_knowledge_note_projections = (
+        document_intake_store.list_knowledge_note_projections()
+    )
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -346,6 +350,7 @@ def render_command_center_shell(
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
+        {_render_knowledge_note_projections_panel(document_intake_knowledge_note_projections)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
@@ -624,6 +629,37 @@ def _capture_candidate_workflow_label(target_workflow: str) -> str:
         "call_plan": "Call Plan",
     }
     return labels.get(target_workflow, target_workflow.replace("_", " ").title())
+
+
+def _render_knowledge_note_projections_panel(
+    projections: list[KnowledgeNoteProjection],
+) -> str:
+    if projections:
+        rows = "".join(
+            _render_knowledge_note_projection_row(projection)
+            for projection in projections[:8]
+        )
+    else:
+        rows = """<div class="row"><strong>No note projections generated</strong><span>Accept document-derived evidence, then generate a one-way note projection for lightweight browsing.</span></div>"""
+    return f"""<section class="panel" id="knowledge-note-projections" aria-labelledby="knowledge-note-projections-heading">
+    <div class="panel-heading"><h2 id="knowledge-note-projections-heading">Knowledge Note Projections</h2><span class="status-chip cyan">{len(projections)} notes</span></div>
+    <div class="row-list">
+    <div class="row"><strong>Human-readable one-way notes</strong><span>Structured Ariadne records remain source of truth. Cannot overwrite structured knowledge.</span></div>
+    {rows}
+    </div>
+  </section>"""
+
+
+def _render_knowledge_note_projection_row(
+    projection: KnowledgeNoteProjection,
+) -> str:
+    evidence_ids = ", ".join(projection.evidence_ids)
+    source_spans = ", ".join(projection.source_span_ids)
+    projection_href = (
+        "/api/document-intake/knowledge-note-projections?bundle_id="
+        f"{projection.source_extraction_bundle_id}"
+    )
+    return f"""<div class="row"><strong>{escape(projection.title)}</strong><span>{escape(projection.summary)}</span><span>Evidence: {escape(evidence_ids)}</span><span>Trace: intake {escape(projection.source_intake_record_id)} - bundle {escape(projection.source_extraction_bundle_id)} - source spans {escape(source_spans)}</span><span>Structured Ariadne records remain source of truth; projection markdown is a readable mirror only.</span><div class="action-strip" aria-label="{escape(projection.title)} projection actions"><a class="action-button" href="{escape(projection_href)}">Open Markdown Projection</a><button class="action-button secondary" type="button" disabled>Cannot overwrite structured knowledge</button></div></div>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:

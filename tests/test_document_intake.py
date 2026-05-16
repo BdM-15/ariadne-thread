@@ -13,11 +13,13 @@ from ariadne.document_intake import (
     ExtractionBundleReviewStatus,
     ExtractionStatus,
     ExtractionWarningSeverity,
+    KnowledgeNoteProjection,
     accept_source_spans_to_evidence,
     classify_uploaded_source_material,
     create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
+    create_knowledge_note_projection_from_accepted_evidence,
     create_review_gated_capture_candidates_from_extraction_bundle,
 )
 from ariadne.evidence import LocalEvidenceStore
@@ -349,6 +351,193 @@ def test_accept_source_span_to_evidence_preserves_lineage_and_link(tmp_path) -> 
     assert duplicate_result.evidence.id == "ev_document_customer_need"
     assert len(evidence_store.list()) == 1
     assert intake_store.list_accepted_evidence_links(bundle_id=bundle.id) == links
+
+
+def test_accepted_document_evidence_generates_knowledge_note_projection(
+    tmp_path,
+) -> None:
+    intake_store = DocumentIntakeStore(tmp_path / "document-intake")
+    evidence_store = LocalEvidenceStore(tmp_path / "evidence")
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=b"Customer needs transition proof. Risk needs PM follow up.",
+    )
+    record = intake_store.write(
+        create_document_intake_record(
+            source_material,
+            opportunity_id="opp-aflcmc-recompete",
+            record_id="intake_customer_brief",
+        )
+    )
+    bundle = intake_store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            record,
+            source_material,
+            bundle_id="bundle_customer_brief",
+        )
+    )
+    span = bundle.source_spans[0]
+    accepted = accept_source_spans_to_evidence(
+        bundle,
+        source_span_ids=(span.id,),
+        reviewer_rationale="Accepted for human-readable sensemaking note.",
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+        evidence_id="ev_document_customer_signal",
+    )
+
+    projection = create_knowledge_note_projection_from_accepted_evidence(
+        bundle,
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+        projection_id="note_customer_brief",
+    )
+
+    assert projection is not None
+    assert projection.id == "note_customer_brief"
+    assert projection.title == "Knowledge Note Projection: customer-brief.md"
+    assert projection.source_intake_record_id == record.id
+    assert projection.source_extraction_bundle_id == bundle.id
+    assert projection.source_ref == bundle.source_ref
+    assert projection.evidence_ids == (accepted.evidence.id,)
+    assert projection.accepted_evidence_link_ids == (accepted.accepted_link.id,)
+    assert projection.source_span_ids == (span.id,)
+    assert projection.parser_adapter == "ariadne.generic_text_extractor"
+    assert projection.parser_version == "0.1"
+    assert projection.parser_method == "deterministic_text_span_heuristics"
+    assert projection.is_source_of_truth is False
+    assert projection.can_overwrite_structured_knowledge is False
+    assert projection.generated_from_accepted_evidence_count == 1
+    assert projection.markdown_content.startswith(
+        "# Knowledge Note Projection: customer-brief.md"
+    )
+    assert "Structured Ariadne records remain the source of truth." in (
+        projection.markdown_content
+    )
+    assert accepted.evidence.content in projection.markdown_content
+    assert accepted.evidence.id in projection.markdown_content
+    assert accepted.accepted_link.reviewer_rationale in projection.markdown_content
+
+
+def test_knowledge_note_projection_requires_accepted_document_evidence(
+    tmp_path,
+) -> None:
+    intake_store = DocumentIntakeStore(tmp_path / "document-intake")
+    evidence_store = LocalEvidenceStore(tmp_path / "evidence")
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=b"Customer needs transition proof. Risk needs PM follow up.",
+    )
+    record = intake_store.write(
+        create_document_intake_record(
+            source_material,
+            record_id="intake_customer_brief",
+        )
+    )
+    bundle = intake_store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            record,
+            source_material,
+            bundle_id="bundle_customer_brief",
+        )
+    )
+
+    projection = create_knowledge_note_projection_from_accepted_evidence(
+        bundle,
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+    )
+
+    assert projection is None
+    assert intake_store.list_knowledge_note_projections(bundle_id=bundle.id) == []
+
+
+def test_document_intake_store_persists_knowledge_note_projections(
+    tmp_path,
+) -> None:
+    intake_store = DocumentIntakeStore(tmp_path / "document-intake")
+    evidence_store = LocalEvidenceStore(tmp_path / "evidence")
+    source_material = classify_uploaded_source_material(
+        filename="customer-brief.md",
+        mime_type="text/markdown",
+        content=b"Customer needs transition proof. Risk needs PM follow up.",
+    )
+    record = intake_store.write(
+        create_document_intake_record(
+            source_material,
+            opportunity_id="opp-aflcmc-recompete",
+            record_id="intake_customer_brief",
+        )
+    )
+    bundle = intake_store.write_extraction_bundle(
+        create_generic_extraction_bundle(
+            record,
+            source_material,
+            bundle_id="bundle_customer_brief",
+        )
+    )
+    span = bundle.source_spans[0]
+    accepted = accept_source_spans_to_evidence(
+        bundle,
+        source_span_ids=(span.id,),
+        reviewer_rationale="Accepted for human-readable sensemaking note.",
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+        evidence_id="ev_document_customer_signal",
+    )
+    projection = create_knowledge_note_projection_from_accepted_evidence(
+        bundle,
+        intake_store=intake_store,
+        evidence_store=evidence_store,
+        projection_id="note_customer_brief",
+    )
+    assert projection is not None
+
+    intake_store.write_knowledge_note_projection(projection)
+
+    reloaded_store = DocumentIntakeStore(tmp_path / "document-intake")
+    assert reloaded_store.read_knowledge_note_projection(projection.id).model_dump(
+        mode="json"
+    ) == projection.model_dump(mode="json")
+    assert reloaded_store.list_knowledge_note_projections(bundle_id=bundle.id) == [
+        projection
+    ]
+    assert reloaded_store.list_knowledge_note_projections(
+        intake_record_id=record.id
+    ) == [projection]
+    assert reloaded_store.list_knowledge_note_projections(
+        evidence_id=accepted.evidence.id
+    ) == [projection]
+
+
+def test_knowledge_note_projection_cannot_be_source_of_truth() -> None:
+    projection_data = {
+        "id": "note_customer_brief",
+        "title": "Knowledge Note Projection: customer-brief.md",
+        "summary": "Customer needs transition proof.",
+        "markdown_content": "# Knowledge Note Projection: customer-brief.md",
+        "source_intake_record_id": "intake_customer_brief",
+        "source_extraction_bundle_id": "bundle_customer_brief",
+        "source_ref": "upload:customer-brief.md",
+        "evidence_ids": ("ev_document_customer_signal",),
+        "accepted_evidence_link_ids": ("accepted_customer_signal",),
+        "source_span_ids": ("span_customer_signal",),
+        "parser_adapter": "ariadne.generic_text_extractor",
+        "parser_version": "0.1",
+        "parser_method": "deterministic_text_span_heuristics",
+        "generated_from_accepted_evidence_count": 1,
+    }
+
+    with pytest.raises(ValueError, match="cannot be source of truth"):
+        KnowledgeNoteProjection(**projection_data, is_source_of_truth=True)
+
+    with pytest.raises(ValueError, match="cannot overwrite structured knowledge"):
+        KnowledgeNoteProjection(
+            **projection_data,
+            can_overwrite_structured_knowledge=True,
+        )
 
 
 def test_extraction_bundle_creates_review_gated_capture_candidates() -> None:

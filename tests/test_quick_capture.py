@@ -6,7 +6,10 @@ from ariadne.quick_capture import (
     ProposedDestination,
     accept_capture_review_proposal,
     RawCaptureStatus,
+    RawCaptureSourceType,
+    capture_pasted_text,
     capture_raw_item,
+    capture_raw_item_from_upload,
     discard_capture_review_proposal,
     process_raw_capture_item,
     route_capture_follow_up_questions,
@@ -24,6 +27,41 @@ def test_raw_capture_item_can_be_created_from_text_with_optional_opportunity() -
     assert raw_item.content == "Customer mentioned transition risk during recompete call."
     assert raw_item.opportunity_id == "opp-aflcmc-recompete"
     assert raw_item.status is RawCaptureStatus.CAPTURED
+
+
+def test_pasted_text_capture_preserves_source_metadata() -> None:
+    raw_item = capture_pasted_text(
+        "Customer pasted note says transition risk needs follow up.",
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_pasted_customer_note",
+    )
+
+    assert raw_item.source_metadata is not None
+    assert raw_item.source_metadata.source_type is RawCaptureSourceType.PASTED_TEXT
+    assert raw_item.source_metadata.intake_status == "ready_for_quick_capture"
+    assert raw_item.source_metadata.byte_size == len(raw_item.content.encode("utf-8"))
+
+
+def test_uploaded_markdown_capture_uses_same_draft_path_as_manual_notes() -> None:
+    raw_item = capture_raw_item_from_upload(
+        "# Call note\n\nCustomer says transition risk needs packet gap.",
+        filename="customer-call.md",
+        mime_type="text/markdown",
+        content_type="markdown",
+        byte_size=57,
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_uploaded_customer_call",
+    )
+
+    review = process_raw_capture_item(raw_item)
+
+    assert raw_item.source_metadata is not None
+    assert raw_item.source_metadata.source_type is RawCaptureSourceType.UPLOADED_TEXT
+    assert raw_item.source_metadata.filename == "customer-call.md"
+    assert review.raw_item_id == "raw_uploaded_customer_call"
+    assert review.intelligence_draft is not None
+    assert review.intelligence_draft.raw_source_content == raw_item.content
+    assert "packet" in review.intelligence_draft.packet_implications[0].lower()
 
 
 def test_processing_routes_raw_capture_to_review_without_trusted_write() -> None:

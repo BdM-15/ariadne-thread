@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,11 @@ from ariadne.draft_promotion import (
     discard_draft_part_promotion,
     promote_action_candidate_to_plan_item,
     promote_packet_implication_to_field_answer,
+)
+from ariadne.document_intake import (
+    DocumentIntakeCandidate,
+    DocumentIntakeStatus,
+    classify_uploaded_source_material,
 )
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.packet_knowledge import (
@@ -38,8 +43,11 @@ from ariadne.quick_capture import (
     CaptureReview,
     CaptureReviewDecision,
     ProposedDestination,
+    RawCaptureItem,
     accept_capture_review_proposal,
+    capture_pasted_text,
     capture_raw_item,
+    capture_raw_item_from_upload,
     create_capture_intelligence_draft,
     discard_capture_review_proposal,
     process_raw_capture_item,
@@ -77,6 +85,24 @@ class CaptureIntelligenceDraftRequest(BaseModel):
 
 class CaptureIntelligenceDraftResponse(BaseModel):
     draft: CaptureIntelligenceDraft
+
+
+class QuickCaptureSourceMaterialRequest(BaseModel):
+    content: str
+    opportunity_id: str | None = None
+    raw_item_id: str | None = None
+
+
+class QuickCaptureSourceMaterialResponse(BaseModel):
+    raw_item: RawCaptureItem
+    review: CaptureReview
+
+
+class QuickCaptureUploadResponse(BaseModel):
+    status: DocumentIntakeStatus
+    raw_item: RawCaptureItem | None = None
+    review: CaptureReview | None = None
+    intake_candidate: DocumentIntakeCandidate | None = None
 
 
 class CaptureReviewDecisionRequest(BaseModel):
@@ -186,6 +212,61 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             ),
         )
         return CaptureIntelligenceDraftResponse(draft=draft)
+
+    @app.post("/api/quick-capture/source-material")
+    def quick_capture_source_material(
+        request: QuickCaptureSourceMaterialRequest,
+    ) -> QuickCaptureSourceMaterialResponse:
+        if not request.content.strip():
+            raise HTTPException(status_code=400, detail="source material is empty")
+        wiki = load_reference_wiki(
+            _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+        )
+        raw_item = capture_pasted_text(
+            request.content,
+            opportunity_id=request.opportunity_id,
+            raw_item_id=request.raw_item_id,
+        )
+        review = process_raw_capture_item(raw_item, reference_wiki=wiki)
+        return QuickCaptureSourceMaterialResponse(raw_item=raw_item, review=review)
+
+    @app.post("/api/quick-capture/uploads")
+    async def quick_capture_upload(
+        file: UploadFile = File(...),
+        opportunity_id: str | None = Form(default=None),
+    ) -> QuickCaptureUploadResponse:
+        source_material = classify_uploaded_source_material(
+            filename=file.filename,
+            mime_type=file.content_type,
+            content=await file.read(),
+        )
+        if source_material.intake_candidate is not None:
+            return QuickCaptureUploadResponse(
+                status=source_material.status,
+                intake_candidate=source_material.intake_candidate,
+            )
+        if source_material.text is None:
+            raise HTTPException(status_code=400, detail="upload text was not readable")
+
+        wiki = load_reference_wiki(
+            _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+        )
+        raw_item = capture_raw_item_from_upload(
+            source_material.text,
+            filename=source_material.filename,
+            mime_type=source_material.mime_type,
+            content_type=source_material.content_type.value,
+            byte_size=source_material.byte_size,
+            source_ref=source_material.source_ref,
+            warnings=source_material.warnings,
+            opportunity_id=opportunity_id,
+        )
+        review = process_raw_capture_item(raw_item, reference_wiki=wiki)
+        return QuickCaptureUploadResponse(
+            status=source_material.status,
+            raw_item=raw_item,
+            review=review,
+        )
 
     @app.post("/api/quick-capture/review-decisions")
     def quick_capture_review_decision(

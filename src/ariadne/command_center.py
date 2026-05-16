@@ -11,9 +11,10 @@ from ariadne.action_plans import (
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.config import RuntimeSettings
 from ariadne.draft_promotion import (
-  promote_action_candidate_to_plan_item,
-  promote_packet_implication_to_field_answer,
+    promote_action_candidate_to_plan_item,
+    promote_packet_implication_to_field_answer,
 )
+from ariadne.document_intake import classify_uploaded_source_material
 from ariadne.opportunities import (
     CoreCaptureWorkstream,
     EntryContext,
@@ -31,9 +32,11 @@ from ariadne.packets import (
     PacketReadiness,
 )
 from ariadne.quick_capture import (
-  CaptureIntelligenceDraftPartType,
-  capture_raw_item,
-  process_raw_capture_item,
+    CaptureIntelligenceDraftPartType,
+    capture_pasted_text,
+    capture_raw_item,
+    capture_raw_item_from_upload,
+    process_raw_capture_item,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 
@@ -72,44 +75,80 @@ def render_command_center_shell(
         gap_summary="Need validated customer pain and decision-maker map.",
     )
     quick_capture = capture_raw_item(
-      "Customer said incumbent transition plan is weak. Need follow up with PM next week.",
+        "Customer said incumbent transition plan is weak. Need follow up with PM next week.",
         opportunity_id="opp-aflcmc-recompete",
         raw_item_id="raw_customer_transition_note",
     )
     reference_wiki = load_reference_wiki(
-      _reference_wiki_root(settings.ariadne_reference_wiki_dir, root)
+        _reference_wiki_root(settings.ariadne_reference_wiki_dir, root)
     )
     capture_review = process_raw_capture_item(
-      quick_capture,
-      reference_wiki=reference_wiki,
+        quick_capture,
+        reference_wiki=reference_wiki,
+    )
+    pasted_capture = capture_pasted_text(
+        "Customer pasted note says transition proof needs PM follow up.",
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_pasted_transition_note",
+    )
+    pasted_review = process_raw_capture_item(
+        pasted_capture,
+        reference_wiki=reference_wiki,
+    )
+    uploaded_source = classify_uploaded_source_material(
+        filename="customer-call.md",
+        mime_type="text/markdown",
+        content=b"# Call note\n\nCustomer says transition risk needs packet gap.",
+    )
+    if uploaded_source.text is None:
+        raise ValueError("demo uploaded source material was not readable")
+    uploaded_capture = capture_raw_item_from_upload(
+        uploaded_source.text,
+        filename=uploaded_source.filename,
+        mime_type=uploaded_source.mime_type,
+        content_type=uploaded_source.content_type.value,
+        byte_size=uploaded_source.byte_size,
+        source_ref=uploaded_source.source_ref,
+        warnings=uploaded_source.warnings,
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_uploaded_customer_call",
+    )
+    uploaded_review = process_raw_capture_item(
+        uploaded_capture,
+        reference_wiki=reference_wiki,
+    )
+    unsupported_upload = classify_uploaded_source_material(
+        filename="draft-rfp.pdf",
+        mime_type="application/pdf",
+        content=b"%PDF-1.4\n...",
     )
     accepted_action = promote_action_candidate_to_plan_item(
-      capture_review,
-      draft_part_id=_draft_part_id_for_type(
         capture_review,
-        CaptureIntelligenceDraftPartType.ACTION_CANDIDATE,
-      ),
-      reviewer_rationale="Reviewer accepted PM follow-up as next capture action.",
-      evidence_ids=("ev_customer_call",),
+        draft_part_id=_draft_part_id_for_type(
+            capture_review,
+            CaptureIntelligenceDraftPartType.ACTION_CANDIDATE,
+        ),
+        reviewer_rationale="Reviewer accepted PM follow-up as next capture action.",
+        evidence_ids=("ev_customer_call",),
     )
     accepted_packet_answer = promote_packet_implication_to_field_answer(
-      capture_review,
-      draft_part_id=_draft_part_id_for_type(
         capture_review,
-        CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
-      ),
-      field_key="risks",
-      reviewer_rationale="Reviewer accepted transition risk as packet update.",
-      edited_value="Transition risk needs mitigation evidence before gate review.",
-      evidence_ids=("ev_customer_call",),
-      confidence=0.64,
+        draft_part_id=_draft_part_id_for_type(
+            capture_review,
+            CaptureIntelligenceDraftPartType.PACKET_IMPLICATION,
+        ),
+        field_key="risks",
+        reviewer_rationale="Reviewer accepted transition risk as packet update.",
+        edited_value="Transition risk needs mitigation evidence before gate review.",
+        evidence_ids=("ev_customer_call",),
+        confidence=0.64,
     )
     action_plan = add_packet_gap_actions(
         create_capture_action_plan(opportunity),
         packet,
     )
     action_plan = action_plan.model_copy(
-      update={"items": action_plan.items + (accepted_action,)}
+        update={"items": action_plan.items + (accepted_action,)}
     )
     action_view = build_action_plan_view(action_plan)
     reference_influences = capture_review.reference_influences
@@ -322,6 +361,22 @@ def render_command_center_shell(
     .action-button.secondary {{ border-color: rgba(251, 191, 36, 0.7); background: rgba(251, 191, 36, 0.12); color: var(--amber); }}
     .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
     .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+    .upload-form {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--edge-soft);
+      border-radius: 8px;
+      background: var(--surface-strong);
+    }}
+    .upload-form label {{ color: var(--text); font-weight: 900; }}
+    .upload-form input {{
+      min-height: 44px;
+      width: 100%;
+      color: var(--muted);
+    }}
     @media (max-width: 1100px) {{
       .shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -336,6 +391,7 @@ def render_command_center_shell(
       .nav,
       .metric-grid {{ grid-template-columns: 1fr; }}
       .action-strip {{ grid-template-columns: 1fr; }}
+      .upload-form {{ grid-template-columns: 1fr; }}
       .hero h2 {{ font-size: 1.55rem; }}
     }}
     @media (prefers-reduced-motion: reduce) {{
@@ -380,7 +436,7 @@ def render_command_center_shell(
       </section>
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
-        {_render_quick_capture_panel(quick_capture, capture_review, reference_influences)}
+        {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_action, accepted_packet_answer)}
         {_render_packet_panel(packet, coverage_view)}
@@ -394,11 +450,11 @@ def render_command_center_shell(
 
 
 def _render_metrics(
-  action_view,
-  coverage_view,
-  capture_review,
-  catalog: CapabilityCatalog,
-  reference_influences: tuple[ReferenceWikiInfluence, ...],
+    action_view,
+    coverage_view,
+    capture_review,
+    catalog: CapabilityCatalog,
+    reference_influences: tuple[ReferenceWikiInfluence, ...],
 ) -> str:
     open_coverage = sum(
         section.evidence_status is not EvidenceStatus.ANSWERED
@@ -434,15 +490,35 @@ def _render_quick_capture_panel(
     raw_item,
     capture_review,
     reference_influences: tuple[ReferenceWikiInfluence, ...],
+  pasted_raw_item,
+  pasted_review,
+  uploaded_raw_item,
+  uploaded_review,
+  intake_candidate,
 ) -> str:
     influence_rows = "".join(
         f"""<div class="row"><strong>{escape(influence.title)}</strong><span>{escape(influence.influence_type.value.replace("_", " ").title())} - {escape(influence.why_it_matters)}</span></div>"""
         for influence in reference_influences[:3]
     )
+    pasted_metadata = pasted_raw_item.source_metadata
+    uploaded_metadata = uploaded_raw_item.source_metadata
+    candidate_status = (
+        intake_candidate.status.value.replace("_", " ").title()
+        if intake_candidate is not None
+        else "Parser Required"
+    )
     return f"""<section class="panel" id="quick-capture" aria-labelledby="quick-capture-heading">
       <div class="panel-heading"><h2 id="quick-capture-heading">Quick Capture</h2><span class="status-chip amber">Needs Review</span></div>
       <div class="row-list">
         <div class="row"><strong>{escape(raw_item.id)}</strong><span>{escape(raw_item.content)}</span></div>
+        <div class="row"><strong>Pasted Text Intake</strong><span>{escape(pasted_metadata.source_type.value if pasted_metadata else "pasted_text")} - {len(pasted_review.proposals)} review proposals queued.</span></div>
+        <div class="row"><strong>Text / Markdown Upload</strong><span>{escape(uploaded_metadata.filename if uploaded_metadata and uploaded_metadata.filename else "uploaded material")} - {escape(uploaded_metadata.content_type if uploaded_metadata and uploaded_metadata.content_type else "text")} - {len(uploaded_review.proposals)} review proposals queued.</span></div>
+        <div class="row"><strong>Document Intake Candidate</strong><span>{escape(intake_candidate.filename if intake_candidate and intake_candidate.filename else "unsupported file")} - {escape(candidate_status)}</span></div>
+        <form class="upload-form" action="/api/quick-capture/uploads" method="post" enctype="multipart/form-data">
+          <label for="quick-capture-upload">Text / Markdown Upload</label>
+          <input id="quick-capture-upload" name="file" type="file" accept=".txt,.text,.md,.markdown,text/plain,text/markdown">
+          <button class="action-button" type="submit">Upload</button>
+        </form>
         <div class="row"><strong>{len(capture_review.proposals)} review proposals</strong><span>Evidence Item Review plus Action Plan Item Review queued.</span></div>
         <div class="row"><strong>{len(reference_influences)} Reference Wiki influences</strong><span>Background context surfaced for review; no opportunity evidence is written automatically.</span></div>
         {influence_rows}
@@ -483,7 +559,7 @@ def _render_inline_items(items: tuple[str, ...]) -> str:
 
 
 def _render_accepted_promotions_panel(action_item, packet_answer) -> str:
-  return f"""<section class="panel" id="accepted-promotions" aria-labelledby="accepted-promotions-heading">
+    return f"""<section class="panel" id="accepted-promotions" aria-labelledby="accepted-promotions-heading">
     <div class="panel-heading"><h2 id="accepted-promotions-heading">Accepted Draft Promotions</h2><span class="status-chip green">Review Status: accepted</span></div>
     <div class="row-list">
     <div class="row"><strong>Accepted Action</strong><span>{escape(action_item.action)}</span><span>Evidence: {escape(", ".join(action_item.related_evidence_ids))}</span></div>
@@ -493,12 +569,12 @@ def _render_accepted_promotions_panel(action_item, packet_answer) -> str:
 
 
 def _draft_part_id_for_type(review, part_type: CaptureIntelligenceDraftPartType) -> str:
-  if review.intelligence_draft is None:
-    raise ValueError("capture review has no intelligence draft")
-  for part in review.intelligence_draft.intelligence_pieces:
-    if part.part_type is part_type:
-      return part.id
-  raise ValueError(f"capture review has no draft part for {part_type.value}")
+    if review.intelligence_draft is None:
+        raise ValueError("capture review has no intelligence draft")
+    for part in review.intelligence_draft.intelligence_pieces:
+        if part.part_type is part_type:
+            return part.id
+    raise ValueError(f"capture review has no draft part for {part_type.value}")
 
 
 def _reference_wiki_root(path: Path, workspace_root: Path) -> Path:

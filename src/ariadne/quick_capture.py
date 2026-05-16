@@ -14,6 +14,12 @@ class RawCaptureStatus(StrEnum):
     CAPTURED = "captured"
 
 
+class RawCaptureSourceType(StrEnum):
+    MANUAL_NOTE = "manual_note"
+    PASTED_TEXT = "pasted_text"
+    UPLOADED_TEXT = "uploaded_text"
+
+
 class ProposedDestination(StrEnum):
     EVIDENCE_ITEM_REVIEW = "evidence_item_review"
     ACTION_PLAN_ITEM_REVIEW = "action_plan_item_review"
@@ -43,10 +49,22 @@ class CaptureIntelligenceDraftPartType(StrEnum):
     FOLLOW_UP_QUESTION = "follow_up_question"
 
 
+class RawCaptureSourceMetadata(BaseModel):
+    source_type: RawCaptureSourceType
+    filename: str | None = None
+    mime_type: str | None = None
+    content_type: str | None = None
+    byte_size: int | None = None
+    intake_status: str | None = None
+    source_ref: str | None = None
+    warnings: tuple[str, ...] = ()
+
+
 class RawCaptureItem(BaseModel):
     id: str
     content: str
     opportunity_id: str | None = None
+    source_metadata: RawCaptureSourceMetadata | None = None
     status: RawCaptureStatus = RawCaptureStatus.CAPTURED
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -120,11 +138,64 @@ def capture_raw_item(
     *,
     opportunity_id: str | None = None,
     raw_item_id: str | None = None,
+    source_metadata: RawCaptureSourceMetadata | None = None,
 ) -> RawCaptureItem:
     return RawCaptureItem(
         id=raw_item_id or f"raw_{uuid4().hex}",
         content=content,
         opportunity_id=opportunity_id,
+        source_metadata=source_metadata,
+    )
+
+
+def capture_pasted_text(
+    content: str,
+    *,
+    opportunity_id: str | None = None,
+    raw_item_id: str | None = None,
+) -> RawCaptureItem:
+    item_id = raw_item_id or f"raw_{uuid4().hex}"
+    return capture_raw_item(
+        content,
+        opportunity_id=opportunity_id,
+        raw_item_id=item_id,
+        source_metadata=RawCaptureSourceMetadata(
+            source_type=RawCaptureSourceType.PASTED_TEXT,
+            content_type="text",
+            byte_size=len(content.encode("utf-8")),
+            intake_status="ready_for_quick_capture",
+            source_ref=f"pasted:{item_id}",
+        ),
+    )
+
+
+def capture_raw_item_from_upload(
+    content: str,
+    *,
+    filename: str | None,
+    mime_type: str | None,
+    content_type: str,
+    byte_size: int,
+    opportunity_id: str | None = None,
+    raw_item_id: str | None = None,
+    source_ref: str | None = None,
+    warnings: tuple[str, ...] = (),
+) -> RawCaptureItem:
+    item_id = raw_item_id or f"raw_{uuid4().hex}"
+    return capture_raw_item(
+        content,
+        opportunity_id=opportunity_id,
+        raw_item_id=item_id,
+        source_metadata=RawCaptureSourceMetadata(
+            source_type=RawCaptureSourceType.UPLOADED_TEXT,
+            filename=filename,
+            mime_type=mime_type,
+            content_type=content_type,
+            byte_size=byte_size,
+            intake_status="ready_for_quick_capture",
+            source_ref=source_ref or f"upload:{item_id}",
+            warnings=warnings,
+        ),
     )
 
 
@@ -158,7 +229,7 @@ def process_raw_capture_item(
                 evidence=(
                     create_source_evidence(
                         content=raw_item.content,
-                        source_ref=f"raw_capture:{raw_item.id}",
+                        source_ref=_source_ref_for_raw_item(raw_item),
                         opportunity_id=raw_item.opportunity_id,
                     )
                     if destination is ProposedDestination.EVIDENCE_ITEM_REVIEW
@@ -355,6 +426,12 @@ def _find_review_proposal(
         if proposal.id == proposal_id:
             return proposal
     raise ValueError(f"unknown review proposal: {proposal_id}")
+
+
+def _source_ref_for_raw_item(raw_item: RawCaptureItem) -> str:
+    if raw_item.source_metadata and raw_item.source_metadata.source_ref:
+        return raw_item.source_metadata.source_ref
+    return f"raw_capture:{raw_item.id}"
 
 
 def _review_draft_id(review: CaptureReview) -> str | None:

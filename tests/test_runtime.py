@@ -105,6 +105,69 @@ and ghost strategy should shape capture follow-up.
     assert draft["trusted_opportunity_knowledge_updated"] is False
 
 
+def test_quick_capture_source_material_api_creates_pasted_text_raw_item() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/source-material",
+        json={
+            "content": "Customer pasted note says transition proof needs PM follow up.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_pasted_note",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["raw_item"]["id"] == "raw_api_pasted_note"
+    assert body["raw_item"]["source_metadata"]["source_type"] == "pasted_text"
+    assert body["review"]["raw_item_id"] == "raw_api_pasted_note"
+    assert body["review"]["intelligence_draft"]["raw_source_content"] == (
+        "Customer pasted note says transition proof needs PM follow up."
+    )
+
+
+def test_quick_capture_upload_api_processes_markdown_as_raw_capture_material() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-call.md",
+                b"# Call note\n\nCustomer says transition risk needs packet gap.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready_for_quick_capture"
+    assert body["raw_item"]["source_metadata"]["filename"] == "customer-call.md"
+    assert body["raw_item"]["source_metadata"]["content_type"] == "markdown"
+    assert body["review"]["intelligence_draft"]["raw_item_id"] == body["raw_item"]["id"]
+    assert body["intake_candidate"] is None
+
+
+def test_quick_capture_upload_api_records_unsupported_document_intake_candidate() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/uploads",
+        files={"file": ("draft-rfp.pdf", b"%PDF-1.4\n...", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "parser_required"
+    assert body["raw_item"] is None
+    assert body["review"] is None
+    assert body["intake_candidate"]["filename"] == "draft-rfp.pdf"
+    assert body["intake_candidate"]["status"] == "parser_required"
+
+
 def test_quick_capture_draft_api_does_not_write_evidence_before_review(tmp_path) -> None:
     evidence_root = tmp_path / "evidence"
     settings = RuntimeSettings.from_mapping(
@@ -280,6 +343,9 @@ def test_root_serves_command_center_shell() -> None:
     assert "Accepted Packet Update" in response.text
     assert "Review Status: accepted" in response.text
     assert "Per-Piece Intelligence Review" in response.text
+    assert "Text / Markdown Upload" in response.text
+    assert "Document Intake Candidate" in response.text
+    assert "Parser Required" in response.text
     assert "Accept as Evidence" in response.text
     assert "Recommend Route" in response.text
     assert "Plan Skill Chain" in response.text

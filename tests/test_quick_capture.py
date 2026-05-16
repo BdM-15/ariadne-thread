@@ -159,6 +159,32 @@ and ghost strategy should shape capture follow-up.
     assert draft.trusted_opportunity_knowledge_updated is False
 
 
+def test_intelligence_draft_breaks_outputs_into_reviewable_pieces() -> None:
+    raw_item = capture_raw_item(
+        "Customer says transition risk needs proof from PM before next call.",
+        raw_item_id="raw_transition_skill_chain_note",
+    )
+
+    review = process_raw_capture_item(raw_item)
+    draft = review.intelligence_draft
+
+    assert draft is not None
+    assert draft.intelligence_pieces
+    follow_up_piece = next(
+        piece
+        for piece in draft.intelligence_pieces
+        if piece.part_type == "follow_up_question"
+        and piece.recommended_route == "customer_engagement_to_call_plan"
+    )
+    assert follow_up_piece.id.startswith(f"{draft.id}_follow_up_question_")
+    assert "transition" in follow_up_piece.content.lower()
+    assert follow_up_piece.suggested_skill_chain == (
+        "guided_capture_mentor",
+        "call_plan_builder",
+    )
+    assert follow_up_piece.review_required is True
+
+
 def test_accepting_evidence_review_proposal_writes_source_evidence_with_provenance(
     tmp_path,
 ) -> None:

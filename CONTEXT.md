@@ -29,8 +29,10 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate.
 - Knowledge Processing Workflow: the workflow that turns raw capture items and uploaded documents into structured evidence, opportunity knowledge, action items, and reusable insight candidates.
 - Capture Intelligence Draft: an AI-prepared, reviewable synthesis inferred from raw capture material or source material before it becomes trusted evidence, opportunity knowledge, packet answers, action items, or reusable insight candidates.
+- Capture Intelligence Draft Part: one reviewable piece inside a Capture Intelligence Draft, such as a claim, risk, discriminator candidate, packet implication, action candidate, or follow-up question.
 - Capture Review Decision: the human or explicitly routed decision to accept, discard, refine, or route one part of a Capture Intelligence Draft before it becomes trusted evidence, questions, actions, or knowledge.
 - Follow-Up Question Route: an explicit routing decision that turns draft questions into a next research, customer engagement, call plan, or skill-run prompt without writing trusted evidence.
+- Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
 - Capture Reference Context: reusable background capture knowledge that can guide Ariadne's inference without serving as opportunity-specific evidence by itself.
 - Reference Wiki: a human-readable, interlinked note corpus that organizes Capture Reference Context for lightweight retrieval and reasoning.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
@@ -136,8 +138,10 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Operational Learning** can become an **Improvement Proposal**, but durable Ariadne changes require human approval.
 - A **Quick Capture Inbox** contains **Raw Capture Items** that can be handled by a **Knowledge Processing Workflow**.
 - A **Knowledge Processing Workflow** can create **Capture Intelligence Drafts** from **Raw Capture Items** or uploaded source material.
+- A **Capture Intelligence Draft** contains **Capture Intelligence Draft Parts** so each piece of intelligence can be accepted, discarded, routed, skill-chained, or recommended independently.
 - A **Capture Review Decision** is required before **Capture Intelligence Draft** parts become trusted **Source Evidence**, **Opportunity Knowledge**, **Action Plan Items**, or **Packet Field Answers**.
 - A **Follow-Up Question Route** can launch customer engagement preparation, a **Call Plan**, research, or a **Capability Module** without treating the routed question as trusted evidence.
+- A **Skill Chain Recommendation** can point to existing **Capability Modules**, recommend a **Product Workflow**, or become a **Capability Gap** or **Improvement Proposal** when Hermes detects that no suitable skill exists.
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
 - A **Reference Wiki** can organize **Capture Reference Context** for lightweight retrieval without becoming the primary **Knowledge Layer** or a **Knowledge Mirror**.
 - A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.

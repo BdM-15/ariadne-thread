@@ -224,13 +224,16 @@ def test_root_serves_command_center_shell() -> None:
     assert "Reference Wiki influences" in response.text
     assert "Incumbent Analysis Strategy" in response.text
     assert "Capture Intelligence Draft" in response.text
+    assert "Per-Piece Intelligence Review" in response.text
     assert "Accept as Evidence" in response.text
-    assert "Route Follow-Up Questions" in response.text
-    assert "Discard Draft Part" in response.text
+    assert "Recommend Route" in response.text
+    assert "Plan Skill Chain" in response.text
+    assert "Discard Piece" in response.text
+    assert "Suggested Skill Chain" in response.text
     assert "Trusted writes require reviewer action" in response.text
-    assert "Inferred Claims" in response.text
-    assert "Likely Risks" in response.text
-    assert "Follow-Up Questions" in response.text
+    assert "Inferred Claim" in response.text
+    assert "Likely Risk" in response.text
+    assert "Follow Up Question" in response.text
     assert "Advanced / read-only" in response.text
     assert "/api/capabilities/catalog" in response.text
     assert "AFLCMC recompete support" in response.text

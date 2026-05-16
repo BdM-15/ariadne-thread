@@ -34,6 +34,15 @@ class CaptureIntelligenceDraftStatus(StrEnum):
     PENDING_REVIEW = "pending_review"
 
 
+class CaptureIntelligenceDraftPartType(StrEnum):
+    INFERRED_CLAIM = "inferred_claim"
+    LIKELY_RISK = "likely_risk"
+    DISCRIMINATOR_CANDIDATE = "discriminator_candidate"
+    PACKET_IMPLICATION = "packet_implication"
+    ACTION_CANDIDATE = "action_candidate"
+    FOLLOW_UP_QUESTION = "follow_up_question"
+
+
 class RawCaptureItem(BaseModel):
     id: str
     content: str
@@ -48,6 +57,15 @@ class CaptureReviewProposal(BaseModel):
     status: ProposalStatus = ProposalStatus.PENDING_REVIEW
     proposed_content: str
     evidence: EvidenceItem | None = None
+
+
+class CaptureIntelligenceDraftPart(BaseModel):
+    id: str
+    part_type: CaptureIntelligenceDraftPartType
+    content: str
+    recommended_route: str
+    suggested_skill_chain: tuple[str, ...] = ()
+    review_required: bool = True
 
 
 class CaptureIntelligenceDraft(BaseModel):
@@ -68,6 +86,7 @@ class CaptureIntelligenceDraft(BaseModel):
     action_candidates: tuple[str, ...]
     gaps: tuple[str, ...]
     follow_up_questions: tuple[str, ...]
+    intelligence_pieces: tuple[CaptureIntelligenceDraftPart, ...] = ()
     trusted_opportunity_knowledge_updated: bool = False
 
 
@@ -158,22 +177,100 @@ def create_capture_intelligence_draft(
 ) -> CaptureIntelligenceDraft:
     content = raw_item.content
     lowered = content.lower()
+    draft_id = f"draft_{uuid4().hex}"
+    inferred_claims = _infer_claims(lowered)
+    likely_risks = _infer_likely_risks(lowered)
+    discriminator_candidates = _infer_discriminator_candidates(lowered)
+    packet_implications = _infer_packet_implications(lowered)
+    action_candidates = _infer_action_candidates(content)
+    follow_up_questions = _infer_follow_up_questions(lowered)
     return CaptureIntelligenceDraft(
-        id=f"draft_{uuid4().hex}",
+        id=draft_id,
         raw_item_id=raw_item.id,
         opportunity_id=raw_item.opportunity_id,
         raw_source_content=content,
-        inferred_claims=_infer_claims(lowered),
+        inferred_claims=inferred_claims,
         reference_influences=reference_influences,
         assumptions=_infer_assumptions(reference_influences),
         confidence_notes=_infer_confidence_notes(reference_influences),
-        likely_risks=_infer_likely_risks(lowered),
-        discriminator_candidates=_infer_discriminator_candidates(lowered),
-        packet_implications=_infer_packet_implications(lowered),
-        action_candidates=_infer_action_candidates(content),
+        likely_risks=likely_risks,
+        discriminator_candidates=discriminator_candidates,
+        packet_implications=packet_implications,
+        action_candidates=action_candidates,
         gaps=_infer_gaps(lowered),
-        follow_up_questions=_infer_follow_up_questions(lowered),
+        follow_up_questions=follow_up_questions,
+        intelligence_pieces=_build_intelligence_pieces(
+            draft_id=draft_id,
+            inferred_claims=inferred_claims,
+            likely_risks=likely_risks,
+            discriminator_candidates=discriminator_candidates,
+            packet_implications=packet_implications,
+            action_candidates=action_candidates,
+            follow_up_questions=follow_up_questions,
+        ),
     )
+
+
+def _build_intelligence_pieces(
+    *,
+    draft_id: str,
+    inferred_claims: tuple[str, ...],
+    likely_risks: tuple[str, ...],
+    discriminator_candidates: tuple[str, ...],
+    packet_implications: tuple[str, ...],
+    action_candidates: tuple[str, ...],
+    follow_up_questions: tuple[str, ...],
+) -> tuple[CaptureIntelligenceDraftPart, ...]:
+    pieces: list[CaptureIntelligenceDraftPart] = []
+    for part_type, items in (
+        (CaptureIntelligenceDraftPartType.INFERRED_CLAIM, inferred_claims),
+        (CaptureIntelligenceDraftPartType.LIKELY_RISK, likely_risks),
+        (
+            CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE,
+            discriminator_candidates,
+        ),
+        (CaptureIntelligenceDraftPartType.PACKET_IMPLICATION, packet_implications),
+        (CaptureIntelligenceDraftPartType.ACTION_CANDIDATE, action_candidates),
+        (CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION, follow_up_questions),
+    ):
+        for index, item in enumerate(items, start=1):
+            route, skill_chain = _suggest_piece_route(part_type, item)
+            pieces.append(
+                CaptureIntelligenceDraftPart(
+                    id=f"{draft_id}_{part_type.value}_{index}",
+                    part_type=part_type,
+                    content=item,
+                    recommended_route=route,
+                    suggested_skill_chain=skill_chain,
+                )
+            )
+    return tuple(pieces)
+
+
+def _suggest_piece_route(
+    part_type: CaptureIntelligenceDraftPartType,
+    content: str,
+) -> tuple[str, tuple[str, ...]]:
+    lowered = content.lower()
+    if part_type is CaptureIntelligenceDraftPartType.FOLLOW_UP_QUESTION and (
+        "customer" in lowered or "transition" in lowered
+    ):
+        return "customer_engagement_to_call_plan", (
+            "guided_capture_mentor",
+            "call_plan_builder",
+        )
+    if part_type is CaptureIntelligenceDraftPartType.ACTION_CANDIDATE:
+        return "capture_action_plan_review", (
+            "guided_capture_mentor",
+            "action_plan_update",
+        )
+    if part_type is CaptureIntelligenceDraftPartType.PACKET_IMPLICATION:
+        return "packet_field_review", ("packet_field_review",)
+    if part_type is CaptureIntelligenceDraftPartType.LIKELY_RISK:
+        return "risk_and_gap_review", ("capture_strategy_review",)
+    if part_type is CaptureIntelligenceDraftPartType.DISCRIMINATOR_CANDIDATE:
+        return "discriminator_evidence_review", ("capture_strategy_review",)
+    return "evidence_or_knowledge_review", ("guided_capture_mentor",)
 
 
 def accept_capture_review_proposal(

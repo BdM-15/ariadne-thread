@@ -1164,6 +1164,33 @@ def test_command_center_shell_shows_document_intake_adapter_hooks() -> None:
     assert "/api/document-intake/capabilities" in response.text
 
 
+def test_command_center_shell_shows_document_intake_demo_thread() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.status_code == 200
+    assert "Document Intake Demo Thread" in response.text
+    assert "customer-capture-brief.md" in response.text
+    assert "Classification: Ready For Quick Capture - Generic Source Material" in (
+        response.text
+    )
+    assert "Extraction Bundle: Complete - Pending Review" in response.text
+    assert "Source spans:" in response.text
+    assert "Extraction warnings: 0" in response.text
+    assert "Document extraction flags risk candidate" in response.text
+    assert "Skill-chain options" in response.text
+    assert "Accepted source-span evidence" in response.text
+    assert "ev_demo_document_transition_risk" in response.text
+    assert "Review-gated next actions" in response.text
+    assert "Capture Action Plan" in response.text
+    assert "Living Briefing Packet" in response.text
+    assert "Risk Register" in response.text
+    assert "Call Plan" in response.text
+    assert "Knowledge Note Projection: customer-capture-brief.md" in response.text
+    assert "Open Markdown Projection" in response.text
+
+
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:
     settings = RuntimeSettings.from_mapping(
         {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}

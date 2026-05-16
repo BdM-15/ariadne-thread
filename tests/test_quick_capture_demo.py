@@ -77,6 +77,44 @@ and ghost strategy should shape capture follow-up.
     assert "Document Intake capability" in candidate.parser_hint
 
 
+def test_quick_capture_demo_thread_includes_document_intake_command_surface(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping({})
+
+    demo = build_quick_capture_demo_thread(settings, workspace_root=tmp_path)
+    document_thread = demo.document_intake
+
+    assert document_thread.source_material.filename == "customer-capture-brief.md"
+    assert document_thread.source_material.status == "ready_for_quick_capture"
+    assert document_thread.record.material_type == "generic_source_material"
+    assert document_thread.record.extraction_bundle_id == document_thread.bundle.id
+    assert document_thread.bundle.source_spans
+    assert document_thread.bundle.extraction_status == "complete"
+    assert document_thread.bundle.review_status == "pending_review"
+    assert document_thread.draft.intelligence_pieces
+    assert any(
+        piece.suggested_skill_chain
+        for piece in document_thread.draft.intelligence_pieces
+    )
+    assert document_thread.accepted_evidence.evidence.id == (
+        "ev_demo_document_transition_risk"
+    )
+    assert document_thread.accepted_evidence.accepted_link.draft_part_id
+    assert {candidate.target_workflow for candidate in document_thread.candidates} >= {
+        "capture_action_plan",
+        "living_briefing_packet",
+        "risk_register",
+        "call_plan",
+    }
+    assert document_thread.projection.title == (
+        "Knowledge Note Projection: customer-capture-brief.md"
+    )
+    assert document_thread.projection.evidence_ids == (
+        "ev_demo_document_transition_risk",
+    )
+
+
 def _write_reference_note(path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")

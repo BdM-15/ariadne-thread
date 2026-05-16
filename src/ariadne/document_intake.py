@@ -335,6 +335,45 @@ class DocumentIntakeCaptureCandidate(BaseModel):
         return self
 
 
+class KnowledgeNoteProjection(BaseModel):
+    id: str
+    title: str
+    summary: str
+    markdown_content: str
+    source_intake_record_id: str
+    source_extraction_bundle_id: str
+    source_ref: str
+    evidence_ids: tuple[str, ...]
+    accepted_evidence_link_ids: tuple[str, ...]
+    source_span_ids: tuple[str, ...]
+    parser_adapter: str
+    parser_version: str
+    parser_method: str
+    opportunity_id: str | None = None
+    is_source_of_truth: bool = False
+    can_overwrite_structured_knowledge: bool = False
+    generated_from_accepted_evidence_count: int
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def validate_projection_guardrails(self) -> KnowledgeNoteProjection:
+        if not self.evidence_ids:
+            raise ValueError("knowledge note projection requires evidence_ids")
+        if not self.accepted_evidence_link_ids:
+            raise ValueError(
+                "knowledge note projection requires accepted_evidence_link_ids"
+            )
+        if not self.source_span_ids:
+            raise ValueError("knowledge note projection requires source_span_ids")
+        if self.is_source_of_truth:
+            raise ValueError("knowledge note projection cannot be source of truth")
+        if self.can_overwrite_structured_knowledge:
+            raise ValueError(
+                "knowledge note projection cannot overwrite structured knowledge"
+            )
+        return self
+
+
 class DocumentIntakeStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
@@ -503,6 +542,60 @@ class DocumentIntakeStore:
             ]
         return candidates
 
+    def write_knowledge_note_projection(
+        self,
+        projection: KnowledgeNoteProjection,
+    ) -> KnowledgeNoteProjection:
+        self._knowledge_note_projection_root.mkdir(parents=True, exist_ok=True)
+        self._knowledge_note_projection_path(projection.id).write_text(
+            projection.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return projection
+
+    def read_knowledge_note_projection(
+        self,
+        projection_id: str,
+    ) -> KnowledgeNoteProjection:
+        return KnowledgeNoteProjection.model_validate_json(
+            self._knowledge_note_projection_path(projection_id).read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def list_knowledge_note_projections(
+        self,
+        *,
+        bundle_id: str | None = None,
+        intake_record_id: str | None = None,
+        evidence_id: str | None = None,
+    ) -> list[KnowledgeNoteProjection]:
+        if not self._knowledge_note_projection_root.exists():
+            return []
+        projections = [
+            self.read_knowledge_note_projection(path.name.removesuffix(".json"))
+            for path in sorted(self._knowledge_note_projection_root.glob("*.json"))
+        ]
+        if bundle_id is not None:
+            projections = [
+                projection
+                for projection in projections
+                if projection.source_extraction_bundle_id == bundle_id
+            ]
+        if intake_record_id is not None:
+            projections = [
+                projection
+                for projection in projections
+                if projection.source_intake_record_id == intake_record_id
+            ]
+        if evidence_id is not None:
+            projections = [
+                projection
+                for projection in projections
+                if evidence_id in projection.evidence_ids
+            ]
+        return projections
+
     def _path(self, record_id: str) -> Path:
         if not record_id or record_id != Path(record_id).name:
             raise ValueError("record_id must be a file-safe identifier")
@@ -534,6 +627,15 @@ class DocumentIntakeStore:
         if not candidate_id or candidate_id != Path(candidate_id).name:
             raise ValueError("candidate_id must be a file-safe identifier")
         return self._capture_candidate_root / f"{candidate_id}.json"
+
+    @property
+    def _knowledge_note_projection_root(self) -> Path:
+        return self.root / "knowledge-note-projections"
+
+    def _knowledge_note_projection_path(self, projection_id: str) -> Path:
+        if not projection_id or projection_id != Path(projection_id).name:
+            raise ValueError("projection_id must be a file-safe identifier")
+        return self._knowledge_note_projection_root / f"{projection_id}.json"
 
 
 def create_document_intake_record(
@@ -839,6 +941,121 @@ def _accepted_evidence_link_id(
 ) -> str:
     digest = sha256((bundle_id + "\0" + "\0".join(source_span_ids)).encode())
     return f"accepted_{digest.hexdigest()[:16]}"
+
+
+def create_knowledge_note_projection_from_accepted_evidence(
+    bundle: ExtractionBundle,
+    *,
+    intake_store: DocumentIntakeStore,
+    evidence_store: LocalEvidenceStore,
+    projection_id: str | None = None,
+) -> KnowledgeNoteProjection | None:
+    accepted_links = intake_store.list_accepted_evidence_links(bundle_id=bundle.id)
+    if not accepted_links:
+        return None
+    evidence_items = tuple(
+        evidence_store.read(link.evidence_id) for link in accepted_links
+    )
+    source_span_ids = _unique_projection_source_span_ids(accepted_links)
+    evidence_ids = tuple(link.evidence_id for link in accepted_links)
+    markdown_content = _render_knowledge_note_projection_markdown(
+        bundle,
+        accepted_links=tuple(accepted_links),
+        evidence_items=evidence_items,
+    )
+    return KnowledgeNoteProjection(
+        id=projection_id
+        or _knowledge_note_projection_id(
+            bundle.id, tuple(link.id for link in accepted_links)
+        ),
+        title=_knowledge_note_projection_title(bundle),
+        summary=_knowledge_note_projection_summary(evidence_items),
+        markdown_content=markdown_content,
+        source_intake_record_id=bundle.document_id,
+        source_extraction_bundle_id=bundle.id,
+        source_ref=bundle.source_ref,
+        evidence_ids=evidence_ids,
+        accepted_evidence_link_ids=tuple(link.id for link in accepted_links),
+        source_span_ids=source_span_ids,
+        parser_adapter=bundle.parser_provenance.adapter_name,
+        parser_version=bundle.parser_provenance.adapter_version,
+        parser_method=bundle.parser_provenance.extraction_method,
+        opportunity_id=bundle.opportunity_id,
+        generated_from_accepted_evidence_count=len(accepted_links),
+    )
+
+
+def _render_knowledge_note_projection_markdown(
+    bundle: ExtractionBundle,
+    *,
+    accepted_links: tuple[AcceptedDocumentEvidenceLink, ...],
+    evidence_items: tuple[EvidenceItem, ...],
+) -> str:
+    title = _knowledge_note_projection_title(bundle)
+    lines = [
+        f"# {title}",
+        "",
+        "> Structured Ariadne records remain the source of truth. This one-way note cannot overwrite evidence, intake records, or extraction bundles.",
+        "",
+        "## Provenance",
+        f"- Intake record: {bundle.document_id}",
+        f"- Extraction bundle: {bundle.id}",
+        f"- Source: {bundle.source_ref}",
+        f"- Parser: {bundle.parser_provenance.adapter_name} {bundle.parser_provenance.adapter_version} ({bundle.parser_provenance.extraction_method})",
+        "",
+        "## Accepted Evidence",
+    ]
+    for index, (link, evidence) in enumerate(zip(accepted_links, evidence_items), 1):
+        warnings = "; ".join(link.warnings) if link.warnings else "none"
+        source_spans = ", ".join(link.source_span_ids)
+        lines.extend(
+            [
+                "",
+                f"### {index}. Evidence {evidence.id}",
+                "",
+                evidence.content,
+                "",
+                f"- Accepted evidence link: {link.id}",
+                f"- Source spans: {source_spans}",
+                f"- Confidence: {link.confidence:.2f}",
+                f"- Reviewer rationale: {link.reviewer_rationale}",
+                f"- Warnings: {warnings}",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _knowledge_note_projection_title(bundle: ExtractionBundle) -> str:
+    source_label = bundle.filename or bundle.source_ref
+    return f"Knowledge Note Projection: {source_label}"
+
+
+def _knowledge_note_projection_summary(
+    evidence_items: tuple[EvidenceItem, ...],
+) -> str:
+    summary_source = " ".join(evidence.content.strip() for evidence in evidence_items)
+    if len(summary_source) <= 220:
+        return summary_source
+    return summary_source[:217].rstrip() + "..."
+
+
+def _unique_projection_source_span_ids(
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> tuple[str, ...]:
+    source_span_ids: list[str] = []
+    for link in accepted_links:
+        for source_span_id in link.source_span_ids:
+            if source_span_id not in source_span_ids:
+                source_span_ids.append(source_span_id)
+    return tuple(source_span_ids)
+
+
+def _knowledge_note_projection_id(
+    bundle_id: str,
+    accepted_link_ids: tuple[str, ...],
+) -> str:
+    digest = sha256((bundle_id + "\0" + "\0".join(accepted_link_ids)).encode())
+    return f"note_{digest.hexdigest()[:16]}"
 
 
 def create_review_gated_capture_candidates_from_extraction_bundle(

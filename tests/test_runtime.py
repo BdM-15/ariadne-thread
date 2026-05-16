@@ -387,6 +387,76 @@ def test_document_intake_review_decision_api_accepts_spans_as_evidence(
     assert len(DocumentIntakeStore(intake_root).list_accepted_evidence_links()) == 1
 
 
+def test_document_intake_runtime_generates_knowledge_note_projection(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+    accept_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+
+    generate_response = client.post(
+        "/api/document-intake/knowledge-note-projections",
+        json={"extraction_bundle_id": record["extraction_bundle_id"]},
+    )
+
+    assert accept_response.status_code == 200
+    assert generate_response.status_code == 200
+    projection = generate_response.json()["projection"]
+    assert projection["title"] == "Knowledge Note Projection: customer-brief.md"
+    assert projection["source_intake_record_id"] == record["id"]
+    assert projection["source_extraction_bundle_id"] == record["extraction_bundle_id"]
+    assert projection["evidence_ids"] == [accept_response.json()["evidence"]["id"]]
+    assert projection["is_source_of_truth"] is False
+    assert projection["can_overwrite_structured_knowledge"] is False
+    assert (
+        "Structured Ariadne records remain the source of truth."
+        in (projection["markdown_content"])
+    )
+
+    list_response = client.get(
+        "/api/document-intake/knowledge-note-projections",
+        params={"intake_record_id": record["id"]},
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()["projections"] == [projection]
+    assert DocumentIntakeStore(intake_root).list_knowledge_note_projections(
+        intake_record_id=record["id"]
+    )
+
+
 def test_document_intake_runtime_lists_review_gated_capture_candidates(
     tmp_path,
 ) -> None:
@@ -991,6 +1061,61 @@ def test_command_center_shell_shows_review_gated_capture_candidates(
     assert "Route Candidate" in response.text
     assert "Ignore Candidate" in response.text
     assert "Trusted outputs still require acceptance" in response.text
+
+
+def test_command_center_shell_shows_knowledge_note_projections(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+            "ARIADNE_EVIDENCE_DIR": str(tmp_path / "evidence"),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+    accept_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+    projection_response = client.post(
+        "/api/document-intake/knowledge-note-projections",
+        json={"extraction_bundle_id": record["extraction_bundle_id"]},
+    )
+
+    response = client.get("/")
+
+    assert accept_response.status_code == 200
+    assert projection_response.status_code == 200
+    assert response.status_code == 200
+    assert "Knowledge Note Projections" in response.text
+    assert "Human-readable one-way notes" in response.text
+    assert "Knowledge Note Projection: customer-brief.md" in response.text
+    assert accept_response.json()["evidence"]["id"] in response.text
+    assert "Structured Ariadne records remain source of truth" in response.text
+    assert "Open Markdown Projection" in response.text
+    assert "Cannot overwrite structured knowledge" in response.text
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

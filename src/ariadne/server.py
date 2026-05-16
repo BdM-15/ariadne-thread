@@ -25,12 +25,14 @@ from ariadne.document_intake import (
     DocumentIntakeRecord,
     DocumentIntakeStatus,
     DocumentIntakeStore,
+    KnowledgeNoteProjection,
     UploadedSourceMaterial,
     accept_source_spans_to_evidence,
     classify_uploaded_source_material,
     create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
+    create_knowledge_note_projection_from_accepted_evidence,
     create_review_gated_capture_candidates_from_extraction_bundle,
 )
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore
@@ -131,6 +133,19 @@ class DocumentIntakeExtractionDraftsResponse(BaseModel):
 
 class DocumentIntakeCaptureCandidatesResponse(BaseModel):
     candidates: tuple[DocumentIntakeCaptureCandidate, ...]
+
+
+class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
+    extraction_bundle_id: str
+    projection_id: str | None = None
+
+
+class DocumentIntakeKnowledgeNoteProjectionResponse(BaseModel):
+    projection: KnowledgeNoteProjection | None = None
+
+
+class DocumentIntakeKnowledgeNoteProjectionsResponse(BaseModel):
+    projections: tuple[KnowledgeNoteProjection, ...]
 
 
 class DocumentIntakeReviewDecisionRequest(BaseModel):
@@ -268,6 +283,57 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         return DocumentIntakeCaptureCandidatesResponse(
             candidates=tuple(store.list_capture_candidates())
         )
+
+    @app.get("/api/document-intake/knowledge-note-projections")
+    def document_intake_knowledge_note_projections(
+        bundle_id: str | None = None,
+        intake_record_id: str | None = None,
+        evidence_id: str | None = None,
+    ) -> DocumentIntakeKnowledgeNoteProjectionsResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeKnowledgeNoteProjectionsResponse(
+            projections=tuple(
+                store.list_knowledge_note_projections(
+                    bundle_id=bundle_id,
+                    intake_record_id=intake_record_id,
+                    evidence_id=evidence_id,
+                )
+            )
+        )
+
+    @app.post("/api/document-intake/knowledge-note-projections")
+    def generate_document_intake_knowledge_note_projection(
+        request: DocumentIntakeKnowledgeNoteProjectionRequest,
+    ) -> DocumentIntakeKnowledgeNoteProjectionResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        evidence_store = LocalEvidenceStore(
+            _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
+        )
+        try:
+            bundle = store.read_extraction_bundle(request.extraction_bundle_id)
+            projection = create_knowledge_note_projection_from_accepted_evidence(
+                bundle,
+                intake_store=store,
+                evidence_store=evidence_store,
+                projection_id=request.projection_id,
+            )
+            if projection is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="accepted document evidence is required before projection",
+                )
+            store.write_knowledge_note_projection(projection)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="extraction bundle not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return DocumentIntakeKnowledgeNoteProjectionResponse(projection=projection)
 
     @app.post("/api/document-intake/review-decisions")
     def document_intake_review_decision(

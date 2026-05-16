@@ -452,10 +452,15 @@ def _render_document_intake_record_row(record: DocumentIntakeRecord) -> str:
     filename = record.filename or record.source_ref
     status = record.status.value.replace("_", " ").title()
     queue_state = record.queue_state.value.title() if record.queue_state else "Ready"
+    material_type = (
+        record.material_type.value.replace("_", " ").title()
+        if record.material_type
+        else "Generic Source Material"
+    )
     content_type = record.content_type.value.replace("_", " ").title()
     opportunity = record.opportunity_id or "unassigned"
     warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
-    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(content_type)} - {escape(opportunity)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:

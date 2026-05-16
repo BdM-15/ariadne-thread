@@ -19,6 +19,13 @@ class DocumentIntakeQueueState(StrEnum):
     WAITING = "waiting"
 
 
+class DocumentIntakeMaterialType(StrEnum):
+    GENERIC_SOURCE_MATERIAL = "generic_source_material"
+    VISUAL_SOURCE_MATERIAL = "visual_source_material"
+    SOLICITATION_DOCUMENT = "solicitation_document"
+    UNSUPPORTED_DOCUMENT = "unsupported_document"
+
+
 class DocumentIntakeContentType(StrEnum):
     TEXT = "text"
     MARKDOWN = "markdown"
@@ -30,10 +37,14 @@ class DocumentIntakeCandidate(BaseModel):
     filename: str | None = None
     mime_type: str | None = None
     byte_size: int
+    material_type: DocumentIntakeMaterialType = (
+        DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT
+    )
     content_type: DocumentIntakeContentType = DocumentIntakeContentType.UNSUPPORTED
     status: DocumentIntakeStatus = DocumentIntakeStatus.PARSER_REQUIRED
     reason: str
     parser_hint: str
+    capability_hint: str
     source_ref: str
 
 
@@ -44,9 +55,11 @@ class UploadedSourceMaterial(BaseModel):
     mime_type: str | None = None
     byte_size: int
     source_ref: str
+    material_type: DocumentIntakeMaterialType | None = None
     text: str | None = None
     warnings: tuple[str, ...] = ()
     intake_candidate: DocumentIntakeCandidate | None = None
+    capability_hint: str | None = None
 
 
 class DocumentIntakeRecord(BaseModel):
@@ -55,16 +68,24 @@ class DocumentIntakeRecord(BaseModel):
     filename: str | None = None
     mime_type: str | None = None
     byte_size: int
+    material_type: DocumentIntakeMaterialType | None = None
     content_type: DocumentIntakeContentType
     status: DocumentIntakeStatus
     queue_state: DocumentIntakeQueueState | None = None
     opportunity_id: str | None = None
     warnings: tuple[str, ...] = ()
+    capability_hint: str = "Document is recorded for intake."
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
     def derive_queue_state(self) -> DocumentIntakeRecord:
+        if self.material_type is None:
+            self.material_type = (
+                DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT
+                if self.status is DocumentIntakeStatus.PARSER_REQUIRED
+                else DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL
+            )
         if self.queue_state is None:
             self.queue_state = (
                 DocumentIntakeQueueState.WAITING
@@ -129,15 +150,32 @@ def create_document_intake_record(
         filename=source_material.filename,
         mime_type=source_material.mime_type,
         byte_size=source_material.byte_size,
+        material_type=source_material.material_type,
         content_type=source_material.content_type,
         status=source_material.status,
         opportunity_id=opportunity_id,
         warnings=source_material.warnings,
+        capability_hint=source_material.capability_hint
+        or "Document is recorded for intake.",
     )
 
 
 _TEXT_EXTENSIONS = {".txt", ".text"}
 _MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdown"}
+_VISUAL_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+_SOLICITATION_TERMS = (
+    "amendment",
+    "draft-rfp",
+    "draft_rfp",
+    "final-rfp",
+    "final_rfp",
+    "requirements-attachment",
+    "requirements_attachment",
+    "rfi",
+    "rfp",
+    "sources-sought",
+    "sources_sought",
+)
 _TEXT_MIME_TYPES = {"text/plain"}
 _MARKDOWN_MIME_TYPES = {"text/markdown", "text/x-markdown"}
 
@@ -153,14 +191,26 @@ def classify_uploaded_source_material(
     byte_size = len(content)
     source_ref = _source_ref(display_filename, content)
     content_type = _detect_content_type(display_filename, normalized_mime_type)
+    material_type = _detect_material_type(
+        display_filename,
+        normalized_mime_type,
+        content_type,
+    )
 
-    if content_type is DocumentIntakeContentType.UNSUPPORTED:
+    if (
+        material_type is DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+        or content_type is DocumentIntakeContentType.UNSUPPORTED
+    ):
+        reason, capability_hint = _parser_required_reason_and_hint(material_type)
         return _parser_required_result(
             filename=display_filename,
             mime_type=normalized_mime_type,
             byte_size=byte_size,
             source_ref=source_ref,
-            reason="Unsupported file type requires a document parser before Quick Capture.",
+            material_type=material_type,
+            content_type=content_type,
+            reason=reason,
+            capability_hint=capability_hint,
         )
 
     text = _decode_text(content)
@@ -170,7 +220,12 @@ def classify_uploaded_source_material(
             mime_type=normalized_mime_type,
             byte_size=byte_size,
             source_ref=source_ref,
+            material_type=DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT,
             reason="Binary or non-UTF-8 content requires a document parser.",
+            capability_hint=(
+                "Readable text is unavailable; keep this source in Document Intake "
+                "until an adapter can extract usable source spans."
+            ),
         )
 
     return UploadedSourceMaterial(
@@ -180,8 +235,10 @@ def classify_uploaded_source_material(
         mime_type=normalized_mime_type,
         byte_size=byte_size,
         source_ref=source_ref,
+        material_type=DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL,
         text=text,
         warnings=_classification_warnings(display_filename, normalized_mime_type),
+        capability_hint="Ready for Quick Capture; no parser capability required.",
     )
 
 
@@ -209,6 +266,47 @@ def _detect_content_type(
     if mime_type and mime_type.startswith("text/"):
         return DocumentIntakeContentType.TEXT
     return DocumentIntakeContentType.UNSUPPORTED
+
+
+def _detect_material_type(
+    filename: str | None,
+    mime_type: str | None,
+    content_type: DocumentIntakeContentType,
+) -> DocumentIntakeMaterialType:
+    if _looks_like_solicitation(filename):
+        return DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+    if content_type is not DocumentIntakeContentType.UNSUPPORTED:
+        return DocumentIntakeMaterialType.GENERIC_SOURCE_MATERIAL
+    suffix = Path(filename or "").suffix.lower()
+    if suffix in _VISUAL_EXTENSIONS or (mime_type and mime_type.startswith("image/")):
+        return DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL
+    return DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT
+
+
+def _looks_like_solicitation(filename: str | None) -> bool:
+    if not filename:
+        return False
+    normalized = Path(filename).name.lower().replace(" ", "-")
+    return any(term in normalized for term in _SOLICITATION_TERMS)
+
+
+def _parser_required_reason_and_hint(
+    material_type: DocumentIntakeMaterialType,
+) -> tuple[str, str]:
+    if material_type is DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL:
+        return (
+            "Visual Source Material requires OCR or multimodal extraction before Quick Capture.",
+            "Record and preserve provenance now; OCR and multimodal extraction remain deferred capabilities.",
+        )
+    if material_type is DocumentIntakeMaterialType.SOLICITATION_DOCUMENT:
+        return (
+            "Solicitation Document requires a future solicitation parser before Quick Capture.",
+            "Queue for Solicitation Parser Capability for RFIs, Sources Soughts, RFPs, amendments, and requirements attachments.",
+        )
+    return (
+        "Unsupported Document recorded as a capability gap; current adapters cannot extract usable source spans.",
+        "Parser or readability adapter required before this source can create source spans.",
+    )
 
 
 def _decode_text(content: bytes) -> str | None:
@@ -240,28 +338,35 @@ def _parser_required_result(
     mime_type: str | None,
     byte_size: int,
     source_ref: str,
+    material_type: DocumentIntakeMaterialType,
+    content_type: DocumentIntakeContentType = DocumentIntakeContentType.UNSUPPORTED,
     reason: str,
+    capability_hint: str,
 ) -> UploadedSourceMaterial:
     candidate = DocumentIntakeCandidate(
         id=source_ref.replace(":", "_"),
         filename=filename,
         mime_type=mime_type,
         byte_size=byte_size,
+        material_type=material_type,
         reason=reason,
         parser_hint=(
             "Parser required before this source can enter Quick Capture; full "
             "document parsing remains a later Document Intake capability."
         ),
+        capability_hint=capability_hint,
         source_ref=source_ref,
     )
     return UploadedSourceMaterial(
         status=DocumentIntakeStatus.PARSER_REQUIRED,
-        content_type=DocumentIntakeContentType.UNSUPPORTED,
+        content_type=content_type,
         filename=filename,
         mime_type=mime_type,
         byte_size=byte_size,
         source_ref=source_ref,
+        material_type=material_type,
         intake_candidate=candidate,
+        capability_hint=capability_hint,
     )
 
 

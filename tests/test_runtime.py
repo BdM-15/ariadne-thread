@@ -250,6 +250,52 @@ def test_document_intake_source_material_api_registers_generic_text(tmp_path) ->
     assert queue == [record]
 
 
+def test_document_intake_upload_api_persists_deferred_material_buckets(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    uploads = [
+        ("whiteboard-photo.png", b"\x89PNG\r\n\x1a\n", "image/png"),
+        ("draft-rfp-amendment-001.pdf", b"%PDF-1.4\n...", "application/pdf"),
+        ("mystery.bundle", b"\x00\x01\x02", "application/octet-stream"),
+    ]
+    for filename, content, mime_type in uploads:
+        response = client.post(
+            "/api/document-intake/uploads",
+            files={"file": (filename, content, mime_type)},
+        )
+        assert response.status_code == 200
+
+    records = client.get("/api/document-intake/queue").json()["records"]
+    by_filename = {record["filename"]: record for record in records}
+
+    assert by_filename["whiteboard-photo.png"]["material_type"] == (
+        "visual_source_material"
+    )
+    assert (
+        "multimodal" in by_filename["whiteboard-photo.png"]["capability_hint"].lower()
+    )
+    assert by_filename["draft-rfp-amendment-001.pdf"]["material_type"] == (
+        "solicitation_document"
+    )
+    assert (
+        "solicitation parser"
+        in by_filename["draft-rfp-amendment-001.pdf"]["capability_hint"].lower()
+    )
+    assert by_filename["mystery.bundle"]["material_type"] == "unsupported_document"
+    assert (
+        "readability adapter"
+        in by_filename["mystery.bundle"]["capability_hint"].lower()
+    )
+    assert {record["queue_state"] for record in records} == {"waiting"}
+
+
 def test_quick_capture_draft_api_does_not_write_evidence_before_review(
     tmp_path,
 ) -> None:
@@ -563,6 +609,35 @@ def test_command_center_shell_shows_persisted_document_intake_queue(tmp_path) ->
     assert "Queue: Ready" in response.text
     assert "Ready For Quick Capture" in response.text
     assert "Backed by persisted intake records" in response.text
+
+
+def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    for filename, content, mime_type in (
+        ("whiteboard-photo.png", b"\x89PNG\r\n\x1a\n", "image/png"),
+        ("draft-rfp-amendment-001.pdf", b"%PDF-1.4\n...", "application/pdf"),
+        ("mystery.bundle", b"\x00\x01\x02", "application/octet-stream"),
+    ):
+        client.post(
+            "/api/document-intake/uploads",
+            files={"file": (filename, content, mime_type)},
+        )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Visual Source Material" in response.text
+    assert "OCR and multimodal extraction remain deferred" in response.text
+    assert "Solicitation Document" in response.text
+    assert "Solicitation Parser Capability" in response.text
+    assert "Unsupported Document" in response.text
+    assert "Parser or readability adapter required" in response.text
 
 
 def test_packet_review_page_serves_deck_shaped_packet_workspace() -> None:

@@ -2,6 +2,7 @@ import pytest
 
 from ariadne.document_intake import (
     DocumentIntakeContentType,
+    DocumentIntakeMaterialType,
     DocumentIntakeQueueState,
     DocumentIntakeRecord,
     DocumentIntakeStatus,
@@ -113,6 +114,100 @@ def test_document_intake_record_derives_waiting_queue_state() -> None:
 
     assert record.status is DocumentIntakeStatus.PARSER_REQUIRED
     assert record.queue_state is DocumentIntakeQueueState.WAITING
+
+
+def test_visual_source_material_is_classified_and_preserved_with_capability_hint() -> (
+    None
+):
+    source_material = classify_uploaded_source_material(
+        filename="whiteboard-photo.png",
+        mime_type="image/png",
+        content=b"\x89PNG\r\n\x1a\n",
+    )
+
+    record = create_document_intake_record(source_material)
+
+    assert (
+        source_material.material_type
+        is DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL
+    )
+    assert source_material.status is DocumentIntakeStatus.PARSER_REQUIRED
+    assert source_material.text is None
+    assert source_material.intake_candidate is not None
+    assert source_material.intake_candidate.material_type is (
+        DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL
+    )
+    assert "multimodal" in source_material.intake_candidate.capability_hint.lower()
+    assert record.material_type is DocumentIntakeMaterialType.VISUAL_SOURCE_MATERIAL
+    assert record.queue_state is DocumentIntakeQueueState.WAITING
+    assert "ocr" in record.capability_hint.lower()
+
+
+def test_solicitation_document_is_queued_for_future_parser_capability() -> None:
+    source_material = classify_uploaded_source_material(
+        filename="draft-rfp-amendment-001.pdf",
+        mime_type="application/pdf",
+        content=b"%PDF-1.4\n...",
+    )
+
+    record = create_document_intake_record(source_material)
+
+    assert (
+        source_material.material_type
+        is DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+    )
+    assert source_material.status is DocumentIntakeStatus.PARSER_REQUIRED
+    assert source_material.intake_candidate is not None
+    assert source_material.intake_candidate.material_type is (
+        DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+    )
+    assert (
+        "solicitation parser"
+        in source_material.intake_candidate.capability_hint.lower()
+    )
+    assert record.material_type is DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+    assert record.queue_state is DocumentIntakeQueueState.WAITING
+    assert "rfp" in record.capability_hint.lower()
+
+
+def test_readable_solicitation_filename_still_queues_for_solicitation_parser() -> None:
+    source_material = classify_uploaded_source_material(
+        filename="sources-sought-notice.txt",
+        mime_type="text/plain",
+        content=b"Sources sought notice with readable text.",
+    )
+
+    assert (
+        source_material.material_type
+        is DocumentIntakeMaterialType.SOLICITATION_DOCUMENT
+    )
+    assert source_material.status is DocumentIntakeStatus.PARSER_REQUIRED
+    assert source_material.text is None
+    assert source_material.intake_candidate is not None
+    assert (
+        "solicitation parser"
+        in source_material.intake_candidate.capability_hint.lower()
+    )
+
+
+def test_unknown_binary_file_is_unsupported_document_with_capability_gap_reason() -> (
+    None
+):
+    source_material = classify_uploaded_source_material(
+        filename="mystery.bundle",
+        mime_type="application/octet-stream",
+        content=b"\x00\x01\x02",
+    )
+
+    record = create_document_intake_record(source_material)
+
+    assert (
+        source_material.material_type is DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT
+    )
+    assert source_material.intake_candidate is not None
+    assert "capability gap" in source_material.intake_candidate.reason.lower()
+    assert record.material_type is DocumentIntakeMaterialType.UNSUPPORTED_DOCUMENT
+    assert "readability adapter" in record.capability_hint.lower()
 
 
 def test_text_upload_is_ready_for_quick_capture() -> None:

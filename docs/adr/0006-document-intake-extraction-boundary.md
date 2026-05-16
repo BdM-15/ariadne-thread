@@ -11,6 +11,10 @@ Ariadne needs parser-backed Document Intake without rebuilding the existing Proj
 
 Build Document Intake around a shared **Extraction Bundle** before integrating parser engines. Generic source material can use generic extraction adapters, visual source material can later use multimodal extraction capabilities, and solicitation documents can later use a specialized **Solicitation Parser Capability** such as Project Theseus. MinerU, RAGAnything, LightRAG, and similar tools may appear as configured adapters or knowledge-layer components, but Ariadne's trusted entities, relationships, provenance, and review gates stay owned by the Ariadne domain model.
 
+## Implementation Note: 2026-05-16
+
+The first Document Intake Command Surface epic proved this boundary without integrating external parser or retrieval tools. Ariadne now persists intake records, creates generic Extraction Bundles, converts extraction findings into reviewable draft parts, promotes accepted source spans into Evidence Items, surfaces downstream review-gated candidates, generates one-way Knowledge Note Projections, and declares inert future adapter hooks. Future parser or retrieval work should extend the adapter boundary rather than bypassing it.
+
 ## Consequences
 
 - Ariadne can process generic source material without pretending to understand solicitation structure.

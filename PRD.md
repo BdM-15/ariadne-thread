@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.7**
+**Product Requirements Document (PRD) v1.8**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 16, 2026  
-**Status:** Document Intake Command Surface planned; ready for issue-sized implementation slices
+**Status:** Document Intake Command Surface first vertical epic complete; ready for next grill-with-docs planning session
 
 ---
 
@@ -24,24 +24,27 @@
 - CLI-first harnesses are an approved architecture option for repeatable, batchable, tool-facing, or agent-facing capabilities that should not become complicated UI or bespoke tool sprawl.
 - The first-slice domain/storage epic is complete on `01-build/first-slice-domain-storage` and merged to `main`: Opportunity shell, Evidence Store, Quick Capture review routing, Living Briefing Packet skeleton/review, Capture Action Plan skeleton, read-only Capability Catalog, first Command Center shell, and packet data elements as cross-opportunity knowledge slots.
 - The Quick Capture Knowledge Processing epic is complete on `02-build/quick-capture-knowledge-processing`: Reference Wiki influences, Capture Intelligence Drafts, per-piece review/route/skill-chain controls, review-gated promotions into Evidence/Action Plan/Packet outputs, polished trusted evidence with raw trace/admin context, low-signal clarification routing, pasted text and text/Markdown upload intake, parser-required unsupported upload candidates, public call plan/risk register dictionaries, optional Local Admin Model assist through central local-model config, and an end-to-end Command Center demo thread.
+- The Document Intake Command Surface first vertical epic is complete on `03-build/document-intake-command-surface`: persisted Document Intake Queue, classification for generic/visual/solicitation/unsupported material, generic Extraction Bundles, document-derived Capture Intelligence Draft Parts, accepted Source Span promotion into Evidence Items, review-gated downstream candidates for Action Plan, Packet, Risk Register, and Call Plan workflows, one-way Knowledge Note Projections, inert future parser/retrieval adapter declarations, and an accepted first Command Center demo thread over real behavior.
 - A local FastAPI runtime exists via `uv run python app.py` or `python app.py` with `.env`; the project-standard local UI port is `9622`, while `9621` is reserved for Project Theseus.
 - The first Command Center shell is command-first: it supports pulse checks, quick actions, and AI-support entry points rather than serving as a passive metrics wall.
 - Packet data modeling now distinguishes reusable Packet Field Definitions from opportunity-specific Packet Field Answers, evidence/provenance, assumptions, confidence, gaps, Action Plan links, Shared Knowledge Entities, and Knowledge Mirror projections.
 - A `grill-with-docs` planning session selected the **Document Intake Command Surface** as the next vertical product slice. `CONTEXT.md` now defines the Capture Knowledge Foundation, Extraction Bundle, Source Span, Entity Candidate, Relationship Candidate, Extraction Warning, Generic Source Material, Visual Source Material, Solicitation Document, Unsupported Document, Document Intake Queue, Document Intake Store, Knowledge Note Projection, Multimodal Extraction Capability, and Solicitation Parser Capability.
 - ADR 0006 records the Document Intake extraction boundary: parser, retrieval, OCR, multimodal, MinerU, RAGAnything, LightRAG, and Theseus-style tools produce reviewable Extraction Bundles, while Ariadne owns trusted entities, relationships, provenance, and review gates.
-- `docs/architecture/document-intake-command-surface-plan.md` records the next epic's implementation trail: functionality foundation first, then Command Center UI over real behavior.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the Quick Capture Knowledge Processing epic.
+- `docs/architecture/document-intake-command-surface-plan.md` records the completed Document Intake implementation trail and hand-off notes for future parser/retrieval integration work.
+- `docs/architecture/next-grill-with-docs-session.md` captures the next planning-session agenda, candidate epic directions, and decisions that must be made before new integration work begins.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the Document Intake Command Surface epic, with 116 tests passing at merge time.
 
 **Still Deferred**
 
 - Hermes runtime, durable knowledge/retrieval engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations, advanced skill installation, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
-- The existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
+- Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Begin issue-sized implementation planning for the **Document Intake Command Surface**, starting with the functionality foundation: domain models, Document Intake Store, Extraction Bundle creation, and review-ready Capture Intelligence Draft inputs before UI rendering.
-- Keep this epic a vertical product slice, not a broad infrastructure sweep. The first tracer bullet should cover generic source material from intake through extraction provenance, recommendations, skill-chain options, accepted evidence, review-gated candidates, Knowledge Note Projection, and Command Center visibility.
-- Before any future integration slice for Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation, run `grill-with-docs` and record any load-bearing decisions in `CONTEXT.md` or ADRs.
+- Run a `grill-with-docs` planning session before opening the next product or integration epic. Use `docs/architecture/next-grill-with-docs-session.md`, `CONTEXT.md`, ADR 0006, and the completed Document Intake behavior as the session packet.
+- Select exactly one next vertical epic before implementation. Candidate directions include Command Center UI polish or Next.js migration, Capability Studio progression, Knowledge Layer/retrieval architecture, Graph Sensemaking Mode, Theseus solicitation parser adapter integration, Artifact Renderer/huashu-design, Hermes operational learning, or deeper Call Plan/Risk Register promotion workflows.
+- For any integration slice involving Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation, record the load-bearing decision in `CONTEXT.md` or a new ADR before implementation.
+- Keep the next epic a vertical product slice with real behavior and review gates, not a broad platform sweep.
 
 ---
 

@@ -27,6 +27,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate.
 - Knowledge Processing Workflow: the workflow that turns raw capture items and uploaded documents into structured evidence, opportunity knowledge, action items, and reusable insight candidates.
+- Capture Intelligence Draft: an AI-prepared, reviewable synthesis inferred from raw capture material or source material before it becomes trusted evidence, opportunity knowledge, packet answers, action items, or reusable insight candidates.
+- Capture Reference Context: reusable background capture knowledge that can guide Ariadne's inference without serving as opportunity-specific evidence by itself.
+- Reference Wiki: a human-readable, interlinked note corpus that organizes Capture Reference Context for lightweight retrieval and reasoning.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
 - Pursuit: the active capture phase of an opportunity once serious work begins toward a bid decision and award.
 - Decision Gate: a disciplined checkpoint that turns evidence into a go/no-go/hold action.
@@ -123,6 +126,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Hermes Agent** can observe saved product, studio, and exploratory sessions for **Operational Learning** while preserving human approval for durable changes.
 - **Operational Learning** can become an **Improvement Proposal**, but durable Ariadne changes require human approval.
 - A **Quick Capture Inbox** contains **Raw Capture Items** that can be handled by a **Knowledge Processing Workflow**.
+- A **Knowledge Processing Workflow** can create **Capture Intelligence Drafts** from **Raw Capture Items** or uploaded source material.
+- **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
+- A **Reference Wiki** can organize **Capture Reference Context** for lightweight retrieval without becoming the primary **Knowledge Layer** or a **Knowledge Mirror**.
 - A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.
 - **Document Intake** creates **Source Evidence** from uploaded files before Ariadne derives summaries, tags, dates, or recommendations.
 - A **Guided Capture Mentor** supports the user by executing work, recommending next steps, and teaching the capture reasoning behind those recommendations.
@@ -179,3 +185,6 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "manage the task" was used to mean steering outcomes while AI performs supporting work — resolved: use **Managed Capture Task** for outcome-level work the user controls while Ariadne performs under-the-hood execution.
 - "task completing drone" was used to describe AI doing boring work while mentoring the user — resolved: use **Assisted Execution** plus **Guided Capture Mentor**.
 - "chicken scratch" was used to mean rough, unstructured user input — resolved: use **Raw Capture Item** for unprocessed notes, ideas, meeting fragments, and rough thoughts in the **Quick Capture Inbox**.
+- "quick intel" was used to mean AI-heavy interpretation of rushed notes or uploaded material — resolved: use **Capture Intelligence Draft** for reviewable synthesized intelligence before promotion into trusted Ariadne knowledge.
+- "foundation knowledge" was used to mean public-source background material that helps Ariadne infer capture implications — resolved: use **Capture Reference Context**, which can guide drafts without becoming opportunity-specific evidence by itself.
+- "Obsidian-like LLM wiki" was used to mean lightweight retrieval over interlinked reference notes — resolved: use **Reference Wiki** for the note corpus and keep **Knowledge Mirror** for optional Obsidian-style exports or sync.

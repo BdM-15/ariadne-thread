@@ -1,5 +1,6 @@
 from ariadne.evidence import EvidenceKind
 from ariadne.quick_capture import (
+    CaptureIntelligenceDraftStatus,
     CaptureReviewStatus,
     ProposalStatus,
     ProposedDestination,
@@ -108,6 +109,51 @@ Follow-up work after customer calls belongs in capture planning.
     assert len(review.reference_influences) == 3
     assert review.reference_influences[0].title == "Incumbent Analysis Strategy"
     assert review.trusted_opportunity_knowledge_updated is False
+
+
+def test_messy_raw_capture_produces_reviewable_intelligence_draft(
+    tmp_path,
+) -> None:
+    _write_reference_note(
+        tmp_path / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
+        """---
+title: Incumbent Analysis Strategy
+---
+
+Incumbent transition risk, weak response times, customer complaints, proof points,
+and ghost strategy should shape capture follow-up.
+""",
+    )
+    raw_item = capture_raw_item(
+        "call blur: customer says incumbent response times weak. transition plan "
+        "looks risky. Need proof points and follow up with PM. maybe packet gap?",
+        opportunity_id="opp-aflcmc-recompete",
+        raw_item_id="raw_messy_customer_call",
+    )
+
+    review = process_raw_capture_item(
+        raw_item,
+        reference_wiki=load_reference_wiki(tmp_path),
+    )
+
+    assert review.intelligence_draft is not None
+    draft = review.intelligence_draft
+    assert draft.id.startswith("draft_")
+    assert draft.raw_item_id == "raw_messy_customer_call"
+    assert draft.opportunity_id == "opp-aflcmc-recompete"
+    assert draft.status is CaptureIntelligenceDraftStatus.PENDING_REVIEW
+    assert draft.raw_source_content == raw_item.content
+    assert draft.reference_influences[0].title == "Incumbent Analysis Strategy"
+    assert "transition" in draft.inferred_claims[0].lower()
+    assert "transition" in draft.likely_risks[0].lower()
+    assert "proof" in draft.discriminator_candidates[0].lower()
+    assert "packet" in draft.packet_implications[0].lower()
+    assert "follow up" in draft.action_candidates[0].lower()
+    assert draft.assumptions
+    assert draft.confidence_notes
+    assert draft.gaps
+    assert draft.follow_up_questions
+    assert draft.trusted_opportunity_knowledge_updated is False
 
 
 def _write_reference_note(path, content: str) -> None:

@@ -66,6 +66,44 @@ Follow-up actions after customer calls should become capture-plan inputs.
     assert body["influences"][0]["influence_type"] == "capture_methodology"
 
 
+def test_quick_capture_intelligence_draft_api_returns_reviewable_draft(tmp_path) -> None:
+    wiki_root = tmp_path / "knowledge"
+    _write_reference_note(
+        wiki_root / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
+        """---
+title: Incumbent Analysis Strategy
+entity_type: concept
+---
+
+Incumbent transition risk, weak response times, customer complaints, proof points,
+and ghost strategy should shape capture follow-up.
+""",
+    )
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_REFERENCE_WIKI_DIR": str(wiki_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/intelligence-drafts",
+        json={
+            "content": "Customer says incumbent response times are weak. "
+            "Transition risk needs proof points and PM follow up.",
+            "opportunity_id": "opp-aflcmc-recompete",
+        },
+    )
+
+    assert response.status_code == 200
+    draft = response.json()["draft"]
+    assert draft["status"] == "pending_review"
+    assert draft["opportunity_id"] == "opp-aflcmc-recompete"
+    assert "Transition risk" in draft["likely_risks"][0]
+    assert "Proof points" in draft["discriminator_candidates"][0]
+    assert draft["reference_influences"][0]["title"] == "Incumbent Analysis Strategy"
+    assert draft["trusted_opportunity_knowledge_updated"] is False
+
+
 def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -131,6 +169,10 @@ def test_root_serves_command_center_shell() -> None:
     assert "Capability Studio" in response.text
     assert "Reference Wiki influences" in response.text
     assert "Incumbent Analysis Strategy" in response.text
+    assert "Capture Intelligence Draft" in response.text
+    assert "Inferred Claims" in response.text
+    assert "Likely Risks" in response.text
+    assert "Follow-Up Questions" in response.text
     assert "Advanced / read-only" in response.text
     assert "/api/capabilities/catalog" in response.text
     assert "AFLCMC recompete support" in response.text

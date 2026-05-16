@@ -19,6 +19,11 @@ from ariadne.packets import (
     BriefingView,
     CoverageView,
 )
+from ariadne.quick_capture import (
+    CaptureIntelligenceDraft,
+    capture_raw_item,
+    create_capture_intelligence_draft,
+)
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 
 
@@ -29,6 +34,16 @@ class ReferenceInfluenceRequest(BaseModel):
 
 class ReferenceInfluenceResponse(BaseModel):
     influences: tuple[ReferenceWikiInfluence, ...]
+
+
+class CaptureIntelligenceDraftRequest(BaseModel):
+    content: str
+    opportunity_id: str | None = None
+    limit: int = Field(default=7, ge=1, le=7)
+
+
+class CaptureIntelligenceDraftResponse(BaseModel):
+    draft: CaptureIntelligenceDraft
 
 
 def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
@@ -81,6 +96,26 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         return ReferenceInfluenceResponse(
             influences=wiki.find_influences(request.content, limit=request.limit)
         )
+
+    @app.post("/api/quick-capture/intelligence-drafts")
+    def quick_capture_intelligence_draft(
+        request: CaptureIntelligenceDraftRequest,
+    ) -> CaptureIntelligenceDraftResponse:
+        wiki = load_reference_wiki(
+            _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+        )
+        raw_item = capture_raw_item(
+            request.content,
+            opportunity_id=request.opportunity_id,
+        )
+        draft = create_capture_intelligence_draft(
+            raw_item,
+            reference_influences=wiki.find_influences(
+                request.content,
+                limit=request.limit,
+            ),
+        )
+        return CaptureIntelligenceDraftResponse(draft=draft)
 
     return app
 

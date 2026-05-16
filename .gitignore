@@ -35,5 +35,8 @@ exports/
 
 # Private organization-specific briefing templates; use Artifact Export Profiles instead.
 docs/reference/briefing_packet/
+
+# Private organization-specific call plan templates; model public data elements separately.
+docs/reference/call_plan_template/
 docs/reference/shipley/MTS Milestone Template All*.pptx
 docs/reference/shipley/MTS Milestone Template All*.pdf

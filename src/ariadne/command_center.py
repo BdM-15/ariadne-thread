@@ -21,7 +21,10 @@ from ariadne.packets import (
     EvidenceStatus,
 )
 from ariadne.quick_capture import CaptureIntelligenceDraft
-from ariadne.quick_capture_demo import build_quick_capture_demo_thread
+from ariadne.quick_capture_demo import (
+    DocumentIntakeDemoThread,
+    build_quick_capture_demo_thread,
+)
 from ariadne.reference_wiki import ReferenceWikiInfluence
 
 
@@ -41,21 +44,26 @@ def render_command_center_shell(
     uploaded_capture = demo.uploaded_capture
     uploaded_review = demo.uploaded_review
     unsupported_upload = demo.unsupported_upload
+    document_intake_demo = demo.document_intake
     document_intake_store = DocumentIntakeStore(
         _resolve_runtime_path(root, settings.ariadne_document_intake_dir)
     )
-    document_intake_records = document_intake_store.list()
-    accepted_document_evidence_links = (
-        document_intake_store.list_accepted_evidence_links()
-    )
-    document_intake_drafts = [
+    document_intake_records = [
+        document_intake_demo.record
+    ] + document_intake_store.list()
+    accepted_document_evidence_links = [
+        document_intake_demo.accepted_evidence.accepted_link
+    ] + document_intake_store.list_accepted_evidence_links()
+    document_intake_drafts = [document_intake_demo.draft] + [
         create_capture_intelligence_draft_from_extraction_bundle(bundle)
         for bundle in document_intake_store.list_extraction_bundles()
     ]
-    document_intake_capture_candidates = document_intake_store.list_capture_candidates()
-    document_intake_knowledge_note_projections = (
-        document_intake_store.list_knowledge_note_projections()
+    document_intake_capture_candidates = list(document_intake_demo.candidates) + (
+        document_intake_store.list_capture_candidates()
     )
+    document_intake_knowledge_note_projections = [
+        document_intake_demo.projection
+    ] + document_intake_store.list_knowledge_note_projections()
     document_intake_adapter_declarations = list_document_intake_adapter_declarations()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
@@ -350,6 +358,7 @@ def render_command_center_shell(
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
+        {_render_document_intake_demo_thread_panel(document_intake_demo)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
@@ -517,6 +526,56 @@ def _render_document_intake_record_row(
     warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
     accepted_count = sum(link.intake_record_id == record.id for link in accepted_links)
     return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count} - Accepted Evidence: {accepted_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+
+
+def _render_document_intake_demo_thread_panel(
+    document_thread: DocumentIntakeDemoThread,
+) -> str:
+    source_material = document_thread.source_material
+    record = document_thread.record
+    bundle = document_thread.bundle
+    draft = document_thread.draft
+    accepted_result = document_thread.accepted_evidence
+    projection = document_thread.projection
+    first_piece = draft.intelligence_pieces[0]
+    skill_chain = " -> ".join(first_piece.suggested_skill_chain)
+    workflow_labels = _demo_capture_candidate_workflow_labels(
+        document_thread.candidates
+    )
+    classification = (
+        f"Classification: {source_material.status.value.replace('_', ' ').title()} - "
+        f"{record.material_type.value.replace('_', ' ').title()}"
+    )
+    extraction_state = (
+        f"Extraction Bundle: {bundle.extraction_status.value.replace('_', ' ').title()} - "
+        f"{bundle.review_status.value.replace('_', ' ').title()}"
+    )
+    projection_href = (
+        "/api/document-intake/knowledge-note-projections?bundle_id="
+        f"{projection.source_extraction_bundle_id}"
+    )
+    return f"""<section class="panel" id="document-intake-demo-thread" aria-labelledby="document-intake-demo-thread-heading">
+      <div class="panel-heading"><h2 id="document-intake-demo-thread-heading">Document Intake Demo Thread</h2><span class="status-chip green">Real behavior path</span></div>
+      <div class="row-list">
+      <div class="row"><strong>{escape(source_material.filename or record.source_ref)}</strong><span>{escape(classification)}</span><span>{escape(source_material.capability_hint or record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span></div>
+      <div class="row"><strong>{escape(extraction_state)}</strong><span>Source spans: {len(bundle.source_spans)} - Entity candidates: {len(bundle.entity_candidates)} - Relationship candidates: {len(bundle.relationship_candidates)}</span><span>Extraction warnings: {len(bundle.warnings)}</span><span>Parser provenance: {escape(bundle.parser_provenance.adapter_name)} {escape(bundle.parser_provenance.adapter_version)}</span></div>
+      <div class="row"><strong>Recommended document-derived action</strong><span>{escape(first_piece.content)}</span><span>Recommended Route: {escape(first_piece.recommended_route.replace("_", " "))}</span><span>Skill-chain options: {escape(skill_chain or "needs capability match")}</span><span>{escape(first_piece.recommendation or "Review before promotion.")}</span></div>
+      <div class="row"><strong>Accepted source-span evidence</strong><span>{escape(accepted_result.evidence.content)}</span><span>Evidence: {escape(accepted_result.evidence.id)} - Accepted link: {escape(accepted_result.accepted_link.id)}</span><span>Reviewer rationale: {escape(accepted_result.accepted_link.reviewer_rationale)}</span></div>
+      <div class="row"><strong>Review-gated next actions</strong><span>{escape(workflow_labels)}</span><span>Document-derived candidates stay review-gated until the user accepts, routes, or discards them.</span><div class="action-strip" aria-label="Document Intake demo actions"><button class="action-button" type="button">Review Candidate</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button secondary" type="button">Route Candidate</button><button class="action-button danger" type="button">Discard Candidate</button></div></div>
+      <div class="row"><strong>{escape(projection.title)}</strong><span>{escape(projection.summary)}</span><span>Structured Ariadne records remain source of truth.</span><div class="action-strip" aria-label="Document Intake demo projection actions"><a class="action-button" href="{escape(projection_href)}">Open Markdown Projection</a><button class="action-button secondary" type="button" disabled>Cannot overwrite structured knowledge</button></div></div>
+      </div>
+    </section>"""
+
+
+def _demo_capture_candidate_workflow_labels(
+    candidates: tuple[DocumentIntakeCaptureCandidate, ...],
+) -> str:
+    labels: list[str] = []
+    for candidate in candidates:
+        label = _capture_candidate_workflow_label(candidate.target_workflow)
+        if label not in labels:
+            labels.append(label)
+    return ", ".join(labels)
 
 
 def _render_document_intake_capabilities_panel(

@@ -20,6 +20,7 @@ class RuntimeSettings(BaseModel):
     ariadne_env: str = "development"
     ariadne_workspace: str = "default"
     ariadne_evidence_dir: Path = Field(default=Path(".ariadne/evidence"))
+    ariadne_document_intake_dir: Path = Field(default=Path(".ariadne/document-intake"))
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
@@ -45,7 +46,9 @@ class RuntimeSettings(BaseModel):
             public_app_name=values.get(
                 "PUBLIC_APP_NAME", cls.model_fields["public_app_name"].default
             ),
-            ariadne_env=values.get("ARIADNE_ENV", cls.model_fields["ariadne_env"].default),
+            ariadne_env=values.get(
+                "ARIADNE_ENV", cls.model_fields["ariadne_env"].default
+            ),
             ariadne_workspace=values.get(
                 "ARIADNE_WORKSPACE", cls.model_fields["ariadne_workspace"].default
             ),
@@ -53,6 +56,12 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_EVIDENCE_DIR",
                     str(cls.model_fields["ariadne_evidence_dir"].default),
+                )
+            ),
+            ariadne_document_intake_dir=Path(
+                values.get(
+                    "ARIADNE_DOCUMENT_INTAKE_DIR",
+                    str(cls.model_fields["ariadne_document_intake_dir"].default),
                 )
             ),
             ariadne_reference_wiki_dir=Path(
@@ -74,9 +83,7 @@ class RuntimeSettings(BaseModel):
                 timeout_seconds=int(
                     values.get(
                         "LOCAL_ADMIN_MODEL_TIMEOUT_SECONDS",
-                        LocalAdminModelSettings.model_fields[
-                            "timeout_seconds"
-                        ].default,
+                        LocalAdminModelSettings.model_fields["timeout_seconds"].default,
                     )
                 ),
             ),

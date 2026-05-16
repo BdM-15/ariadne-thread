@@ -72,7 +72,9 @@ Follow-up actions after customer calls should become capture-plan inputs.
     assert body["influences"][0]["influence_type"] == "capture_methodology"
 
 
-def test_quick_capture_intelligence_draft_api_returns_reviewable_draft(tmp_path) -> None:
+def test_quick_capture_intelligence_draft_api_returns_reviewable_draft(
+    tmp_path,
+) -> None:
     wiki_root = tmp_path / "knowledge"
     _write_reference_note(
         wiki_root / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
@@ -159,7 +161,9 @@ def test_quick_capture_upload_api_processes_markdown_as_raw_capture_material() -
     assert body["intake_candidate"] is None
 
 
-def test_quick_capture_upload_api_records_unsupported_document_intake_candidate() -> None:
+def test_quick_capture_upload_api_records_unsupported_document_intake_candidate() -> (
+    None
+):
     from fastapi.testclient import TestClient
 
     response = TestClient(create_app()).post(
@@ -176,7 +180,79 @@ def test_quick_capture_upload_api_records_unsupported_document_intake_candidate(
     assert body["intake_candidate"]["status"] == "parser_required"
 
 
-def test_quick_capture_draft_api_does_not_write_evidence_before_review(tmp_path) -> None:
+def test_document_intake_upload_api_persists_generic_source_material(tmp_path) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"# Brief\n\nCustomer says transition proof needs follow up.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert upload_response.status_code == 200
+    uploaded = upload_response.json()["record"]
+    assert uploaded["filename"] == "customer-brief.md"
+    assert uploaded["content_type"] == "markdown"
+    assert uploaded["status"] == "ready_for_quick_capture"
+    assert uploaded["queue_state"] == "ready"
+    assert uploaded["opportunity_id"] == "opp-aflcmc-recompete"
+
+    queue_response = client.get("/api/document-intake/queue")
+    assert queue_response.status_code == 200
+    queue = queue_response.json()["records"]
+    assert [record["id"] for record in queue] == [uploaded["id"]]
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_document_intake_source_material_api_registers_generic_text(tmp_path) -> None:
+    intake_root = tmp_path / "document-intake"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/document-intake/source-material",
+        json={
+            "content": "Customer says response-time proof needs follow up.",
+            "filename": "customer-note.txt",
+            "mime_type": "text/plain",
+            "opportunity_id": "opp-aflcmc-recompete",
+        },
+    )
+
+    assert response.status_code == 200
+    record = response.json()["record"]
+    assert record["filename"] == "customer-note.txt"
+    assert record["content_type"] == "text"
+    assert record["status"] == "ready_for_quick_capture"
+    assert record["queue_state"] == "ready"
+
+    queue = client.get("/api/document-intake/queue").json()["records"]
+    assert queue == [record]
+
+
+def test_quick_capture_draft_api_does_not_write_evidence_before_review(
+    tmp_path,
+) -> None:
     evidence_root = tmp_path / "evidence"
     settings = RuntimeSettings.from_mapping(
         {"ARIADNE_EVIDENCE_DIR": str(evidence_root)}
@@ -228,9 +304,7 @@ def test_quick_capture_review_decision_api_writes_evidence_after_acceptance(
     assert body["decision"]["evidence"]["content"] != (
         "Customer says incumbent response times are weak."
     )
-    assert body["decision"]["evidence"]["content"].startswith(
-        "Interpreted signal:"
-    )
+    assert body["decision"]["evidence"]["content"].startswith("Interpreted signal:")
     assert body["evidence_store_count"] == 1
     assert len(LocalEvidenceStore(evidence_root).list()) == 1
 
@@ -438,7 +512,10 @@ def test_root_serves_command_center_shell() -> None:
     assert "raw_demo_rushed_capture_note" in response.text
     assert "Draft Rationale" in response.text
     assert "Reviewer accepted rushed customer note as source evidence" in response.text
-    assert "Reviewer discarded discriminator claim until proof points exist" in response.text
+    assert (
+        "Reviewer discarded discriminator claim until proof points exist"
+        in response.text
+    )
     assert "Review Status: accepted" in response.text
     assert "Per-Piece Intelligence Review" in response.text
     assert "Text / Markdown Upload" in response.text
@@ -459,6 +536,33 @@ def test_root_serves_command_center_shell() -> None:
     assert "AFLCMC recompete support" in response.text
     assert "Need validated customer pain" in response.text
     assert "http://127.0.0.1:9622" in response.text
+
+
+def test_command_center_shell_shows_persisted_document_intake_queue(tmp_path) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/document-intake/source-material",
+        json={
+            "content": "Customer says transition proof needs follow up.",
+            "filename": "customer-queue-note.txt",
+            "mime_type": "text/plain",
+        },
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Document Intake Queue" in response.text
+    assert "customer-queue-note.txt" in response.text
+    assert "Queue: Ready" in response.text
+    assert "Ready For Quick Capture" in response.text
+    assert "Backed by persisted intake records" in response.text
 
 
 def test_packet_review_page_serves_deck_shaped_packet_workspace() -> None:

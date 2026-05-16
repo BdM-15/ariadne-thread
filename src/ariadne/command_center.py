@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
+from ariadne.document_intake import DocumentIntakeRecord, DocumentIntakeStore
 from ariadne.packets import (
     CanonicalPacketSection,
     EvidenceStatus,
@@ -29,6 +30,9 @@ def render_command_center_shell(
     uploaded_capture = demo.uploaded_capture
     uploaded_review = demo.uploaded_review
     unsupported_upload = demo.unsupported_upload
+    document_intake_records = DocumentIntakeStore(
+        _resolve_runtime_path(root, settings.ariadne_document_intake_dir)
+    ).list()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -294,6 +298,7 @@ def render_command_center_shell(
       <nav class="nav" aria-label="First-slice surfaces">
         <a href="#opportunity">Opportunity <small>active</small></a>
         <a href="#quick-capture">Quick Capture <small>review</small></a>
+        <a href="#document-intake">Document Intake <small>{len(document_intake_records)}</small></a>
         <a href="/packets/review">Living Briefing Packet <small>deck</small></a>
         <a href="#action-plan">Capture Action Plan <small>{len(action_view.items)}</small></a>
       </nav>
@@ -320,6 +325,7 @@ def render_command_center_shell(
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
+        {_render_document_intake_queue_panel(document_intake_records)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
@@ -330,6 +336,12 @@ def render_command_center_shell(
   </div>
 </body>
 </html>"""
+
+
+def _resolve_runtime_path(workspace_root: Path, path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return workspace_root / path
 
 
 def _render_metrics(
@@ -391,14 +403,14 @@ def _render_quick_capture_panel(
         else "Parser Required"
     )
     candidate_reason = (
-      intake_candidate.reason
-      if intake_candidate is not None
-      else "Unsupported file requires future Document Intake."
+        intake_candidate.reason
+        if intake_candidate is not None
+        else "Unsupported file requires future Document Intake."
     )
     candidate_hint = (
-      intake_candidate.parser_hint
-      if intake_candidate is not None
-      else "Parser required before Quick Capture can trust this source."
+        intake_candidate.parser_hint
+        if intake_candidate is not None
+        else "Parser required before Quick Capture can trust this source."
     )
     return f"""<section class="panel" id="quick-capture" aria-labelledby="quick-capture-heading">
       <div class="panel-heading"><h2 id="quick-capture-heading">Quick Capture</h2><span class="status-chip amber">Needs Review</span></div>
@@ -417,6 +429,33 @@ def _render_quick_capture_panel(
         {influence_rows}
       </div>
     </section>"""
+
+
+def _render_document_intake_queue_panel(
+    records: list[DocumentIntakeRecord],
+) -> str:
+    if records:
+        rows = "".join(_render_document_intake_record_row(record) for record in records)
+    else:
+        rows = """<div class="row"><strong>No persisted intake records</strong><span>Upload or register source material to start Document Intake.</span></div>"""
+
+    return f"""<section class="panel" id="document-intake" aria-labelledby="document-intake-heading">
+      <div class="panel-heading"><h2 id="document-intake-heading">Document Intake Queue</h2><span class="status-chip cyan">{len(records)} persisted</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Backed by persisted intake records</strong><span>Queue state survives runtime restarts and stays separate from trusted evidence.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_document_intake_record_row(record: DocumentIntakeRecord) -> str:
+    filename = record.filename or record.source_ref
+    status = record.status.value.replace("_", " ").title()
+    queue_state = record.queue_state.value.title() if record.queue_state else "Ready"
+    content_type = record.content_type.value.replace("_", " ").title()
+    opportunity = record.opportunity_id or "unassigned"
+    warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
+    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(content_type)} - {escape(opportunity)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:
@@ -440,7 +479,9 @@ def _render_capture_intelligence_draft_panel(draft) -> str:
 
 
 def _render_intelligence_piece_rows(draft) -> str:
-    return "".join(_render_intelligence_piece_row(piece) for piece in draft.intelligence_pieces)
+    return "".join(
+        _render_intelligence_piece_row(piece) for piece in draft.intelligence_pieces
+    )
 
 
 def _render_intelligence_piece_row(piece) -> str:

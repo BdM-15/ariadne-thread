@@ -19,8 +19,11 @@ from ariadne.draft_promotion import (
 )
 from ariadne.document_intake import (
     DocumentIntakeCandidate,
+    DocumentIntakeRecord,
     DocumentIntakeStatus,
+    DocumentIntakeStore,
     classify_uploaded_source_material,
+    create_document_intake_record,
 )
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.local_admin_model import request_local_admin_draft_assist
@@ -106,6 +109,21 @@ class QuickCaptureUploadResponse(BaseModel):
     intake_candidate: DocumentIntakeCandidate | None = None
 
 
+class DocumentIntakeUploadResponse(BaseModel):
+    record: DocumentIntakeRecord
+
+
+class DocumentIntakeQueueResponse(BaseModel):
+    records: tuple[DocumentIntakeRecord, ...]
+
+
+class DocumentIntakeSourceMaterialRequest(BaseModel):
+    content: str
+    filename: str | None = None
+    mime_type: str | None = None
+    opportunity_id: str | None = None
+
+
 class CaptureReviewDecisionRequest(BaseModel):
     content: str
     opportunity_id: str | None = None
@@ -188,6 +206,52 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     @app.get("/api/capabilities/catalog")
     def capability_catalog() -> CapabilityCatalog:
         return discover_local_capability_catalog(Path.cwd())
+
+    @app.get("/api/document-intake/queue")
+    def document_intake_queue() -> DocumentIntakeQueueResponse:
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeQueueResponse(records=tuple(store.list()))
+
+    @app.post("/api/document-intake/uploads")
+    async def document_intake_upload(
+        file: UploadFile = File(...),
+        opportunity_id: str | None = Form(default=None),
+    ) -> DocumentIntakeUploadResponse:
+        source_material = classify_uploaded_source_material(
+            filename=file.filename,
+            mime_type=file.content_type,
+            content=await file.read(),
+        )
+        record = create_document_intake_record(
+            source_material,
+            opportunity_id=opportunity_id,
+        )
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeUploadResponse(record=store.write(record))
+
+    @app.post("/api/document-intake/source-material")
+    def document_intake_source_material(
+        request: DocumentIntakeSourceMaterialRequest,
+    ) -> DocumentIntakeUploadResponse:
+        if not request.content.strip():
+            raise HTTPException(status_code=400, detail="source material is empty")
+        source_material = classify_uploaded_source_material(
+            filename=request.filename,
+            mime_type=request.mime_type,
+            content=request.content.encode("utf-8"),
+        )
+        record = create_document_intake_record(
+            source_material,
+            opportunity_id=request.opportunity_id,
+        )
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        return DocumentIntakeUploadResponse(record=store.write(record))
 
     @app.post("/api/quick-capture/reference-influences")
     def quick_capture_reference_influences(
@@ -393,7 +457,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                     evidence_ids=request.evidence_ids,
                     confidence=request.confidence,
                 )
-                return CapturePromotionResponse(review=review, packet_answer=packet_answer)
+                return CapturePromotionResponse(
+                    review=review, packet_answer=packet_answer
+                )
 
             decision = discard_draft_part_promotion(
                 review,

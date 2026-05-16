@@ -38,5 +38,10 @@ docs/reference/briefing_packet/
 
 # Private organization-specific call plan templates; model public data elements separately.
 docs/reference/call_plan_template/
+
+# Private organization-specific risk register workbooks; model public data elements separately.
+docs/reference/risk_register/*.xls
+docs/reference/risk_register/*.xlsx
+docs/reference/risk_register/*.xlsm
 docs/reference/shipley/MTS Milestone Template All*.pptx
 docs/reference/shipley/MTS Milestone Template All*.pdf

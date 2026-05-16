@@ -34,6 +34,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Draft Part Promotion: the review-gated act of turning a Capture Intelligence Draft Part into an Action Plan Item, Packet Field Answer, packet gap update, or other trusted workflow output.
 - Follow-Up Question Route: an explicit routing decision that turns draft questions into a next research, customer engagement, call plan, or skill-run prompt without writing trusted evidence.
 - Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
+- Risk Register: a review-gated workflow and artifact that tracks pursuit risks and upside opportunities, their probability, impact, response plan, owner, cost or schedule exposure, and links to evidence, packet fields, and action plan items.
+- Risk Register Item: one risk or opportunity row in the Risk Register, framed as a threat or opportunity, measurable impact, response, score, and current review status.
+- Risk Response Plan: the accepted mitigation, acceptance, costing, avoidance, or opportunity-capture approach for a Risk Register Item.
 - Capture Reference Context: reusable background capture knowledge that can guide Ariadne's inference without serving as opportunity-specific evidence by itself.
 - Reference Wiki: a human-readable, interlinked note corpus that organizes Capture Reference Context for lightweight retrieval and reasoning.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
@@ -144,6 +147,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Capture Intelligence Draft** contains **Capture Intelligence Draft Parts** so each piece of intelligence can be accepted, discarded, routed, skill-chained, or recommended independently.
 - A **Capture Review Decision** is required before **Capture Intelligence Draft** parts become trusted **Source Evidence**, **Opportunity Knowledge**, **Action Plan Items**, or **Packet Field Answers**.
 - **Draft Part Promotion** preserves raw item ID, draft ID, draft part ID, review rationale, evidence links, confidence or gap notes, and edit history on promoted outputs.
+- **Risk Register Items** can be drafted from **Capture Intelligence Draft Parts**, **Call Plan** notes, **Packet Field Answers**, or **Evidence Items**, but they require review before becoming trusted pursuit risk records.
+- **Risk Response Plans** can create or update **Action Plan Items** and can support **Packet Field Answers** for risks, mitigation approach, pricing exposure, schedule exposure, and gate recommendations.
 - A **Follow-Up Question Route** can launch customer engagement preparation, a **Call Plan**, research, or a **Capability Module** without treating the routed question as trusted evidence.
 - A **Skill Chain Recommendation** can point to existing **Capability Modules**, recommend a **Product Workflow**, or become a **Capability Gap** or **Improvement Proposal** when Hermes detects that no suitable skill exists.
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.

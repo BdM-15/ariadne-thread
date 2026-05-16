@@ -65,6 +65,7 @@ draft -> prepared -> held -> notes_captured -> draft_review -> promoted_outputs 
 ## Evidence And Review Rules
 
 - Private call plan templates are export/profile references only; they are not committed.
+- Private call logs and customer engagement examples in `docs/reference/call_plan_template/` are local-only reference examples for Ariadne, Hermes, and future skills. They can guide inference patterns, but extracted signals still enter through Quick Capture, Document Intake, or review-gated workflow outputs.
 - Call plan fields should carry provenance just like packet fields.
 - Customer perceptions, motivations, fears, beliefs, and biases are subjective signals; Ariadne should present them as reviewable notes, not facts.
 - External engagement-tool upload reminders are task prompts, not evidence.

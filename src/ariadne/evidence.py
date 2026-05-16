@@ -20,6 +20,9 @@ class EvidenceItem(BaseModel):
     source_ref: str | None = None
     opportunity_id: str | None = None
     derived_from_ids: tuple[str, ...] = ()
+    raw_item_id: str | None = None
+    draft_id: str | None = None
+    rationale: tuple[str, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
@@ -68,6 +71,9 @@ def create_source_evidence(
     source_ref: str,
     opportunity_id: str | None = None,
     evidence_id: str | None = None,
+    raw_item_id: str | None = None,
+    draft_id: str | None = None,
+    rationale: list[str] | tuple[str, ...] = (),
 ) -> EvidenceItem:
     return EvidenceItem(
         id=evidence_id or f"ev_{uuid4().hex}",
@@ -75,6 +81,9 @@ def create_source_evidence(
         content=content,
         source_ref=source_ref,
         opportunity_id=opportunity_id,
+        raw_item_id=raw_item_id,
+        draft_id=draft_id,
+        rationale=tuple(rationale),
     )
 
 

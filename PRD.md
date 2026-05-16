@@ -1,16 +1,16 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.5**
+**Product Requirements Document (PRD) v1.6**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
-**Date:** May 15, 2026  
-**Status:** First-slice domain/storage epic complete; ready for next planning grill
+**Date:** May 16, 2026  
+**Status:** Quick Capture Knowledge Processing epic complete; ready for next `grill-with-docs` planning session
 
 ---
 
-## 0. Current State Snapshot (May 15, 2026)
+## 0. Current State Snapshot (May 16, 2026)
 
 **Completed**
 
@@ -20,22 +20,24 @@
 - OpenAI `text-embedding-3-large` is the single canonical embedding path unless an ADR later defines migration/index isolation for alternatives.
 - Architecture foundation docs exist in `docs/architecture/` and `docs/adr/`.
 - Shipley global knowledge references are commit-safe and organized under `docs/reference/shipley/`.
+- Project Ariadne public-source knowledge is imported under `docs/reference/project-ariadne/knowledge/` as Capture Reference Context, including company-specific public-source bid-qualification intel.
 - CLI-first harnesses are an approved architecture option for repeatable, batchable, tool-facing, or agent-facing capabilities that should not become complicated UI or bespoke tool sprawl.
 - The first-slice domain/storage epic is complete on `01-build/first-slice-domain-storage` and merged to `main`: Opportunity shell, Evidence Store, Quick Capture review routing, Living Briefing Packet skeleton/review, Capture Action Plan skeleton, read-only Capability Catalog, first Command Center shell, and packet data elements as cross-opportunity knowledge slots.
-- A local FastAPI runtime exists via `uv run python app.py` or `python app.py` with `.env`; the project-standard local UI port is `9621`.
+- The Quick Capture Knowledge Processing epic is complete on `02-build/quick-capture-knowledge-processing`: Reference Wiki influences, Capture Intelligence Drafts, per-piece review/route/skill-chain controls, review-gated promotions into Evidence/Action Plan/Packet outputs, polished trusted evidence with raw trace/admin context, low-signal clarification routing, pasted text and text/Markdown upload intake, parser-required unsupported upload candidates, public call plan/risk register dictionaries, optional Local Admin Model assist through central local-model config, and an end-to-end Command Center demo thread.
+- A local FastAPI runtime exists via `uv run python app.py` or `python app.py` with `.env`; the project-standard local UI port is `9622`, while `9621` is reserved for Project Theseus.
 - The first Command Center shell is command-first: it supports pulse checks, quick actions, and AI-support entry points rather than serving as a passive metrics wall.
 - Packet data modeling now distinguishes reusable Packet Field Definitions from opportunity-specific Packet Field Answers, evidence/provenance, assumptions, confidence, gaps, Action Plan links, Shared Knowledge Entities, and Knowledge Mirror projections.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the first slice.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the Quick Capture Knowledge Processing epic.
 
 **Still Deferred**
 
-- Hermes runtime, knowledge/retrieval engine, graph visualization, MinerU document intake, huashu-design/artifact rendering, external API integrations, advanced skill installation, and full Next.js UI are not implemented yet.
-- The existing FastAPI HTML surfaces are first-slice review/runtime scaffolds, not the final frontend architecture.
+- Hermes runtime, durable knowledge/retrieval engine, graph visualization, MinerU parser-backed document intake, huashu-design/artifact rendering, external API integrations, advanced skill installation, persistent storage beyond local/demo adapters, and full Next.js UI are not implemented yet.
+- The existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Start the next iteration with a new `grill-with-docs` session. Review this PRD, `CONTEXT.md`, ADRs, `docs/architecture/phase-0-review.md`, and any future-integration notes before choosing the next epic.
-- The next epic should be chosen as a vertical product slice, not a broad infrastructure sweep. Candidate directions include durable local storage beyond in-memory/demo builders, Knowledge Processing Workflow from Quick Capture, Document Intake, Knowledge Graph sensemaking, or Hermes-assisted capture mentoring.
+- Start the next iteration with a new `grill-with-docs` session. Review this PRD, `CONTEXT.md`, ADRs, `docs/architecture/phase-0-review.md`, `docs/architecture/quick-capture-knowledge-processing-review.md`, and future-integration notes before choosing the next epic.
+- The next epic should be chosen as a vertical product slice, not a broad infrastructure sweep. Candidate directions include durable local storage beyond in-memory/demo builders, parser-backed Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, Call Plan/customer engagement workflow, or Capability Studio run/provenance workflow.
 - Before any future integration slice for Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation, run `grill-with-docs` and record any load-bearing decisions in `CONTEXT.md` or ADRs.
 
 ---
@@ -249,7 +251,7 @@ The Living Briefing Packet should support both a Briefing View and a Coverage Vi
 
 Ariadne should use tiered autonomy for assisted execution. Low-risk administrative work such as ingestion, tagging, summarization, date extraction, duplicate detection, coverage scoring, and draft gap lists may run automatically. Credit-spending research, broad web searches, external tool calls, major packet regeneration, and artifact rendering should ask before running. Gate decisions, Insight Promotion, customer-facing artifacts, external communications, evidence deletion, sensitive label changes, and final packet exports require human approval.
 
-The primary Command Center experience should be product-workflow first, not toolchain-first. The user should normally choose outcomes such as building a milestone packet, creating a call plan, researching competitors, preparing an engagement artifact, or updating the action plan from notes. Skills, skill chains, CLI harnesses, MCP tools, parser adapters, renderer adapters, and model workflows should operate as Capability Modules behind those product workflows. Because Ariadne is built for a single user-developer, it should also include an advanced Capability Studio for adding, testing, refining, and validating capability modules without making capability management the default capture workflow.
+The primary Command Center experience should be product-workflow first, not toolchain-first. The user should normally choose outcomes such as building a milestone packet, creating a call plan, researching competitors, preparing an engagement artifact, or updating the action plan from notes. Most work items should eventually become command surfaces with context-aware AI actions: handle the action, prepare the artifact, route the question, launch a capability module, or recommend the next product workflow. Skills, skill chains, CLI harnesses, MCP tools, parser adapters, renderer adapters, and model workflows should operate as Capability Modules behind those product workflows. Because Ariadne is built for a single user-developer, it should also include an advanced Capability Studio for adding, testing, refining, and validating capability modules without making capability management the default capture workflow.
 
 The Capability Studio should be visible from the main Command Center but presented as an advanced/admin surface rather than equal-weight capture navigation. It can borrow inspiration from Project Theseus while improving the architecture for Ariadne: dual-use `.github/skills/` files remain the authoring source for workspace skills; product workflows decide when capability modules are useful; capability cataloging should support filtering by lifecycle state, core capture workstream, product workflow, capability type, and maturity; each Capability Run should preserve provenance; and a Capability Artifact Library should let the user inspect outputs, source links, run rationale, and evidence connections before promoting anything into Opportunity Knowledge, reusable insights, or final artifacts.
 
@@ -261,7 +263,11 @@ Hermes may propose improvements to Ariadne itself through human-reviewed Improve
 
 Every Opportunity should have a first-class Capture Action Plan. Action plan items should carry the action, why it matters, owner, due date, related lifecycle state, related core capture workstream, related packet section, evidence or gap addressed, autonomy tier, status, and recommended next step. The Action Plan dashboard should support multiple views rather than a single task board: a focused next-actions list, status board, timeline or calendar view, filters by workstream/packet section/readiness/gap, and task detail views that show supporting evidence and mentor explanations. The primary UI should show outcome-level tasks while keeping lower-level AI execution details available on expansion, so the user manages capture outcomes while Ariadne manages supporting execution.
 
-Quick Capture should follow a low-friction idea-capture pattern: let the user dump rough thoughts, meeting fragments, stray ideas, pasted text, or uploaded files quickly, then let Ariadne classify, polish, connect, and route them through a Knowledge Processing Workflow. Processing can create Evidence Items, Opportunity Knowledge, Action Plan Items, Reusable Capture Insight candidates, or follow-up questions. Uploaded documents should enter through Document Intake, with parser tools such as MinerU treated as adapters that extract Source Evidence rather than as the knowledge model itself.
+Quick Capture should follow a low-friction idea-capture pattern: let the user dump rough thoughts, meeting fragments, stray ideas, pasted text, or uploaded files quickly, then let Ariadne classify, polish, connect, and route them through a Knowledge Processing Workflow. Ariadne should use Capture Reference Context, including the imported Project Ariadne public-source knowledge, to infer useful Capture Intelligence Drafts from rushed raw material while keeping promotion into trusted knowledge review-gated. Trusted evidence should save the polished Capture Intelligence Draft output, not the truly raw note; raw source text is retained only as trace/admin context for auditability. If a note is too low-signal for Ariadne to infer useful capture intel, it should create a clarification request back to the user instead of becoming evidence. The Capture Intelligence Draft review surface should become a command-and-action workspace: the user can accept, edit, discard, route follow-up questions, launch research, request a skill or skill chain, or prepare artifacts such as call plan recommendations when the draft implies customer engagement is needed. Review and routing should operate on individual draft parts, not only on whole-draft summaries, because some intelligence will be deterministic and low-risk while other pieces need careful curation. The surface should also support bulk selection for repeated low-risk or same-route actions, while preserving per-piece review, provenance, and override controls. Ariadne should suggest relevant skill chains or product workflows per draft part and flag opportunities for Hermes to create or improve a skill when no suitable capability exists. The first stage can use lightweight Reference Wiki retrieval over local Markdown/frontmatter/wikilink-style notes before a full vector database or RAG engine exists. Processing can create Evidence Items, Opportunity Knowledge, Action Plan Items, Reusable Capture Insight candidates, or follow-up questions. Pasted text and simple text or Markdown uploads should become Raw Capture Items with source metadata and follow the same Capture Intelligence Draft path as manual notes. Unsupported uploads should become parser-required Document Intake Candidates, not trusted source text. The Command Center should keep an end-to-end demo thread for this workflow showing messy raw input, Reference Wiki influences, draft inferences, review controls, accepted evidence/action/packet outputs, discarded outputs, and trace links back to raw input and draft rationale. Uploaded documents should enter through Document Intake, with parser tools such as MinerU treated as adapters that extract Source Evidence rather than as the knowledge model itself.
+
+Risk Register work should follow the same evidence-first pattern as the Living Briefing Packet and Call Plan. Private workbook files stay local and ignored, while Ariadne models normalized Risk Register Items, Risk Response Plans, scoring, evidence links, packet-field connections, call-plan signal connections, and action-plan follow-through as review-gated product workflow data.
+
+Quick Capture may optionally use a Local Admin Model such as an Ollama-hosted Qwen model for low-risk draft support, but deterministic heuristic processing must remain the default and must work when the local model is unavailable. Local admin assist should reuse central local-model configuration such as `OLLAMA_HOST` and `LOCAL_DAILY_MODEL` rather than introducing workflow-specific model names. Capture Intelligence Draft provenance should show whether local model assistance was used, unavailable, invalid, or disabled.
 
 The Knowledge Layer should include a Knowledge Graph View that visualizes Ariadne's primary structured knowledge: opportunities, evidence items, core capture workstreams, packet sections, action plan items, artifacts, and reusable capture insights. The first stage should be Graph Sensemaking Mode for exploration and understanding. A later stage can add Graph Action Mode so selected nodes can create actions, suggest Insight Promotion, generate briefing sections, or launch research workflows. Obsidian may mirror selected knowledge into readable notes for browsing and reflection, but graph visualization should be built from Ariadne's source knowledge model rather than relying on Obsidian vault conventions.
 
@@ -312,10 +318,23 @@ Each future slice should leave a short documentation trail before code: what is 
 - Built Packet Field Definitions, Packet Field Answers, Answer Paths, Shared Knowledge Entities, and Packet Field Review connections so briefing data elements become reusable strategic slots without reusing another Opportunity's answers as truth.
 - Closed issues #1 through #8 and merged the completed epic to `main` after validation.
 
+**Quick Capture Knowledge Processing Epic** ← **COMPLETE**
+
+- Imported Project Ariadne public-source knowledge as commit-safe Capture Reference Context and added lightweight Reference Wiki influence retrieval.
+- Built Capture Intelligence Drafts from rushed notes and uploaded source material, including inferred claims, risks, discriminator candidates, packet implications, action candidates, gaps, follow-up questions, assumptions, confidence notes, Reference Wiki influence provenance, and optional Local Admin Model assist.
+- Kept Local Admin Model config centralized through `OLLAMA_HOST` and `LOCAL_DAILY_MODEL`; local admin assist has only workflow-specific enablement and timeout controls.
+- Added per-piece draft review controls, recommended routes, skill-chain suggestions, discard handling, and documented future bulk selection.
+- Added review-gated promotions from draft parts into Evidence Items, Action Plan Items, Packet Field Answers, and packet gap updates while preserving raw item ID, draft ID, draft part ID, review rationale, evidence links, and edit history.
+- Changed trusted evidence behavior so accepted evidence saves polished Capture Intelligence Draft output, while truly raw notes remain trace/admin context only. Low-signal notes route to clarification instead of evidence.
+- Routed pasted text and text/Markdown uploads through the same Quick Capture path; unsupported uploads become parser-required Document Intake Candidates.
+- Added public Call Plan and Risk Register data dictionaries while keeping private templates/workbooks/log examples ignored.
+- Added an end-to-end Command Center demo thread showing messy input, Reference Wiki influences, draft inferences, review controls, accepted evidence/action/packet outputs, discarded output, traceability, and parser-required future Document Intake.
+- Closed issues #9 through #15 on the epic branch after validation.
+
 **Next Planning Gate**
 
 - Run a new `grill-with-docs` session before starting the next epic.
-- Decide whether the next vertical slice should deepen durable storage, Knowledge Processing Workflow, Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, or another product workflow.
+- Decide whether the next vertical slice should deepen durable storage, parser-backed Document Intake, Knowledge Graph sensemaking, Hermes-assisted capture mentoring, Call Plan/customer engagement, Capability Studio provenance, or another product workflow.
 - Keep the Command Center command-first: pulse check, quick action, and AI support should take priority over passive data display.
 
 **Phase 1 – Core Infrastructure**

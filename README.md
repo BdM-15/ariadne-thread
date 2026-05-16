@@ -2,13 +2,14 @@
 
 Ariadne Thread is a capture command center for managing the full pursuit lifecycle from opportunity identification through award. The project is guided by Shipley capture discipline, deep modular architecture, local-first knowledge workflows, and an immersive dark cyberpunk user experience.
 
-The product source of truth is [PRD.md](PRD.md). Phase 0 and the first domain/storage epic are complete; the next iteration should start with a `grill-with-docs` planning session before new product work begins.
+The product source of truth is [PRD.md](PRD.md). Phase 0, the first domain/storage epic, and the Quick Capture Knowledge Processing epic are complete; the next iteration should start with a `grill-with-docs` planning session before new product work begins.
 
 ## Current State
 
 - Local FastAPI runtime starts from [app.py](app.py).
-- First Command Center shell ties together Opportunity, Quick Capture, Living Briefing Packet, Capture Action Plan, and read-only Capability Catalog surfaces.
-- First-slice domain modules cover opportunities, evidence, quick capture, packets, packet knowledge slots, action plans, runtime config, and local capability discovery.
+- First Command Center shell ties together Opportunity, Quick Capture, Living Briefing Packet, Capture Action Plan, read-only Capability Catalog, and an end-to-end Quick Capture demo thread.
+- Current domain modules cover opportunities, evidence, quick capture knowledge processing, uploaded source material intake, packets, packet knowledge slots, action plans, runtime config, local model assist, and local capability discovery.
+- Quick Capture turns rough notes, pasted text, and text/Markdown uploads into reviewable Capture Intelligence Drafts with Reference Wiki influences, polished trusted evidence candidates, per-piece review routes, promotions, traceability, and parser-required unsupported upload candidates.
 - Packet data elements are modeled as reusable strategic Packet Field Definitions with opportunity-specific Packet Field Answers and cross-opportunity context through Shared Knowledge Entities.
 - Capability Studio remains advanced/read-only in this slice; capability management is not the default capture workflow.
 
@@ -20,7 +21,7 @@ Copy-Item .env.example .env
 uv run python app.py
 ```
 
-The app reads `HOST`, `PORT`, `PUBLIC_APP_NAME`, `ARIADNE_ENV`, `ARIADNE_WORKSPACE`, and `ARIADNE_EVIDENCE_DIR` from `.env`, then starts the local FastAPI runtime. Open the URL printed at startup, usually `http://127.0.0.1:9621` unless your private `.env` sets another port.
+The app reads `HOST`, `PORT`, `PUBLIC_APP_NAME`, `ARIADNE_ENV`, `ARIADNE_WORKSPACE`, and `ARIADNE_EVIDENCE_DIR` from `.env`, then starts the local FastAPI runtime. Open the URL printed at startup, usually `http://127.0.0.1:9622`. Port `9621` is reserved for Project Theseus.
 
 With the virtual environment activated, `python app.py` also works.
 

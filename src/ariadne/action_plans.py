@@ -55,6 +55,11 @@ class ActionPlanItem(BaseModel):
     gap_summary: str | None = None
     status: ActionPlanItemStatus = ActionPlanItemStatus.PENDING
     autonomy_tier: AutonomyTier = AutonomyTier.ASK_BEFORE_RUNNING
+    review_status: str | None = None
+    promoted_from_draft_part_id: str | None = None
+    source_raw_item_id: str | None = None
+    source_draft_id: str | None = None
+    review_edits: tuple[str, ...] = ()
     execution_details: tuple[ExecutionDetail, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -94,6 +99,11 @@ class ActionPlanItemDetailView(BaseModel):
     gap_summary: str | None = None
     status: ActionPlanItemStatus
     autonomy_tier: AutonomyTier
+    review_status: str | None = None
+    promoted_from_draft_part_id: str | None = None
+    source_raw_item_id: str | None = None
+    source_draft_id: str | None = None
+    review_edits: tuple[str, ...] = ()
     execution_details: tuple[ExecutionDetail, ...]
 
 
@@ -191,6 +201,11 @@ def build_action_plan_item_detail_view(
         gap_summary=item.gap_summary,
         status=item.status,
         autonomy_tier=item.autonomy_tier,
+        review_status=item.review_status,
+        promoted_from_draft_part_id=item.promoted_from_draft_part_id,
+        source_raw_item_id=item.source_raw_item_id,
+        source_draft_id=item.source_draft_id,
+        review_edits=item.review_edits,
         execution_details=item.execution_details,
     )
 

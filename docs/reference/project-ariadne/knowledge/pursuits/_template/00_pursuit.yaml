@@ -1,0 +1,34 @@
+# Canonical metadata for this pursuit. Edited by humans; consumed by Mnemosyne,
+# the Pipeline dashboard, and the ontology promoter.
+
+slug: "" # short-name used as folder + Theseus workspace
+name: "" # human-readable name
+customer: "" # customer organization
+agency: "" # parent agency
+contract_vehicle: "" # IDIQ / GWAC / OTA / FMS Case / etc.
+naics: ""
+set_aside: "" # Small Business / 8(a) / SDVOSB / Full & Open
+ceiling_value_usd: null
+
+shipley_phase: 1 # 0..6 — see SHIPLEY_PHASES in core/pursuits.py
+pwin: 0 # quantitative probability-of-win (0-100)
+
+capture_manager: ""
+proposal_manager: ""
+key_personnel: []
+
+dates:
+  rfp_release: null
+  proposal_due: null
+  award: null
+
+gates:
+  bd1_opportunity: { status: "not started", date: null, notes: "" }
+  bd2_pursuit: { status: "not started", date: null, notes: "" }
+  bd3_capture: { status: "not started", date: null, notes: "" }
+  pink_team: { status: "not started", date: null, notes: "" }
+  red_team: { status: "not started", date: null, notes: "" }
+  gold_team: { status: "not started", date: null, notes: "" }
+  submission: { status: "not started", date: null, notes: "" }
+
+theseus_workspace: "" # rag_storage subdir name; usually equals slug

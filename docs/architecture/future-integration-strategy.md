@@ -16,6 +16,12 @@ Before implementing any future integration slice, run a `grill-with-docs` sessio
 
 Hermes should enter through a narrow agent runtime interface that can inspect Opportunities, Evidence Items, Action Plan Items, Capability Runs, and Exploratory Capture Sessions. Hermes may recommend next actions, draft packet updates, identify capability gaps, and create Improvement Proposals, but durable state changes continue through review or approval gates.
 
+### Command Surfaces And Agentic Actions
+
+Future UI surfaces should treat important work items as command surfaces, not passive records. Capture Intelligence Drafts, Evidence Items, Packet Field Answers, Action Plan Items, Call Plans, Engagement Artifacts, and Capability Run Outputs should expose context-aware actions when useful: accept, edit, discard, promote, route follow-up questions, run a skill or skill chain, start research, prepare an artifact, or recommend a next workflow such as customer engagement -> call plan. The action may be handled by Hermes, a model workflow, a CLI harness, a skill, or another Capability Module, but the product workflow owns the user-facing decision, autonomy tier, provenance, and review gate.
+
+Capture Intelligence Draft command surfaces should be piece-level. A draft can contain dozens of claims, risks, questions, or action candidates; each piece should carry its own review state, recommended route, provenance, autonomy tier, and suggested skill chain. Bulk selection should exist for repeated low-risk or same-route operations, but bulk actions must preserve per-piece audit records and let the user inspect exceptions before promotion. Project Theseus-style skill-chain planning and LangGraph orchestration are useful inspiration for future planning UI, but Ariadne should keep the product workflow in control and treat the orchestration engine as an adapter choice.
+
 ### Knowledge Graph View
 
 The graph should be a projection of Ariadne's primary structured knowledge, not the primary store itself. It should read relationships among Opportunities, Evidence Items, Core Capture Workstreams, Packet Sections, Action Plan Items, Artifacts, Reusable Capture Insights, and Capability Runs. The first graph can be a local projection; a later graph database is an adapter decision, not a product-model change.

@@ -3,30 +3,14 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from ariadne.action_plans import (
-    add_packet_gap_actions,
-    build_action_plan_view,
-    create_capture_action_plan,
-)
-from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
+from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
-from ariadne.opportunities import (
-    CoreCaptureWorkstream,
-    EntryContext,
-    EntryReason,
-    LifecycleState,
-    create_opportunity,
-)
 from ariadne.packets import (
-    build_coverage_view,
-    create_living_briefing_packet,
-    update_packet_readiness,
-    update_packet_section_coverage,
     CanonicalPacketSection,
     EvidenceStatus,
-    PacketReadiness,
 )
-from ariadne.quick_capture import capture_raw_item, process_raw_capture_item
+from ariadne.quick_capture_demo import build_quick_capture_demo_thread
+from ariadne.reference_wiki import ReferenceWikiInfluence
 
 
 def render_command_center_shell(
@@ -35,46 +19,24 @@ def render_command_center_shell(
     workspace_root: Path | None = None,
 ) -> str:
     root = workspace_root or Path.cwd()
-    opportunity = create_opportunity(
-        name="AFLCMC recompete support",
-        entry_context=EntryContext(
-            reason=EntryReason.INCUMBENT_RECOMPETE,
-            starting_lifecycle_state=LifecycleState.PURSUING,
-            rationale="Existing contract is approaching its recompete window.",
-            missing_or_stale_workstreams={
-                CoreCaptureWorkstream.CUSTOMER_INSIGHT,
-                CoreCaptureWorkstream.COMPETITIVE_INTELLIGENCE,
-            },
-        ),
-    )
-    packet = create_living_briefing_packet(opportunity)
-    update_packet_readiness(packet, PacketReadiness.DRAFT_READY)
-    update_packet_section_coverage(
-        packet,
-        section=CanonicalPacketSection.OPPORTUNITY_OVERVIEW,
-        evidence_status=EvidenceStatus.ANSWERED,
-        evidence_ids=["ev_notice", "ev_contract_history"],
-    )
-    update_packet_section_coverage(
-        packet,
-        section=CanonicalPacketSection.CUSTOMER_CONTEXT,
-        evidence_status=EvidenceStatus.PARTIAL,
-        evidence_ids=["ev_customer_call"],
-        gap_summary="Need validated customer pain and decision-maker map.",
-    )
-    action_plan = add_packet_gap_actions(
-        create_capture_action_plan(opportunity),
-        packet,
-    )
-    action_view = build_action_plan_view(action_plan)
-    quick_capture = capture_raw_item(
-        "Customer said transition plan is weak. Need follow up with PM next week.",
-        opportunity_id="opp-aflcmc-recompete",
-        raw_item_id="raw_customer_transition_note",
-    )
-    capture_review = process_raw_capture_item(quick_capture)
-    coverage_view = build_coverage_view(packet)
-    catalog = discover_local_capability_catalog(root)
+    demo = build_quick_capture_demo_thread(settings, workspace_root=root)
+    opportunity = demo.opportunity
+    packet = demo.packet
+    quick_capture = demo.quick_capture
+    capture_review = demo.capture_review
+    pasted_capture = demo.pasted_capture
+    pasted_review = demo.pasted_review
+    uploaded_capture = demo.uploaded_capture
+    uploaded_review = demo.uploaded_review
+    unsupported_upload = demo.unsupported_upload
+    accepted_evidence = demo.accepted_evidence
+    accepted_action = demo.accepted_action
+    accepted_packet_answer = demo.accepted_packet_answer
+    discarded_output = demo.discarded_output
+    action_view = demo.action_view
+    reference_influences = demo.reference_influences
+    coverage_view = demo.coverage_view
+    catalog = demo.catalog
 
     return f"""<!doctype html>
 <html lang="en">
@@ -262,6 +224,42 @@ def render_command_center_shell(
       text-decoration: none;
       font-weight: 900;
     }}
+    .action-strip {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }}
+    .action-button {{
+      min-height: 44px;
+      padding: 10px 12px;
+      border: 1px solid rgba(34, 211, 238, 0.7);
+      border-radius: 8px;
+      background: rgba(34, 211, 238, 0.12);
+      color: var(--cyan);
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+    }}
+    .action-button.secondary {{ border-color: rgba(251, 191, 36, 0.7); background: rgba(251, 191, 36, 0.12); color: var(--amber); }}
+    .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
+    .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+    .upload-form {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--edge-soft);
+      border-radius: 8px;
+      background: var(--surface-strong);
+    }}
+    .upload-form label {{ color: var(--text); font-weight: 900; }}
+    .upload-form input {{
+      min-height: 44px;
+      width: 100%;
+      color: var(--muted);
+    }}
     @media (max-width: 1100px) {{
       .shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -275,6 +273,8 @@ def render_command_center_shell(
       .runtime-pill {{ margin-top: 12px; }}
       .nav,
       .metric-grid {{ grid-template-columns: 1fr; }}
+      .action-strip {{ grid-template-columns: 1fr; }}
+      .upload-form {{ grid-template-columns: 1fr; }}
       .hero h2 {{ font-size: 1.55rem; }}
     }}
     @media (prefers-reduced-motion: reduce) {{
@@ -315,11 +315,13 @@ def render_command_center_shell(
       <section class="hero" aria-labelledby="mission-heading">
         <h2 id="mission-heading">AFLCMC recompete support</h2>
         <p>Lifecycle: {escape(opportunity.lifecycle_state.value.replace("_", " "))}. Entry: incumbent recompete. Packet: {escape(packet.readiness.value.replace("_", " "))}.</p>
-        {_render_metrics(action_view, coverage_view, capture_review, catalog)}
+        {_render_metrics(action_view, coverage_view, capture_review, catalog, reference_influences)}
       </section>
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
-        {_render_quick_capture_panel(quick_capture, capture_review)}
+        {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
+        {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
+        {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
         {_render_action_plan_panel(action_view)}
         {_render_capability_panel(catalog)}
@@ -331,7 +333,11 @@ def render_command_center_shell(
 
 
 def _render_metrics(
-    action_view, coverage_view, capture_review, catalog: CapabilityCatalog
+    action_view,
+    coverage_view,
+    capture_review,
+    catalog: CapabilityCatalog,
+    reference_influences: tuple[ReferenceWikiInfluence, ...],
 ) -> str:
     open_coverage = sum(
         section.evidence_status is not EvidenceStatus.ANSWERED
@@ -343,9 +349,9 @@ def _render_metrics(
       <div class="metric"><span>Action items</span><strong>{len(action_view.items)}</strong></div>
       <div class="metric"><span>Local capabilities</span><strong class="green">{len(catalog.entries)}</strong></div>
       <div class="metric"><span>Quick Capture</span><strong>{len(capture_review.proposals)} proposals</strong></div>
+      <div class="metric"><span>Reference influences</span><strong class="cyan">{len(reference_influences)}</strong></div>
       <div class="metric"><span>Knowledge flow</span><strong>review first</strong></div>
       <div class="metric"><span>Autonomy</span><strong>human gated</strong></div>
-      <div class="metric"><span>Studio mode</span><strong>read-only</strong></div>
     </section>"""
 
 
@@ -363,14 +369,108 @@ def _render_opportunity_panel(opportunity) -> str:
     </section>"""
 
 
-def _render_quick_capture_panel(raw_item, capture_review) -> str:
+def _render_quick_capture_panel(
+    raw_item,
+    capture_review,
+    reference_influences: tuple[ReferenceWikiInfluence, ...],
+    pasted_raw_item,
+    pasted_review,
+    uploaded_raw_item,
+    uploaded_review,
+    intake_candidate,
+) -> str:
+    influence_rows = "".join(
+        f"""<div class="row"><strong>{escape(influence.title)}</strong><span>{escape(influence.influence_type.value.replace("_", " ").title())} - {escape(influence.why_it_matters)}</span></div>"""
+        for influence in reference_influences[:4]
+    )
+    pasted_metadata = pasted_raw_item.source_metadata
+    uploaded_metadata = uploaded_raw_item.source_metadata
+    candidate_status = (
+        intake_candidate.status.value.replace("_", " ").title()
+        if intake_candidate is not None
+        else "Parser Required"
+    )
+    candidate_reason = (
+      intake_candidate.reason
+      if intake_candidate is not None
+      else "Unsupported file requires future Document Intake."
+    )
+    candidate_hint = (
+      intake_candidate.parser_hint
+      if intake_candidate is not None
+      else "Parser required before Quick Capture can trust this source."
+    )
     return f"""<section class="panel" id="quick-capture" aria-labelledby="quick-capture-heading">
       <div class="panel-heading"><h2 id="quick-capture-heading">Quick Capture</h2><span class="status-chip amber">Needs Review</span></div>
       <div class="row-list">
         <div class="row"><strong>{escape(raw_item.id)}</strong><span>{escape(raw_item.content)}</span></div>
+        <div class="row"><strong>Pasted Text Intake</strong><span>{escape(pasted_metadata.source_type.value if pasted_metadata else "pasted_text")} - {len(pasted_review.proposals)} review proposals queued.</span></div>
+        <div class="row"><strong>Text / Markdown Upload</strong><span>{escape(uploaded_metadata.filename if uploaded_metadata and uploaded_metadata.filename else "uploaded material")} - {escape(uploaded_metadata.content_type if uploaded_metadata and uploaded_metadata.content_type else "text")} - {len(uploaded_review.proposals)} review proposals queued.</span></div>
+      <div class="row"><strong>Document Intake Candidate</strong><span>{escape(intake_candidate.filename if intake_candidate and intake_candidate.filename else "unsupported file")} - {escape(candidate_status)}</span><span>{escape(candidate_reason)}</span><span>{escape(candidate_hint)}</span></div>
+        <form class="upload-form" action="/api/quick-capture/uploads" method="post" enctype="multipart/form-data">
+          <label for="quick-capture-upload">Text / Markdown Upload</label>
+          <input id="quick-capture-upload" name="file" type="file" accept=".txt,.text,.md,.markdown,text/plain,text/markdown">
+          <button class="action-button" type="submit">Upload</button>
+        </form>
         <div class="row"><strong>{len(capture_review.proposals)} review proposals</strong><span>Evidence Item Review plus Action Plan Item Review queued.</span></div>
+        <div class="row"><strong>{len(reference_influences)} Reference Wiki influences</strong><span>Background context surfaced for review; no opportunity evidence is written automatically.</span></div>
+        {influence_rows}
       </div>
     </section>"""
+
+
+def _render_capture_intelligence_draft_panel(draft) -> str:
+    if draft is None:
+        return ""
+
+    return f"""<section class="panel" id="capture-intelligence-draft" aria-labelledby="capture-intelligence-draft-heading">
+      <div class="panel-heading"><h2 id="capture-intelligence-draft-heading">Capture Intelligence Draft</h2><span class="status-chip amber">{escape(draft.status.value.replace("_", " ").title())}</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Polished Capture</strong><span>{escape(draft.polished_capture)}</span></div>
+        <div class="row"><strong>Trace/Admin Raw Note</strong><span>{escape(draft.raw_source_content)}</span></div>
+        <div class="row"><strong>Local Admin Model Assist</strong><span>{escape(draft.local_admin_model_assist_status.replace("_", " ").title())} - {escape(draft.inference_source.value.replace("_", " ").title())}</span></div>
+        <div class="row"><strong>Per-Piece Intelligence Review</strong><span>Each draft part gets its own review, route, skill-chain, and discard controls. Trusted writes require reviewer action.</span></div>
+        {_render_intelligence_piece_rows(draft)}
+        <div class="row"><strong>Assumptions</strong><span>{_render_inline_items(draft.assumptions)}</span></div>
+        <div class="row"><strong>Confidence Notes</strong><span>{_render_inline_items(draft.confidence_notes)}</span></div>
+        <div class="row"><strong>Gaps</strong><span>{_render_inline_items(draft.gaps)}</span></div>
+        <div class="row"><strong>{len(draft.reference_influences)} reference influences</strong><span>No trusted opportunity knowledge updated.</span></div>
+      </div>
+    </section>"""
+
+
+def _render_intelligence_piece_rows(draft) -> str:
+    return "".join(_render_intelligence_piece_row(piece) for piece in draft.intelligence_pieces)
+
+
+def _render_intelligence_piece_row(piece) -> str:
+    skill_chain = " -> ".join(piece.suggested_skill_chain) or "needs capability match"
+    label = piece.part_type.value.replace("_", " ").title()
+    return f"""<div class="row"><strong>{escape(label)}</strong><span>{escape(piece.content)}</span><span>Recommended Route: {escape(piece.recommended_route.replace("_", " "))}</span><span>Suggested Skill Chain: {escape(skill_chain)}</span><div class="action-strip" aria-label="{escape(label)} actions"><button class="action-button" type="button">Accept as Evidence</button><button class="action-button secondary" type="button">Recommend Route</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Discard Piece</button></div></div>"""
+
+
+def _render_inline_items(items: tuple[str, ...]) -> str:
+    return "<br>".join(escape(item) for item in items)
+
+
+def _render_accepted_promotions_panel(
+    accepted_evidence,
+    action_item,
+    packet_answer,
+    discarded_output,
+) -> str:
+    evidence = accepted_evidence.evidence
+    evidence_id = evidence.id if evidence is not None else "unwritten"
+    evidence_rationale = " | ".join(evidence.rationale if evidence is not None else ())
+    return f"""<section class="panel" id="accepted-promotions" aria-labelledby="accepted-promotions-heading">
+    <div class="panel-heading"><h2 id="accepted-promotions-heading">Accepted Draft Promotions</h2><span class="status-chip green">Review Status: accepted</span></div>
+    <div class="row-list">
+    <div class="row"><strong>Accepted Evidence</strong><span>{escape(evidence.content if evidence is not None else "No evidence created")}</span><span>Saved content: polished capture, not raw note.</span><span>Trace: raw {escape(accepted_evidence.raw_item_id)} - draft {escape(accepted_evidence.draft_id or "none")} - evidence {escape(evidence_id)}</span><span>Draft Rationale: {escape(evidence_rationale)}</span></div>
+    <div class="row"><strong>Accepted Action</strong><span>{escape(action_item.action)}</span><span>Trace: raw {escape(action_item.source_raw_item_id or "none")} - draft {escape(action_item.source_draft_id or "none")} - part {escape(action_item.promoted_from_draft_part_id or "none")}</span><span>Evidence: {escape(", ".join(action_item.related_evidence_ids))}</span><span>Reviewer Rationale: {escape(action_item.rationale)}</span></div>
+    <div class="row"><strong>Accepted Packet Update</strong><span>{escape(packet_answer.value or "")}</span><span>Trace: raw {escape(packet_answer.source_raw_item_id or "none")} - draft {escape(packet_answer.source_draft_id or "none")} - part {escape(packet_answer.promoted_from_draft_part_id or "none")}</span><span>Field: {escape(packet_answer.field_key)} - Confidence: {packet_answer.confidence}</span><span>Reviewer Rationale: {escape(packet_answer.provenance_note or "none")}</span></div>
+    <div class="row"><strong>Discarded Output</strong><span>Trace: raw {escape(discarded_output.source_raw_item_id)} - draft {escape(discarded_output.source_draft_id or "none")} - part {escape(discarded_output.draft_part_id)}</span><span>{escape(discarded_output.discard_reason or "No discard reason")}</span></div>
+    </div>
+  </section>"""
 
 
 def _render_packet_panel(packet, coverage_view) -> str:

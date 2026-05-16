@@ -96,6 +96,11 @@ class PacketFieldAnswer(BaseModel):
     action_item_ids: tuple[str, ...] = ()
     entity_ids: tuple[str, ...] = ()
     provenance_note: str | None = None
+    review_status: str | None = None
+    promoted_from_draft_part_id: str | None = None
+    source_raw_item_id: str | None = None
+    source_draft_id: str | None = None
+    review_edits: tuple[str, ...] = ()
     authority: KnowledgeAuthority = KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
 
 
@@ -331,6 +336,11 @@ def create_packet_field_answer(
     action_item_ids: tuple[str, ...] = (),
     entity_ids: tuple[str, ...] = (),
     provenance_note: str | None = None,
+    review_status: str | None = None,
+    promoted_from_draft_part_id: str | None = None,
+    source_raw_item_id: str | None = None,
+    source_draft_id: str | None = None,
+    review_edits: tuple[str, ...] = (),
     authority: KnowledgeAuthority = KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH,
 ) -> PacketFieldAnswer:
     return PacketFieldAnswer(
@@ -346,6 +356,11 @@ def create_packet_field_answer(
         action_item_ids=action_item_ids,
         entity_ids=entity_ids,
         provenance_note=provenance_note,
+        review_status=review_status,
+        promoted_from_draft_part_id=promoted_from_draft_part_id,
+        source_raw_item_id=source_raw_item_id,
+        source_draft_id=source_draft_id,
+        review_edits=review_edits,
         authority=authority,
     )
 

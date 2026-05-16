@@ -1,5 +1,289 @@
 from ariadne.config import RuntimeSettings
+from ariadne.evidence import LocalEvidenceStore
+from ariadne.local_admin_model import (
+    LocalAdminDraftAssist,
+    LocalAdminDraftSuggestion,
+    LocalAdminModelAssistStatus,
+)
 from ariadne.server import create_app
+
+
+def test_quick_capture_reference_influences_api_exposes_wiki_matches(tmp_path) -> None:
+    wiki_root = tmp_path / "knowledge"
+    _write_reference_note(
+        wiki_root / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
+        """---
+title: Incumbent Analysis Strategy
+entity_type: concept
+---
+
+# Incumbent Analysis Strategy
+
+Incumbent transition risk and response-time weaknesses should influence capture
+strategy and follow-up actions.
+""",
+    )
+    _write_reference_note(
+        wiki_root / "global_wiki" / "capture" / "customer-hot-buttons.md",
+        """---
+title: Customer Hot Button Identification
+entity_type: concept
+---
+
+# Customer Hot Buttons
+
+Customer complaints and decision-maker priorities shape capture strategy.
+""",
+    )
+    _write_reference_note(
+        wiki_root / "global_wiki" / "shipley" / "capture-planning-phase.md",
+        """---
+title: Capture Planning Phase
+entity_type: concept
+---
+
+# Capture Planning Phase
+
+Follow-up actions after customer calls should become capture-plan inputs.
+""",
+    )
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_REFERENCE_WIKI_DIR": str(wiki_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/reference-influences",
+        json={
+            "content": "Customer says incumbent response times are weak and "
+            "transition risk needs follow up.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["influences"]) == 3
+    assert body["influences"][0]["title"] == "Incumbent Analysis Strategy"
+    assert body["influences"][0]["source_path"] == (
+        "global_wiki/capture/incumbent-analysis-strategy.md"
+    )
+    assert body["influences"][0]["influence_type"] == "capture_methodology"
+
+
+def test_quick_capture_intelligence_draft_api_returns_reviewable_draft(tmp_path) -> None:
+    wiki_root = tmp_path / "knowledge"
+    _write_reference_note(
+        wiki_root / "global_wiki" / "capture" / "incumbent-analysis-strategy.md",
+        """---
+title: Incumbent Analysis Strategy
+entity_type: concept
+---
+
+Incumbent transition risk, weak response times, customer complaints, proof points,
+and ghost strategy should shape capture follow-up.
+""",
+    )
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_REFERENCE_WIKI_DIR": str(wiki_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/intelligence-drafts",
+        json={
+            "content": "Customer says incumbent response times are weak. "
+            "Transition risk needs proof points and PM follow up.",
+            "opportunity_id": "opp-aflcmc-recompete",
+        },
+    )
+
+    assert response.status_code == 200
+    draft = response.json()["draft"]
+    assert draft["status"] == "pending_review"
+    assert draft["opportunity_id"] == "opp-aflcmc-recompete"
+    assert "Transition risk" in draft["likely_risks"][0]
+    assert "Proof points" in draft["discriminator_candidates"][0]
+    assert draft["reference_influences"][0]["title"] == "Incumbent Analysis Strategy"
+    assert draft["trusted_opportunity_knowledge_updated"] is False
+
+
+def test_quick_capture_source_material_api_creates_pasted_text_raw_item() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/source-material",
+        json={
+            "content": "Customer pasted note says transition proof needs PM follow up.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_pasted_note",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["raw_item"]["id"] == "raw_api_pasted_note"
+    assert body["raw_item"]["source_metadata"]["source_type"] == "pasted_text"
+    assert body["review"]["raw_item_id"] == "raw_api_pasted_note"
+    assert body["review"]["intelligence_draft"]["raw_source_content"] == (
+        "Customer pasted note says transition proof needs PM follow up."
+    )
+    assert body["review"]["intelligence_draft"]["polished_capture"].startswith(
+        "Interpreted signal:"
+    )
+
+
+def test_quick_capture_upload_api_processes_markdown_as_raw_capture_material() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-call.md",
+                b"# Call note\n\nCustomer says transition risk needs packet gap.",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready_for_quick_capture"
+    assert body["raw_item"]["source_metadata"]["filename"] == "customer-call.md"
+    assert body["raw_item"]["source_metadata"]["content_type"] == "markdown"
+    assert body["review"]["intelligence_draft"]["raw_item_id"] == body["raw_item"]["id"]
+    assert body["intake_candidate"] is None
+
+
+def test_quick_capture_upload_api_records_unsupported_document_intake_candidate() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/uploads",
+        files={"file": ("draft-rfp.pdf", b"%PDF-1.4\n...", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "parser_required"
+    assert body["raw_item"] is None
+    assert body["review"] is None
+    assert body["intake_candidate"]["filename"] == "draft-rfp.pdf"
+    assert body["intake_candidate"]["status"] == "parser_required"
+
+
+def test_quick_capture_draft_api_does_not_write_evidence_before_review(tmp_path) -> None:
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_EVIDENCE_DIR": str(evidence_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/intelligence-drafts",
+        json={
+            "content": "Customer says transition risk needs PM follow up.",
+            "opportunity_id": "opp-aflcmc-recompete",
+        },
+    )
+
+    assert response.status_code == 200
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_quick_capture_review_decision_api_writes_evidence_after_acceptance(
+    tmp_path,
+) -> None:
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_EVIDENCE_DIR": str(evidence_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/review-decisions",
+        json={
+            "content": "Customer says incumbent response times are weak.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_customer_response_note",
+            "action": "accept_evidence",
+            "reviewer_rationale": "Accepted from customer call notes.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"]["status"] == "accepted"
+    assert body["decision"]["trusted_evidence_written"] is True
+    assert body["decision"]["evidence"]["raw_item_id"] == (
+        "raw_api_customer_response_note"
+    )
+    assert body["decision"]["evidence"]["draft_id"] == body["decision"]["draft_id"]
+    assert body["decision"]["evidence"]["content"] != (
+        "Customer says incumbent response times are weak."
+    )
+    assert body["decision"]["evidence"]["content"].startswith(
+        "Interpreted signal:"
+    )
+    assert body["evidence_store_count"] == 1
+    assert len(LocalEvidenceStore(evidence_root).list()) == 1
+
+
+def test_quick_capture_promotion_api_creates_action_plan_item() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/promotions",
+        json={
+            "content": "Need follow up with PM to validate transition proof points.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_action_promotion",
+            "promotion_type": "action_plan_item",
+            "reviewer_rationale": "Reviewer accepted PM follow-up as next action.",
+            "evidence_ids": ["ev_customer_transition_note"],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["action_item"]["review_status"] == "accepted"
+    assert body["action_item"]["source_raw_item_id"] == "raw_api_action_promotion"
+    assert body["action_item"]["related_evidence_ids"] == [
+        "ev_customer_transition_note"
+    ]
+    assert body["packet_answer"] is None
+
+
+def test_quick_capture_promotion_api_creates_packet_field_answer_with_edit() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).post(
+        "/api/quick-capture/promotions",
+        json={
+            "content": "Customer says transition risk needs packet gap.",
+            "opportunity_id": "opp-aflcmc-recompete",
+            "raw_item_id": "raw_api_packet_promotion",
+            "promotion_type": "packet_field_answer",
+            "field_key": "risks",
+            "reviewer_rationale": "Reviewer accepted as risk field update.",
+            "edited_content": "Transition risk needs mitigation evidence.",
+            "evidence_ids": ["ev_transition_risk"],
+            "confidence": 0.61,
+        },
+    )
+
+    assert response.status_code == 200
+    answer = response.json()["packet_answer"]
+    assert answer["field_key"] == "risks"
+    assert answer["value"] == "Transition risk needs mitigation evidence."
+    assert answer["review_status"] == "accepted"
+    assert answer["review_edits"]
 
 
 def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) -> None:
@@ -15,6 +299,45 @@ def test_runtime_settings_load_host_port_and_app_name_from_env_file(tmp_path) ->
     assert settings.port == 9622
     assert settings.public_app_name == "Ariadne Local"
     assert settings.local_url == "http://127.0.0.1:9622"
+
+
+def test_runtime_settings_default_to_ariadne_port_not_theseus_port() -> None:
+    settings = RuntimeSettings.from_mapping({})
+
+    assert settings.port == 9622
+    assert settings.local_url == "http://127.0.0.1:9622"
+
+
+def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "LOCAL_ADMIN_MODEL_ENABLED": "true",
+            "OLLAMA_HOST": "http://127.0.0.1:11434",
+            "LOCAL_DAILY_MODEL": "qwen3.5:9b",
+            "LOCAL_ADMIN_MODEL_TIMEOUT_SECONDS": "5",
+        }
+    )
+
+    assert settings.local_admin_model.enabled is True
+    assert settings.local_admin_model.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.local_admin_model.model == "qwen3.5:9b"
+    assert settings.local_admin_model.timeout_seconds == 5
+
+
+def test_local_admin_model_config_reuses_central_local_model_settings() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "LOCAL_ADMIN_MODEL_ENABLED": "true",
+            "OLLAMA_HOST": "http://127.0.0.1:11434",
+            "LOCAL_DAILY_MODEL": "qwen3.5:9b",
+            "LOCAL_ADMIN_MODEL": "redundant-model-ignored",
+            "LOCAL_ADMIN_MODEL_OLLAMA_BASE_URL": "http://ignored:11434",
+        }
+    )
+
+    assert settings.local_admin_model.enabled is True
+    assert settings.local_admin_model.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.local_admin_model.model == "qwen3.5:9b"
 
 
 def test_runtime_api_reports_configured_app_status() -> None:
@@ -40,8 +363,43 @@ def test_runtime_api_reports_configured_app_status() -> None:
         "host": "127.0.0.1",
         "port": 9622,
         "local_url": "http://127.0.0.1:9622",
+        "local_admin_model": {
+            "enabled": False,
+            "model": "qwen3.5:9b",
+            "ollama_base_url": "http://localhost:11434",
+            "timeout_seconds": 30,
+        },
         "status": "online",
     }
+
+
+def test_quick_capture_api_can_use_local_admin_model_assist(monkeypatch) -> None:
+    def fake_assist(content, *, settings, client=None):
+        return LocalAdminDraftAssist(
+            status=LocalAdminModelAssistStatus.USED,
+            used=True,
+            model=settings.model,
+            reason="fake adapter used",
+            suggestion=LocalAdminDraftSuggestion(
+                inferred_claims=("Model claim: local adapter shaped draft.",),
+            ),
+        )
+
+    monkeypatch.setattr("ariadne.server.request_local_admin_draft_assist", fake_assist)
+    settings = RuntimeSettings.from_mapping({"LOCAL_ADMIN_MODEL_ENABLED": "true"})
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/api/quick-capture/intelligence-drafts",
+        json={"content": "Customer says transition risk needs proof."},
+    )
+
+    assert response.status_code == 200
+    draft = response.json()["draft"]
+    assert draft["local_admin_model_assist_used"] is True
+    assert draft["local_admin_model_assist_status"] == "used"
+    assert draft["inferred_claims"][0] == "Model claim: local adapter shaped draft."
 
 
 def test_root_serves_command_center_shell() -> None:
@@ -65,6 +423,37 @@ def test_root_serves_command_center_shell() -> None:
     assert "Living Briefing Packet" in response.text
     assert "Capture Action Plan" in response.text
     assert "Capability Studio" in response.text
+    assert "Reference Wiki influences" in response.text
+    assert "Incumbent Analysis Strategy" in response.text
+    assert "Capture Intelligence Draft" in response.text
+    assert "Polished Capture" in response.text
+    assert "Trace/Admin Raw Note" in response.text
+    assert "Local Admin Model Assist" in response.text
+    assert "Accepted Draft Promotions" in response.text
+    assert "Accepted Evidence" in response.text
+    assert "Saved content: polished capture, not raw note" in response.text
+    assert "Accepted Action" in response.text
+    assert "Accepted Packet Update" in response.text
+    assert "Discarded Output" in response.text
+    assert "raw_demo_rushed_capture_note" in response.text
+    assert "Draft Rationale" in response.text
+    assert "Reviewer accepted rushed customer note as source evidence" in response.text
+    assert "Reviewer discarded discriminator claim until proof points exist" in response.text
+    assert "Review Status: accepted" in response.text
+    assert "Per-Piece Intelligence Review" in response.text
+    assert "Text / Markdown Upload" in response.text
+    assert "Document Intake Candidate" in response.text
+    assert "Parser Required" in response.text
+    assert "Parser required before this source can enter Quick Capture" in response.text
+    assert "Accept as Evidence" in response.text
+    assert "Recommend Route" in response.text
+    assert "Plan Skill Chain" in response.text
+    assert "Discard Piece" in response.text
+    assert "Suggested Skill Chain" in response.text
+    assert "Trusted writes require reviewer action" in response.text
+    assert "Inferred Claim" in response.text
+    assert "Likely Risk" in response.text
+    assert "Follow Up Question" in response.text
     assert "Advanced / read-only" in response.text
     assert "/api/capabilities/catalog" in response.text
     assert "AFLCMC recompete support" in response.text
@@ -182,3 +571,8 @@ def test_app_py_builds_runtime_app_from_env_file(tmp_path) -> None:
     assert response.status_code == 200
     assert response.json()["app_name"] == "Ariadne App"
     assert response.json()["port"] == 9622
+
+
+def _write_reference_note(path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
 
+from ariadne.evidence import EvidenceItem, LocalEvidenceStore, create_source_evidence
 from ariadne.quick_capture import (
     CaptureDraftInferenceSource,
     CaptureIntelligenceDraft,
@@ -256,6 +257,37 @@ class ExtractionBundle(BaseModel):
         return self
 
 
+class AcceptedDocumentEvidenceLink(BaseModel):
+    id: str
+    intake_record_id: str
+    extraction_bundle_id: str
+    source_span_ids: tuple[str, ...]
+    evidence_id: str
+    source_ref: str
+    parser_adapter: str
+    parser_version: str
+    parser_method: str
+    confidence: float = Field(ge=0, le=1)
+    warnings: tuple[str, ...] = ()
+    reviewer_rationale: str
+    draft_part_id: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def validate_review_trace(self) -> AcceptedDocumentEvidenceLink:
+        if not self.source_span_ids:
+            raise ValueError("accepted evidence link requires source_span_ids")
+        if not self.reviewer_rationale.strip():
+            raise ValueError("accepted evidence link requires reviewer_rationale")
+        return self
+
+
+class AcceptedSourceSpanEvidenceResult(BaseModel):
+    evidence: EvidenceItem
+    accepted_link: AcceptedDocumentEvidenceLink
+    duplicate: bool = False
+
+
 class DocumentIntakeStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
@@ -323,6 +355,48 @@ class DocumentIntakeStore:
             ]
         return bundles
 
+    def write_accepted_evidence_link(
+        self,
+        link: AcceptedDocumentEvidenceLink,
+    ) -> AcceptedDocumentEvidenceLink:
+        self._accepted_evidence_root.mkdir(parents=True, exist_ok=True)
+        self._accepted_evidence_path(link.id).write_text(
+            link.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return link
+
+    def read_accepted_evidence_link(
+        self,
+        link_id: str,
+    ) -> AcceptedDocumentEvidenceLink:
+        return AcceptedDocumentEvidenceLink.model_validate_json(
+            self._accepted_evidence_path(link_id).read_text(encoding="utf-8")
+        )
+
+    def list_accepted_evidence_links(
+        self,
+        *,
+        bundle_id: str | None = None,
+        intake_record_id: str | None = None,
+        evidence_id: str | None = None,
+    ) -> list[AcceptedDocumentEvidenceLink]:
+        if not self._accepted_evidence_root.exists():
+            return []
+        links = [
+            self.read_accepted_evidence_link(path.name.removesuffix(".json"))
+            for path in sorted(self._accepted_evidence_root.glob("*.json"))
+        ]
+        if bundle_id is not None:
+            links = [link for link in links if link.extraction_bundle_id == bundle_id]
+        if intake_record_id is not None:
+            links = [
+                link for link in links if link.intake_record_id == intake_record_id
+            ]
+        if evidence_id is not None:
+            links = [link for link in links if link.evidence_id == evidence_id]
+        return links
+
     def _path(self, record_id: str) -> Path:
         if not record_id or record_id != Path(record_id).name:
             raise ValueError("record_id must be a file-safe identifier")
@@ -336,6 +410,15 @@ class DocumentIntakeStore:
         if not bundle_id or bundle_id != Path(bundle_id).name:
             raise ValueError("bundle_id must be a file-safe identifier")
         return self._bundle_root / f"{bundle_id}.json"
+
+    @property
+    def _accepted_evidence_root(self) -> Path:
+        return self.root / "accepted-evidence-links"
+
+    def _accepted_evidence_path(self, link_id: str) -> Path:
+        if not link_id or link_id != Path(link_id).name:
+            raise ValueError("link_id must be a file-safe identifier")
+        return self._accepted_evidence_root / f"{link_id}.json"
 
 
 def create_document_intake_record(
@@ -424,6 +507,7 @@ def create_capture_intelligence_draft_from_extraction_bundle(
         for piece in intelligence_pieces
         if piece.part_type is CaptureIntelligenceDraftPartType.INFERRED_CLAIM
     )
+
     likely_risks = tuple(
         piece.content
         for piece in intelligence_pieces
@@ -483,6 +567,163 @@ def create_capture_intelligence_draft_from_extraction_bundle(
         ),
         extraction_warnings_summarized=_summarize_extraction_warnings(bundle),
     )
+
+
+def accept_source_spans_to_evidence(
+    bundle: ExtractionBundle,
+    *,
+    source_span_ids: tuple[str, ...] | list[str],
+    reviewer_rationale: str,
+    intake_store: DocumentIntakeStore,
+    evidence_store: LocalEvidenceStore,
+    draft_part_id: str | None = None,
+    evidence_content: str | None = None,
+    opportunity_id: str | None = None,
+    evidence_id: str | None = None,
+) -> AcceptedSourceSpanEvidenceResult:
+    if not reviewer_rationale.strip():
+        raise ValueError("reviewer_rationale is required to accept source spans")
+    accepted_span_ids = _unique_source_span_ids(source_span_ids)
+    selected_spans = _selected_source_spans(bundle, accepted_span_ids)
+    exact_existing_link = _find_exact_accepted_evidence_link(
+        intake_store,
+        bundle=bundle,
+        source_span_ids=accepted_span_ids,
+    )
+    if exact_existing_link is not None:
+        return AcceptedSourceSpanEvidenceResult(
+            evidence=evidence_store.read(exact_existing_link.evidence_id),
+            accepted_link=exact_existing_link,
+            duplicate=True,
+        )
+    overlapping_link = _find_overlapping_accepted_evidence_link(
+        intake_store,
+        bundle=bundle,
+        source_span_ids=accepted_span_ids,
+    )
+    if overlapping_link is not None:
+        raise ValueError(
+            "source span already accepted as evidence: "
+            f"{', '.join(overlapping_link.source_span_ids)}"
+        )
+
+    warnings = _source_span_warning_messages(bundle, accepted_span_ids)
+    confidence = _accepted_source_span_confidence(selected_spans)
+    evidence = create_source_evidence(
+        content=evidence_content or "\n".join(span.text for span in selected_spans),
+        source_ref=bundle.source_ref,
+        opportunity_id=opportunity_id or bundle.opportunity_id,
+        evidence_id=evidence_id,
+        raw_item_id=bundle.document_id,
+        draft_id=f"draft_{bundle.id}",
+        source_intake_record_id=bundle.document_id,
+        source_extraction_bundle_id=bundle.id,
+        source_span_ids=accepted_span_ids,
+        parser_adapter=bundle.parser_provenance.adapter_name,
+        parser_version=bundle.parser_provenance.adapter_version,
+        parser_method=bundle.parser_provenance.extraction_method,
+        source_confidence=confidence,
+        source_warnings=warnings,
+        rationale=(reviewer_rationale,),
+    )
+    evidence_store.write(evidence)
+    accepted_link = AcceptedDocumentEvidenceLink(
+        id=_accepted_evidence_link_id(bundle.id, accepted_span_ids),
+        intake_record_id=bundle.document_id,
+        extraction_bundle_id=bundle.id,
+        source_span_ids=accepted_span_ids,
+        evidence_id=evidence.id,
+        source_ref=bundle.source_ref,
+        parser_adapter=bundle.parser_provenance.adapter_name,
+        parser_version=bundle.parser_provenance.adapter_version,
+        parser_method=bundle.parser_provenance.extraction_method,
+        confidence=confidence,
+        warnings=warnings,
+        reviewer_rationale=reviewer_rationale,
+        draft_part_id=draft_part_id,
+    )
+    intake_store.write_accepted_evidence_link(accepted_link)
+    return AcceptedSourceSpanEvidenceResult(
+        evidence=evidence,
+        accepted_link=accepted_link,
+    )
+
+
+def _unique_source_span_ids(
+    source_span_ids: tuple[str, ...] | list[str],
+) -> tuple[str, ...]:
+    unique_ids: list[str] = []
+    for span_id in source_span_ids:
+        if span_id and span_id not in unique_ids:
+            unique_ids.append(span_id)
+    if not unique_ids:
+        raise ValueError("source_span_ids are required to accept source spans")
+    return tuple(unique_ids)
+
+
+def _selected_source_spans(
+    bundle: ExtractionBundle,
+    source_span_ids: tuple[str, ...],
+) -> tuple[SourceSpan, ...]:
+    selected_spans = tuple(
+        span for span in bundle.source_spans if span.id in source_span_ids
+    )
+    missing_span_ids = set(source_span_ids) - {span.id for span in selected_spans}
+    if missing_span_ids:
+        raise ValueError(
+            "unknown source span id(s): " + ", ".join(sorted(missing_span_ids))
+        )
+    return selected_spans
+
+
+def _find_exact_accepted_evidence_link(
+    intake_store: DocumentIntakeStore,
+    *,
+    bundle: ExtractionBundle,
+    source_span_ids: tuple[str, ...],
+) -> AcceptedDocumentEvidenceLink | None:
+    for link in intake_store.list_accepted_evidence_links(bundle_id=bundle.id):
+        if link.source_span_ids == source_span_ids:
+            return link
+    return None
+
+
+def _find_overlapping_accepted_evidence_link(
+    intake_store: DocumentIntakeStore,
+    *,
+    bundle: ExtractionBundle,
+    source_span_ids: tuple[str, ...],
+) -> AcceptedDocumentEvidenceLink | None:
+    candidate_span_ids = set(source_span_ids)
+    for link in intake_store.list_accepted_evidence_links(bundle_id=bundle.id):
+        if candidate_span_ids.intersection(link.source_span_ids):
+            return link
+    return None
+
+
+def _source_span_warning_messages(
+    bundle: ExtractionBundle,
+    source_span_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    accepted_span_ids = set(source_span_ids)
+    return tuple(
+        warning.message
+        for warning in bundle.warnings
+        if not warning.affected_span_ids
+        or accepted_span_ids.intersection(warning.affected_span_ids)
+    )
+
+
+def _accepted_source_span_confidence(spans: tuple[SourceSpan, ...]) -> float:
+    return round(sum(span.confidence for span in spans) / len(spans), 2)
+
+
+def _accepted_evidence_link_id(
+    bundle_id: str,
+    source_span_ids: tuple[str, ...],
+) -> str:
+    digest = sha256((bundle_id + "\0" + "\0".join(source_span_ids)).encode())
+    return f"accepted_{digest.hexdigest()[:16]}"
 
 
 _TEXT_EXTENSIONS = {".txt", ".text"}

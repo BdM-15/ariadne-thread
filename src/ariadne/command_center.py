@@ -6,6 +6,7 @@ from pathlib import Path
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
+    AcceptedDocumentEvidenceLink,
     DocumentIntakeRecord,
     DocumentIntakeStore,
     ExtractionBundleReviewStatus,
@@ -40,6 +41,9 @@ def render_command_center_shell(
         _resolve_runtime_path(root, settings.ariadne_document_intake_dir)
     )
     document_intake_records = document_intake_store.list()
+    accepted_document_evidence_links = (
+        document_intake_store.list_accepted_evidence_links()
+    )
     document_intake_drafts = [
         create_capture_intelligence_draft_from_extraction_bundle(bundle)
         for bundle in document_intake_store.list_extraction_bundles()
@@ -259,6 +263,7 @@ def render_command_center_shell(
     .action-button.secondary {{ border-color: rgba(251, 191, 36, 0.7); background: rgba(251, 191, 36, 0.12); color: var(--amber); }}
     .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
     .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+    .action-button[disabled] {{ cursor: not-allowed; opacity: 0.72; }}
     .upload-form {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) auto;
@@ -336,8 +341,8 @@ def render_command_center_shell(
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
-        {_render_document_intake_queue_panel(document_intake_records)}
-        {_render_document_intake_draft_parts_panel(document_intake_drafts)}
+        {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
+        {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_capture_intelligence_draft_panel(capture_review.intelligence_draft)}
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
@@ -445,9 +450,13 @@ def _render_quick_capture_panel(
 
 def _render_document_intake_queue_panel(
     records: list[DocumentIntakeRecord],
+    accepted_links: list[AcceptedDocumentEvidenceLink],
 ) -> str:
     if records:
-        rows = "".join(_render_document_intake_record_row(record) for record in records)
+        rows = "".join(
+            _render_document_intake_record_row(record, accepted_links)
+            for record in records
+        )
     else:
         rows = """<div class="row"><strong>No persisted intake records</strong><span>Upload or register source material to start Document Intake.</span></div>"""
 
@@ -460,7 +469,10 @@ def _render_document_intake_queue_panel(
     </section>"""
 
 
-def _render_document_intake_record_row(record: DocumentIntakeRecord) -> str:
+def _render_document_intake_record_row(
+    record: DocumentIntakeRecord,
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> str:
     filename = record.filename or record.source_ref
     status = record.status.value.replace("_", " ").title()
     queue_state = record.queue_state.value.title() if record.queue_state else "Ready"
@@ -491,15 +503,17 @@ def _render_document_intake_record_row(record: DocumentIntakeRecord) -> str:
     )
     opportunity = record.opportunity_id or "unassigned"
     warnings = " | ".join(record.warnings) if record.warnings else "no warnings"
-    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
+    accepted_count = sum(link.intake_record_id == record.id for link in accepted_links)
+    return f"""<div class="row"><strong>{escape(filename)}</strong><span>Queue: {escape(queue_state)} - {escape(status)} - {escape(material_type)} - {escape(content_type)} - {escape(opportunity)}</span><span>Extraction: {escape(extraction_status)} - Review: {escape(review_status)} - {escape(review_need)} - Extraction warnings: {record.extraction_warning_count} - Accepted Evidence: {accepted_count}</span><span>{escape(record.capability_hint)}</span><span>Source: {escape(record.source_ref)} - {record.byte_size} bytes</span><span>{escape(warnings)}</span></div>"""
 
 
 def _render_document_intake_draft_parts_panel(
     drafts: list[CaptureIntelligenceDraft],
+    accepted_links: list[AcceptedDocumentEvidenceLink],
 ) -> str:
     if drafts:
         rows = "".join(
-            _render_document_intake_draft_part_row(draft, piece)
+            _render_document_intake_draft_part_row(draft, piece, accepted_links)
             for draft in drafts
             for piece in draft.intelligence_pieces[:6]
         )
@@ -516,12 +530,51 @@ def _render_document_intake_draft_parts_panel(
     </section>"""
 
 
-def _render_document_intake_draft_part_row(draft, piece) -> str:
+def _render_document_intake_draft_part_row(
+    draft,
+    piece,
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> str:
     label = piece.part_type.value.replace("_", " ").title()
     skill_chain = " -> ".join(piece.suggested_skill_chain) or "needs capability match"
     source_spans = ", ".join(piece.source_span_ids) or "none"
     recommendation = piece.recommendation or "Review before promotion."
-    return f"""<div class="row"><strong>{escape(label)}</strong><span>{escape(piece.content)}</span><span>Recommended Route: {escape(piece.recommended_route.replace("_", " "))}</span><span>Suggested Skill Chain: {escape(skill_chain)}</span><span>Recommendation: {escape(recommendation)}</span><span>Document Bundle: {escape(draft.extraction_bundle_id or "none")} - Intake Record: {escape(piece.source_intake_record_id or draft.extraction_document_id or "none")}</span><span>Source spans: {escape(source_spans)}</span><div class="action-strip" aria-label="{escape(label)} document actions"><button class="action-button" type="button">Accept as Evidence</button><button class="action-button secondary" type="button">Recommend Route</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Discard Piece</button></div></div>"""
+    accepted_link = _accepted_document_evidence_link_for_piece(
+        piece,
+        accepted_links,
+    )
+    accepted_status = _render_document_intake_evidence_status(accepted_link)
+    accept_button = (
+        '<button class="action-button green" type="button" disabled>'
+        "Accepted as Evidence</button>"
+        if accepted_link is not None
+        else '<button class="action-button" type="button">Accept as Evidence</button>'
+    )
+    return f"""<div class="row"><strong>{escape(label)}</strong><span>{escape(piece.content)}</span><span>Recommended Route: {escape(piece.recommended_route.replace("_", " "))}</span><span>Suggested Skill Chain: {escape(skill_chain)}</span><span>Recommendation: {escape(recommendation)}</span><span>Document Bundle: {escape(draft.extraction_bundle_id or "none")} - Intake Record: {escape(piece.source_intake_record_id or draft.extraction_document_id or "none")}</span><span>Source spans: {escape(source_spans)}</span>{accepted_status}<div class="action-strip" aria-label="{escape(label)} document actions">{accept_button}<button class="action-button secondary" type="button">Recommend Route</button><button class="action-button secondary" type="button">Plan Skill Chain</button><button class="action-button danger" type="button">Discard Piece</button></div></div>"""
+
+
+def _accepted_document_evidence_link_for_piece(
+    piece,
+    accepted_links: list[AcceptedDocumentEvidenceLink],
+) -> AcceptedDocumentEvidenceLink | None:
+    piece_span_ids = set(piece.source_span_ids)
+    for link in accepted_links:
+        if link.draft_part_id == piece.id:
+            return link
+        if (
+            link.extraction_bundle_id == piece.source_extraction_bundle_id
+            and piece_span_ids.intersection(link.source_span_ids)
+        ):
+            return link
+    return None
+
+
+def _render_document_intake_evidence_status(
+    accepted_link: AcceptedDocumentEvidenceLink | None,
+) -> str:
+    if accepted_link is None:
+        return "<span>Evidence status: pending reviewer acceptance</span>"
+    return f"""<span>Evidence accepted - {escape(accepted_link.evidence_id)}</span><span>Reviewer rationale: {escape(accepted_link.reviewer_rationale)}</span>"""
 
 
 def _render_capture_intelligence_draft_panel(draft) -> str:

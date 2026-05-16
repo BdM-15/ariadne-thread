@@ -312,6 +312,81 @@ def test_document_intake_runtime_lists_document_derived_draft_parts(tmp_path) ->
     assert LocalEvidenceStore(evidence_root).list() == []
 
 
+def test_document_intake_review_decision_api_accepts_spans_as_evidence(
+    tmp_path,
+) -> None:
+    intake_root = tmp_path / "document-intake"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(intake_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        data={"opportunity_id": "opp-aflcmc-recompete"},
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+    response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["duplicate"] is False
+    assert body["evidence_store_count"] == 1
+    assert body["evidence"]["source_intake_record_id"] == record["id"]
+    assert (
+        body["evidence"]["source_extraction_bundle_id"]
+        == (record["extraction_bundle_id"])
+    )
+    assert body["evidence"]["source_span_ids"] == draft_part["source_span_ids"]
+    assert body["evidence"]["parser_adapter"] == "ariadne.generic_text_extractor"
+    assert body["evidence"]["source_confidence"] is not None
+    assert "Reviewer accepted source span" in body["evidence"]["rationale"][0]
+    assert body["accepted_link"]["draft_part_id"] == draft_part["id"]
+    assert body["accepted_link"]["evidence_id"] == body["evidence"]["id"]
+
+    duplicate_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "reviewer_rationale": "Reviewer clicked accept again.",
+        },
+    )
+
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.json()["duplicate"] is True
+    assert duplicate_response.json()["evidence_store_count"] == 1
+    assert len(DocumentIntakeStore(intake_root).list_accepted_evidence_links()) == 1
+
+
 def test_document_intake_source_material_api_registers_generic_text(tmp_path) -> None:
     intake_root = tmp_path / "document-intake"
     settings = RuntimeSettings.from_mapping(
@@ -761,6 +836,53 @@ def test_command_center_shell_shows_document_derived_draft_parts(tmp_path) -> No
     assert "Recommendation:" in response.text
     assert "Document Bundle:" in response.text
     assert "Trusted writes still require reviewer action" in response.text
+
+
+def test_command_center_shell_shows_document_intake_accepted_evidence_status(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+            "ARIADNE_EVIDENCE_DIR": str(tmp_path / "evidence"),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    upload_response = client.post(
+        "/api/document-intake/uploads",
+        files={
+            "file": (
+                "customer-brief.md",
+                b"Customer needs transition proof. Risk needs PM follow up.",
+                "text/markdown",
+            )
+        },
+    )
+    record = upload_response.json()["record"]
+    draft = client.get("/api/document-intake/extraction-drafts").json()["drafts"][0]
+    draft_part = draft["intelligence_pieces"][0]
+    accept_response = client.post(
+        "/api/document-intake/review-decisions",
+        json={
+            "action": "accept_evidence",
+            "extraction_bundle_id": record["extraction_bundle_id"],
+            "source_span_ids": draft_part["source_span_ids"],
+            "draft_part_id": draft_part["id"],
+            "reviewer_rationale": "Reviewer accepted source span as trusted evidence.",
+        },
+    )
+
+    response = client.get("/")
+
+    assert accept_response.status_code == 200
+    assert response.status_code == 200
+    assert "Accepted Evidence: 1" in response.text
+    assert "Evidence accepted" in response.text
+    assert accept_response.json()["evidence"]["id"] in response.text
+    assert "Reviewer accepted source span as trusted evidence." in response.text
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

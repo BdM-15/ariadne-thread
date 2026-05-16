@@ -18,17 +18,20 @@ from ariadne.draft_promotion import (
     promote_packet_implication_to_field_answer,
 )
 from ariadne.document_intake import (
+    AcceptedDocumentEvidenceLink,
+    AcceptedSourceSpanEvidenceResult,
     DocumentIntakeCandidate,
     DocumentIntakeRecord,
     DocumentIntakeStatus,
     DocumentIntakeStore,
     UploadedSourceMaterial,
+    accept_source_spans_to_evidence,
     classify_uploaded_source_material,
     create_capture_intelligence_draft_from_extraction_bundle,
     create_document_intake_record,
     create_generic_extraction_bundle,
 )
-from ariadne.evidence import LocalEvidenceStore
+from ariadne.evidence import EvidenceItem, LocalEvidenceStore
 from ariadne.local_admin_model import request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
@@ -122,6 +125,24 @@ class DocumentIntakeQueueResponse(BaseModel):
 
 class DocumentIntakeExtractionDraftsResponse(BaseModel):
     drafts: tuple[CaptureIntelligenceDraft, ...]
+
+
+class DocumentIntakeReviewDecisionRequest(BaseModel):
+    action: ReviewDecisionAction
+    extraction_bundle_id: str
+    source_span_ids: tuple[str, ...]
+    reviewer_rationale: str
+    draft_part_id: str | None = None
+    evidence_content: str | None = None
+    opportunity_id: str | None = None
+    evidence_id: str | None = None
+
+
+class DocumentIntakeReviewDecisionResponse(BaseModel):
+    evidence: EvidenceItem
+    accepted_link: AcceptedDocumentEvidenceLink
+    duplicate: bool = False
+    evidence_store_count: int
 
 
 class DocumentIntakeSourceMaterialRequest(BaseModel):
@@ -232,6 +253,43 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 for bundle in store.list_extraction_bundles()
             )
         )
+
+    @app.post("/api/document-intake/review-decisions")
+    def document_intake_review_decision(
+        request: DocumentIntakeReviewDecisionRequest,
+    ) -> DocumentIntakeReviewDecisionResponse:
+        if request.action is not ReviewDecisionAction.ACCEPT_EVIDENCE:
+            raise HTTPException(
+                status_code=400,
+                detail="document intake currently supports accept_evidence only",
+            )
+        store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        evidence_store = LocalEvidenceStore(
+            _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
+        )
+        try:
+            bundle = store.read_extraction_bundle(request.extraction_bundle_id)
+            result = accept_source_spans_to_evidence(
+                bundle,
+                source_span_ids=request.source_span_ids,
+                reviewer_rationale=request.reviewer_rationale,
+                intake_store=store,
+                evidence_store=evidence_store,
+                draft_part_id=request.draft_part_id,
+                evidence_content=request.evidence_content,
+                opportunity_id=request.opportunity_id,
+                evidence_id=request.evidence_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="extraction bundle not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        return _document_intake_review_response(result, evidence_store)
 
     @app.post("/api/document-intake/uploads")
     async def document_intake_upload(
@@ -525,6 +583,18 @@ def _write_intake_record_and_generic_bundle(
     bundle = create_generic_extraction_bundle(persisted_record, source_material)
     store.write_extraction_bundle(bundle)
     return store.write(persisted_record.with_extraction_bundle(bundle))
+
+
+def _document_intake_review_response(
+    result: AcceptedSourceSpanEvidenceResult,
+    evidence_store: LocalEvidenceStore,
+) -> DocumentIntakeReviewDecisionResponse:
+    return DocumentIntakeReviewDecisionResponse(
+        evidence=result.evidence,
+        accepted_link=result.accepted_link,
+        duplicate=result.duplicate,
+        evidence_store_count=len(evidence_store.list()),
+    )
 
 
 def _local_admin_model_assist(content: str, settings: RuntimeSettings):

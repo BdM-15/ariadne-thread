@@ -457,6 +457,35 @@ def test_document_intake_runtime_generates_knowledge_note_projection(
     )
 
 
+def test_document_intake_runtime_reports_adapter_capabilities() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/api/document-intake/capabilities")
+
+    assert response.status_code == 200
+    body = response.json()
+    capabilities = body["capabilities"]
+    by_id = {capability["id"]: capability for capability in capabilities}
+    assert body["available_count"] == 1
+    assert body["deferred_count"] >= 6
+    assert by_id["ariadne.generic_text_extractor"]["status"] == "available"
+    assert by_id["ariadne.generic_text_extractor"]["expected_output_contract"] == (
+        "ExtractionBundle"
+    )
+    assert by_id["project_theseus.solicitation_parser"]["status"] == "deferred"
+    assert (
+        "solicitation_document"
+        in by_id["project_theseus.solicitation_parser"]["supported_material_types"]
+    )
+    assert by_id["opendatalab.mineru"]["status"] == "deferred"
+    assert by_id["hkuds.raganything"]["adapter_kind"] == "retrieval"
+    assert by_id["hkuds.lightrag"]["adapter_kind"] == "retrieval"
+    assert all(
+        capability["external_tool_invocation_allowed"] is False
+        for capability in capabilities
+    )
+
+
 def test_document_intake_runtime_lists_review_gated_capture_candidates(
     tmp_path,
 ) -> None:
@@ -1116,6 +1145,23 @@ def test_command_center_shell_shows_knowledge_note_projections(
     assert "Structured Ariadne records remain source of truth" in response.text
     assert "Open Markdown Projection" in response.text
     assert "Cannot overwrite structured knowledge" in response.text
+
+
+def test_command_center_shell_shows_document_intake_adapter_hooks() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.status_code == 200
+    assert "Document Intake Capabilities" in response.text
+    assert "Ariadne Generic Text Extractor" in response.text
+    assert "Project Theseus Solicitation Parser Hook" in response.text
+    assert "MinerU Layout Extraction Hook" in response.text
+    assert "RAGAnything Retrieval Hook" in response.text
+    assert "LightRAG Knowledge Layer Hook" in response.text
+    assert "Deferred hooks do not invoke external tools" in response.text
+    assert "ExtractionBundle boundary" in response.text
+    assert "/api/document-intake/capabilities" in response.text
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

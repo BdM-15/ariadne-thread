@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ariadne.federal_data import (
     list_federal_data_capability_manifests,
@@ -90,6 +90,43 @@ class USAspendingAwardLookupResult(BaseModel):
     diagnostic_summary: str
 
 
+class USAspendingAwardTransaction(BaseModel):
+    transaction_id: str | None = None
+    action_date: str | None = None
+    fiscal_year: int | None = None
+    modification_number: str | None = None
+    action_type: str | None = None
+    obligation: float | None = None
+    description: str | None = None
+
+
+class USAspendingVehicleChildAward(BaseModel):
+    piid: str | None = None
+    generated_internal_id: str | None = None
+    recipient_name: str | None = None
+    obligated_amount: float | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+
+
+class USAspendingAwardFundingRecord(BaseModel):
+    reporting_fiscal_date: str | None = None
+    fiscal_year: int | None = None
+    obligation: float | None = None
+    account_title: str | None = None
+    object_class: str | None = None
+    program_activity: str | None = None
+
+
+class USAspendingAwardHistoryResult(BaseModel):
+    generated_award_id: str | None = None
+    award_detail: dict[str, Any] = Field(default_factory=dict)
+    transaction_history: tuple[USAspendingAwardTransaction, ...] = ()
+    funding_history: tuple[USAspendingAwardFundingRecord, ...] = ()
+    idv_children: tuple[USAspendingVehicleChildAward, ...] = ()
+    derivation_notes: tuple[str, ...] = ()
+
+
 def resolve_usaspending_piid(
     input_contract_number: str,
     *,
@@ -168,6 +205,96 @@ def resolve_usaspending_piid(
         award_type=payload.get("award_type"),
         candidates=candidates,
         diagnostic_summary=f"USAspending returned {len(candidates)} possible matches.",
+    )
+
+
+def fetch_usaspending_award_history(
+    lookup: USAspendingAwardLookupResult,
+    *,
+    runner: USAspendingMcpToolRunner,
+    transaction_limit: int = 100,
+    funding_limit: int = 50,
+    vehicle_child_limit: int = 50,
+) -> USAspendingAwardHistoryResult:
+    generated_award_id = lookup.generated_internal_id
+    if not generated_award_id:
+        return USAspendingAwardHistoryResult(
+            derivation_notes=(
+                "USAspending award history unavailable because generated_internal_id is missing.",
+            )
+        )
+
+    derivation_notes = []
+    award_detail: dict[str, Any] = {}
+    transaction_history: tuple[USAspendingAwardTransaction, ...] = ()
+    funding_history: tuple[USAspendingAwardFundingRecord, ...] = ()
+    idv_children: tuple[USAspendingVehicleChildAward, ...] = ()
+
+    detail_result = runner(
+        "get_award_detail",
+        {"generated_award_id": generated_award_id},
+    )
+    if detail_result.ok:
+        award_detail = detail_result.payload or {}
+        derivation_notes.append("Fetched award detail from get_award_detail.")
+    else:
+        derivation_notes.append(
+            f"get_award_detail unavailable: {detail_result.error_message or 'unknown error'}"
+        )
+
+    transaction_result = runner(
+        "get_transactions",
+        {"generated_award_id": generated_award_id, "limit": transaction_limit},
+    )
+    if transaction_result.ok:
+        transaction_history = tuple(
+            _transaction_from_row(row)
+            for row in _rows_from_payload(transaction_result.payload)
+        )
+        derivation_notes.append("Fetched transaction history from get_transactions.")
+    else:
+        derivation_notes.append(
+            f"get_transactions unavailable: {transaction_result.error_message or 'unknown error'}"
+        )
+
+    funding_result = runner(
+        "get_award_funding",
+        {"generated_award_id": generated_award_id, "limit": funding_limit},
+    )
+    if funding_result.ok:
+        funding_history = tuple(
+            _funding_record_from_row(row)
+            for row in _rows_from_payload(funding_result.payload)
+        )
+        derivation_notes.append("Fetched award funding from get_award_funding.")
+    else:
+        derivation_notes.append(
+            f"get_award_funding unavailable: {funding_result.error_message or 'unknown error'}"
+        )
+
+    if generated_award_id.startswith("CONT_IDV_"):
+        child_result = runner(
+            "get_idv_children",
+            {"generated_idv_id": generated_award_id, "limit": vehicle_child_limit},
+        )
+        if child_result.ok:
+            idv_children = tuple(
+                _vehicle_child_from_row(row)
+                for row in _rows_from_payload(child_result.payload)
+            )
+            derivation_notes.append("Fetched IDV children from get_idv_children.")
+        else:
+            derivation_notes.append(
+                f"get_idv_children unavailable: {child_result.error_message or 'unknown error'}"
+            )
+
+    return USAspendingAwardHistoryResult(
+        generated_award_id=generated_award_id,
+        award_detail=award_detail,
+        transaction_history=transaction_history,
+        funding_history=funding_history,
+        idv_children=idv_children,
+        derivation_notes=tuple(derivation_notes),
     )
 
 
@@ -251,6 +378,98 @@ def _candidate_from_lookup_row(row: dict[str, Any]) -> USAspendingAwardCandidate
     )
 
 
+def _transaction_from_row(row: dict[str, Any]) -> USAspendingAwardTransaction:
+    return USAspendingAwardTransaction(
+        transaction_id=_string_from_keys(row, "id", "transaction_id", "internal_id"),
+        action_date=_string_from_keys(row, "action_date", "Action Date"),
+        fiscal_year=_int_or_none(_value_from_keys(row, "fiscal_year", "Fiscal Year")),
+        modification_number=_string_from_keys(
+            row,
+            "modification_number",
+            "Mod",
+            "mod",
+        ),
+        action_type=_string_from_keys(row, "action_type", "Action Type"),
+        obligation=_amount_or_none(
+            _value_from_keys(
+                row,
+                "federal_action_obligation",
+                "Transaction Amount",
+                "transaction_obligated_amount",
+                "obligation",
+            )
+        ),
+        description=_string_from_keys(
+            row,
+            "description",
+            "Transaction Description",
+            "transaction_description",
+        ),
+    )
+
+
+def _funding_record_from_row(row: dict[str, Any]) -> USAspendingAwardFundingRecord:
+    return USAspendingAwardFundingRecord(
+        reporting_fiscal_date=_string_from_keys(
+            row,
+            "reporting_fiscal_date",
+            "Reporting Fiscal Date",
+        ),
+        fiscal_year=_int_or_none(_value_from_keys(row, "fiscal_year", "Fiscal Year")),
+        obligation=_amount_or_none(
+            _value_from_keys(
+                row,
+                "transaction_obligated_amount",
+                "Transaction Obligated Amount",
+                "obligation",
+            )
+        ),
+        account_title=_string_from_keys(row, "account_title", "Account Title"),
+        object_class=_string_from_keys(row, "object_class", "Object Class"),
+        program_activity=_string_from_keys(
+            row,
+            "program_activity",
+            "Program Activity",
+        ),
+    )
+
+
+def _vehicle_child_from_row(row: dict[str, Any]) -> USAspendingVehicleChildAward:
+    return USAspendingVehicleChildAward(
+        piid=_string_from_keys(row, "piid", "Award ID", "award_id"),
+        generated_internal_id=_string_from_keys(
+            row,
+            "generated_unique_award_id",
+            "generated_internal_id",
+        ),
+        recipient_name=_string_from_keys(row, "recipient_name", "Recipient Name"),
+        obligated_amount=_amount_or_none(
+            _value_from_keys(row, "obligated_amount", "Award Amount")
+        ),
+        period_start=_string_from_keys(
+            row,
+            "period_of_performance_start_date",
+            "Start Date",
+        ),
+        period_end=_string_from_keys(
+            row,
+            "period_of_performance_current_end_date",
+            "End Date",
+            "Last Date to Order",
+        ),
+    )
+
+
+def _rows_from_payload(payload: dict[str, Any] | None) -> tuple[dict[str, Any], ...]:
+    if not payload:
+        return ()
+    for key in ("results", "transactions", "data", "rows"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return tuple(row for row in value if isinstance(row, dict))
+    return ()
+
+
 def _lookup_provenance(checked_at: str | None) -> USAspendingLookupProvenance:
     manifest = next(
         capability
@@ -292,5 +511,14 @@ def _amount_or_none(value: Any) -> float | None:
         return None
     try:
         return float(text)
+    except ValueError:
+        return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
     except ValueError:
         return None

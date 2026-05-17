@@ -6,8 +6,11 @@ from ariadne.piid_profiles import (
     create_piid_contract_intelligence_profile,
 )
 from ariadne.usaspending import (
+    USAspendingAwardHistoryResult,
     USAspendingAwardLookupResult,
     USAspendingAwardLookupStatus,
+    USAspendingAwardTransaction,
+    USAspendingVehicleChildAward,
     USAspendingLookupProvenance,
 )
 
@@ -145,6 +148,287 @@ def test_profile_captures_available_baseline_fields_and_pivots() -> None:
     assert (PiidPivotType.SOLICITATION_ID, "FA8650-22-R-0001") in pivot_values
     assert (PiidPivotType.PARENT_IDV, "FA8650-20-D-0001") in pivot_values
     assert "naics_code" not in {gap.field_key for gap in profile.gaps}
+
+
+def test_profile_computes_burn_posture_from_transaction_history() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-C-0001",
+        normalized_piid="FA8650-23-C-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-C-0001",
+        generated_internal_id="CONT_AWD_FA865023C0001_9700",
+        award_amount=1000000.0,
+        start_date="2023-05-01",
+        end_date="2024-04-30",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_AWD_FA865023C0001_9700",
+        transaction_history=(
+            USAspendingAwardTransaction(
+                transaction_id="txn_base",
+                action_date="2023-05-01",
+                fiscal_year=2023,
+                modification_number="0",
+                action_type="Base Award",
+                obligation=800000.0,
+                description="Base award",
+            ),
+            USAspendingAwardTransaction(
+                transaction_id="txn_p00001",
+                action_date="2023-11-15",
+                fiscal_year=2024,
+                modification_number="P00001",
+                action_type="Funding Modification",
+                obligation=200000.0,
+                description="Incremental funding",
+            ),
+        ),
+        derivation_notes=("Fetched transaction history from get_transactions.",),
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+        created_at="2026-05-16T14:20:00Z",
+    )
+
+    assert profile.burn_posture.net_obligations == 1000000.0
+    assert profile.burn_posture.transaction_count == 2
+    assert profile.burn_posture.modification_count == 1
+    assert profile.burn_posture.period_start == "2023-05-01"
+    assert profile.burn_posture.period_end == "2024-04-30"
+    assert profile.burn_posture.period_days == 366
+    assert profile.burn_posture.monthly_burn_rate == 83333.33
+    assert profile.burn_posture.daily_burn_rate == 2732.24
+    assert profile.burn_posture.completeness == "complete"
+    assert profile.burn_posture.fiscal_year_obligations == {
+        2023: 800000.0,
+        2024: 200000.0,
+    }
+    assert profile.modification_history[0].modification_number == "P00001"
+    assert "Base award" in profile.transaction_history[0].description
+
+
+def test_profile_flags_deobligations_and_option_signals() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-C-0001",
+        normalized_piid="FA8650-23-C-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-C-0001",
+        generated_internal_id="CONT_AWD_FA865023C0001_9700",
+        start_date="2023-05-01",
+        end_date="2025-04-30",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_AWD_FA865023C0001_9700",
+        transaction_history=(
+            USAspendingAwardTransaction(
+                transaction_id="txn_base",
+                action_date="2023-05-01",
+                fiscal_year=2023,
+                modification_number="0",
+                action_type="Base Award",
+                obligation=900000.0,
+                description="Base period",
+            ),
+            USAspendingAwardTransaction(
+                transaction_id="txn_option",
+                action_date="2024-05-01",
+                fiscal_year=2024,
+                modification_number="P00002",
+                action_type="Option Exercise",
+                obligation=300000.0,
+                description="Exercise option year one",
+            ),
+            USAspendingAwardTransaction(
+                transaction_id="txn_deob",
+                action_date="2024-09-15",
+                fiscal_year=2024,
+                modification_number="P00003",
+                action_type="Funding Modification",
+                obligation=-50000.0,
+                description="Partial deobligation",
+            ),
+        ),
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+    )
+
+    assert profile.burn_posture.net_obligations == 1150000.0
+    assert profile.burn_posture.option_signals == (
+        "P00002 on 2024-05-01: Exercise option year one",
+    )
+    assert profile.burn_posture.deobligation_warnings == (
+        "P00003 on 2024-09-15 deobligated $50,000.00",
+    )
+
+
+def test_profile_uses_baseline_amount_when_transactions_are_sparse() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-C-0001",
+        normalized_piid="FA8650-23-C-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-C-0001",
+        generated_internal_id="CONT_AWD_FA865023C0001_9700",
+        award_amount=500000.0,
+        start_date="2023-10-01",
+        end_date="2024-09-30",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_AWD_FA865023C0001_9700",
+        derivation_notes=("get_transactions unavailable: HTTP 429",),
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+    )
+
+    assert profile.burn_posture.net_obligations == 500000.0
+    assert profile.burn_posture.transaction_count == 0
+    assert profile.burn_posture.completeness == "partial"
+    assert profile.burn_posture.daily_burn_rate == 1366.12
+    assert profile.burn_posture.derivation_notes == (
+        "get_transactions unavailable: HTTP 429",
+        "Used award baseline award_amount because transaction history was empty.",
+    )
+
+
+def test_profile_uses_award_detail_parent_linkage_for_order_classification() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-F-0001",
+        normalized_piid="FA8650-23-F-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-F-0001",
+        generated_internal_id="CONT_AWD_FA865023F0001_9700_CONT_IDV_FA865020D0001_9700",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_AWD_FA865023F0001_9700_CONT_IDV_FA865020D0001_9700",
+        award_detail={
+            "parent_award_piid": "FA8650-20-D-0001",
+            "parent_award_generated_internal_id": "CONT_IDV_FA865020D0001_9700",
+        },
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+    )
+
+    assert profile.scenario is PiidScenarioClassification.IDIQ_ORDER
+    assert profile.vehicle_context.parent_idv == "FA8650-20-D-0001"
+    assert profile.vehicle_context.parent_generated_internal_id == (
+        "CONT_IDV_FA865020D0001_9700"
+    )
+    assert profile.vehicle_context.linkage_confidence == "linked"
+    assert profile.vehicle_context.derivation_notes == (
+        "Parent vehicle linkage came from get_award_detail.",
+    )
+
+
+def test_profile_records_parent_idiq_child_order_context() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-20-D-0001",
+        normalized_piid="FA8650-20-D-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="idv",
+        resolved_award_id="FA8650-20-D-0001",
+        generated_internal_id="CONT_IDV_FA865020D0001_9700",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_IDV_FA865020D0001_9700",
+        idv_children=(
+            USAspendingVehicleChildAward(
+                piid="FA8650-23-F-0001",
+                generated_internal_id="CONT_AWD_FA865023F0001_9700_CONT_IDV_FA865020D0001_9700",
+                recipient_name="ACME FEDERAL LLC",
+                obligated_amount=1250000.0,
+                period_start="2023-05-01",
+                period_end="2026-04-30",
+            ),
+        ),
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+    )
+
+    assert profile.scenario is PiidScenarioClassification.PARENT_IDIQ
+    assert profile.vehicle_context.child_orders[0].piid == "FA8650-23-F-0001"
+    assert profile.vehicle_context.child_orders[0].obligated_amount == 1250000.0
+    assert profile.vehicle_context.linkage_confidence == "linked"
+    assert profile.vehicle_context.derivation_notes == (
+        "Child order context came from get_idv_children.",
+    )
+
+
+def test_profile_marks_partial_vehicle_linkage_when_parent_id_is_incomplete() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-F-0001",
+        normalized_piid="FA8650-23-F-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-F-0001",
+        generated_internal_id="CONT_AWD_FA865023F0001_9700",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_AWD_FA865023F0001_9700",
+        award_detail={"parent_award_piid": "FA8650-20-D-0001"},
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+    )
+
+    assert profile.scenario is PiidScenarioClassification.IDIQ_ORDER
+    assert profile.vehicle_context.parent_idv == "FA8650-20-D-0001"
+    assert profile.vehicle_context.parent_generated_internal_id is None
+    assert profile.vehicle_context.linkage_confidence == "partial"
 
 
 def test_profile_classifies_idv_lookup_as_parent_idiq() -> None:

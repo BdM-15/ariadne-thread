@@ -711,6 +711,96 @@ def test_usaspending_piid_profile_api_creates_and_persists_profile(tmp_path) -> 
     assert list_response.json()["profiles"] == [profile]
 
 
+def test_usaspending_piid_profile_api_includes_burn_posture_and_vehicle_context(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_PIID_PROFILES_DIR": str(tmp_path / "piid-profiles")}
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        if tool_name == "lookup_piid":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "award_type": "contract",
+                    "results": [
+                        {
+                            "Award ID": "FA8650-23-F-0001",
+                            "Award Amount": 1200000,
+                            "Start Date": "2023-05-01",
+                            "End Date": "2025-04-30",
+                            "generated_internal_id": "CONT_AWD_FA865023F0001_9700_CONT_IDV_FA865020D0001_9700",
+                        }
+                    ],
+                },
+            )
+        if tool_name == "get_award_detail":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "parent_award_piid": "FA8650-20-D-0001",
+                    "parent_award_generated_internal_id": "CONT_IDV_FA865020D0001_9700",
+                },
+            )
+        if tool_name == "get_transactions":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "results": [
+                        {
+                            "id": "txn_base",
+                            "action_date": "2023-05-01",
+                            "fiscal_year": 2023,
+                            "modification_number": "0",
+                            "action_type": "Base Award",
+                            "federal_action_obligation": 900000,
+                            "description": "Base award",
+                        },
+                        {
+                            "id": "txn_deob",
+                            "action_date": "2024-09-15",
+                            "fiscal_year": 2024,
+                            "modification_number": "P00001",
+                            "action_type": "Funding Modification",
+                            "federal_action_obligation": -50000,
+                            "description": "Partial deobligation",
+                        },
+                    ]
+                },
+            )
+        if tool_name == "get_award_funding":
+            return USAspendingMcpToolResult(ok=True, payload={"results": []})
+        raise AssertionError(f"unexpected tool {tool_name}")
+
+    response = TestClient(create_app(settings, usaspending_lookup_runner=runner)).post(
+        "/api/federal-data/usaspending/piid-profiles",
+        json={"contract_number": "FA8650-23-F-0001", "transaction_limit": 25},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    assert profile["scenario"] == "idiq_order"
+    assert profile["burn_posture"]["net_obligations"] == 850000
+    assert profile["burn_posture"]["transaction_count"] == 2
+    assert profile["burn_posture"]["deobligation_warnings"] == [
+        "P00001 on 2024-09-15 deobligated $50,000.00"
+    ]
+    assert profile["vehicle_context"]["parent_idv"] == "FA8650-20-D-0001"
+    assert profile["vehicle_context"]["linkage_confidence"] == "linked"
+    assert (
+        "get_transactions",
+        {
+            "generated_award_id": profile["award_baseline"]["generated_internal_id"],
+            "limit": 25,
+        },
+    ) in calls
+
+
 def test_usaspending_piid_profile_api_requires_resolved_award(tmp_path) -> None:
     from fastapi.testclient import TestClient
 

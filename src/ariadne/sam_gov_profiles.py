@@ -860,6 +860,8 @@ def _opportunity_match_confidence(
         confidence += 0.05
     if query.keywords and any("keyword" in item for item in rationale):
         confidence += 0.05
+    if query.program_name and not any("program_name" in item for item in rationale):
+        confidence -= 0.15
     return round(min(confidence, 0.95), 2)
 
 

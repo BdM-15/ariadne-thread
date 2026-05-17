@@ -16,6 +16,10 @@ from ariadne.document_intake import (
     create_capture_intelligence_draft_from_extraction_bundle,
     list_document_intake_adapter_declarations,
 )
+from ariadne.federal_data import (
+    FederalDataCapabilityManifest,
+    list_federal_data_capability_manifests,
+)
 from ariadne.packets import (
     CanonicalPacketSection,
     EvidenceStatus,
@@ -65,6 +69,7 @@ def render_command_center_shell(
         document_intake_demo.projection
     ] + document_intake_store.list_knowledge_note_projections()
     document_intake_adapter_declarations = list_document_intake_adapter_declarations()
+    federal_data_registry = list_federal_data_capability_manifests()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -339,6 +344,7 @@ def render_command_center_shell(
         <p class="advanced-label">Advanced / read-only</p>
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{len(catalog.entries)}</small></a>
+          <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
         </nav>
       </div>
     </aside>
@@ -361,6 +367,7 @@ def render_command_center_shell(
         {_render_document_intake_demo_thread_panel(document_intake_demo)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
+        {_render_federal_data_capabilities_panel(federal_data_registry.capabilities)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
         {_render_knowledge_note_projections_panel(document_intake_knowledge_note_projections)}
@@ -608,6 +615,37 @@ def _render_document_intake_capability_row(
     adapter_kind = declaration.adapter_kind.value.replace("_", " ").title()
     deferred_reason = declaration.deferred_reason or "available for current intake"
     return f"""<div class="row"><strong>{escape(declaration.name)}</strong><span>{escape(status)} - {escape(adapter_kind)} - {escape(material_types)}</span><span>Output contract: {escape(declaration.expected_output_contract)} with parser provenance fields.</span><span>{escape(declaration.capability_hint)}</span><span>{escape(deferred_reason)}</span></div>"""
+
+
+def _render_federal_data_capabilities_panel(
+    manifests: tuple[FederalDataCapabilityManifest, ...],
+) -> str:
+    product_integrated_count = sum(
+        manifest.product_status.value == "product_integrated"
+        for manifest in manifests
+    )
+    rows = "".join(
+        _render_federal_data_capability_row(manifest) for manifest in manifests[:4]
+    )
+    return f"""<section class="panel" id="federal-data-capabilities" aria-labelledby="federal-data-capabilities-heading">
+      <div class="panel-heading"><h2 id="federal-data-capabilities-heading">Federal Data Capabilities</h2><span class="status-chip cyan">{product_integrated_count} product integrated</span></div>
+      <div class="row-list">
+        <div class="row"><strong>1102tools MCP registry</strong><span>No upstream MCP source is vendored into Ariadne.</span><span>Manifests record pinned packages, command shapes, provenance, and env-var names only.</span><a class="action-button secondary" href="/api/federal-data/capabilities">Open federal data report</a></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_federal_data_capability_row(
+    manifest: FederalDataCapabilityManifest,
+) -> str:
+    status = manifest.product_status.value.replace("_", " ")
+    env_vars = ", ".join(
+        manifest.required_env_vars
+        + manifest.optional_env_vars
+        + manifest.upstream_env_vars
+    ) or "no env vars"
+    return f"""<div class="row"><strong>{escape(manifest.name)}</strong><span>{escape(status)} - {escape(manifest.package)} {escape(manifest.version)}</span><span>{escape(manifest.description)}</span><span>Env names: {escape(env_vars)}</span></div>"""
 
 
 def _render_document_intake_draft_parts_panel(

@@ -486,6 +486,32 @@ def test_document_intake_runtime_reports_adapter_capabilities() -> None:
     )
 
 
+def test_federal_data_runtime_reports_registered_mcp_capabilities() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/api/federal-data/capabilities")
+
+    assert response.status_code == 200
+    body = response.json()
+    capabilities = body["capabilities"]
+    by_id = {capability["id"]: capability for capability in capabilities}
+
+    assert len(capabilities) == 8
+    assert body["registered_count"] == 7
+    assert body["product_integrated_count"] == 1
+    assert body["smoke_tested_count"] == 0
+    assert body["deferred_product_workflow_count"] == 0
+    assert by_id["usaspending"]["product_status"] == "product_integrated"
+    assert by_id["usaspending"]["package"] == "usaspending-gov-mcp"
+    assert by_id["sam_gov"]["required_env_vars"] == ["SAM_GOV_API_KEY"]
+    assert by_id["sam_gov"]["upstream_env_vars"] == ["SAM_API_KEY"]
+    assert all("=" not in env_var for capability in capabilities for env_var in (
+        capability["required_env_vars"]
+        + capability["optional_env_vars"]
+        + capability["upstream_env_vars"]
+    ))
+
+
 def test_document_intake_runtime_lists_review_gated_capture_candidates(
     tmp_path,
 ) -> None:
@@ -1162,6 +1188,21 @@ def test_command_center_shell_shows_document_intake_adapter_hooks() -> None:
     assert "Deferred hooks do not invoke external tools" in response.text
     assert "ExtractionBundle boundary" in response.text
     assert "/api/document-intake/capabilities" in response.text
+
+
+def test_command_center_shell_shows_federal_data_capability_registry() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.status_code == 200
+    assert "Federal Data Capabilities" in response.text
+    assert "USAspending" in response.text
+    assert "SAM.gov" in response.text
+    assert "product integrated" in response.text
+    assert "registered" in response.text
+    assert "No upstream MCP source is vendored into Ariadne" in response.text
+    assert "/api/federal-data/capabilities" in response.text
 
 
 def test_command_center_shell_shows_document_intake_demo_thread() -> None:

@@ -109,9 +109,11 @@ The acceptance demo should show one PIID flowing through the real USAspending-ba
 6. Surface the workflow through FastAPI API routes and the existing Command Center shell.
 7. Add tests and update docs/PRD with the completed behavior before moving to the next enrichment slice.
 
-## Progress Note Through Issue #32
+## Progress Note Through Issue #33
 
 The PIID profile now projects populated USAspending profile data into recommended enrichment routes, review-gated candidates for Evidence, Packet Field Answer, Action Plan, Risk Register, Call Plan, and follow-up route workflows, and Hermes-observable event records. Review decisions update candidate state and emit `review_decision_recorded` events, but they do not write trusted Evidence, Packet, Action Plan, Risk Register, or Call Plan outputs.
+
+The existing Command Center shell now shows all eight Federal Data Capabilities and a persisted PIID Profile Command Surface. The surface reads local PIID profile records only, displays award baseline, burn posture, vehicle context, pivots, gaps, recommended enrichments, review candidates, provenance, and deferred artifact actions, and does not start upstream MCP processes during page render.
 
 ## Next Slice Candidates After This Epic
 

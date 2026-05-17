@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.11**
+**Product Requirements Document (PRD) v1.12**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 17, 2026
-**Status:** SAM.gov Enrichment Profile implementation started on `05-build/sam-gov-enrichment-profile`
+**Status:** SAM.gov Enrichment Profile command surface implemented on `05-build/sam-gov-enrichment-profile`; human UI review pending
 
 ---
 
@@ -36,8 +36,8 @@
 - The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
 - A fresh `grill-with-docs` planning session selected the **SAM.gov Enrichment Profile** as the next vertical product epic. `CONTEXT.md` now defines SAM.gov Enrichment Profile, SAM.gov Entity Record, SAM.gov Opportunity Record, SAM.gov Opportunity Discovery, SAM.gov Opportunity Attachment Intake, and Web Enrichment Support.
 - `docs/architecture/sam-gov-enrichment-plan.md` records the selected SAM.gov epic plan: one combined profile with entity, known opportunity, discovery, and attachment-intake lanes; live SAM.gov product behavior when `SAM_GOV_API_KEY` is configured; fake-adapter tests that never masquerade as live source success; source-mode provenance; approved official-link attachment downloads into Document Intake; and review-gated downstream candidates.
-- SAM.gov Enrichment Profile implementation now includes the Entity Record lane, Opportunity Discovery lane, Known Opportunity Record lane, and Attachment Intake lane on the SAM.gov epic branch, with live/fake source-mode boundaries, local profile persistence, API routes, Command Center read surfaces, source limitations, explicit attachment-download approval, Document Intake provenance, and review-gated downstream candidates.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the SAM.gov Attachment Intake branch, with 189 tests passing.
+- SAM.gov Enrichment Profile implementation now includes the Entity Record lane, Opportunity Discovery lane, Known Opportunity Record lane, Attachment Intake lane, saved-profile command surface, and command-surface summary API on the SAM.gov epic branch, with live/fake/demo source-mode boundaries, local profile persistence, Command Center links, source limitations, explicit attachment-download approval, Document Intake provenance, explicit deferrals, and review-gated downstream candidates for Evidence, Living Briefing Packet, Capture Action Plan, Risk Register, Call Plan, Document Intake, and follow-up routes.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the SAM.gov Command Surface branch, with 192 tests passing.
 
 **Still Deferred**
 
@@ -46,7 +46,7 @@
 
 **Next Build Gate**
 
-- Implement the **SAM.gov Enrichment Profile** on epic branch `05-build/sam-gov-enrichment-profile`.
+- Complete human review of the **SAM.gov Enrichment Profile** command surface on epic branch `05-build/sam-gov-enrichment-profile`, then decide the next documented vertical slice.
 - Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/sam-gov-enrichment-plan.md` as implementation inputs.
 - Preserve the Federal Data Capability boundary: SAM.gov search, entity, and opportunity data should flow through the upstream `sam-gov-mcp` capability rather than a duplicate Ariadne MCP.
 - Preserve the Document Intake boundary: downloaded SAM.gov attachments enter Document Intake, then material classification determines generic extraction versus future Solicitation Parser Capability routing.

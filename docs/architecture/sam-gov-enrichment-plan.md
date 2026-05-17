@@ -1,7 +1,7 @@
 # SAM.gov Enrichment Plan
 
 Date: 2026-05-17  
-Status: implementation started through issue #38
+Status: implementation started through issue #39; human UI review pending
 
 ## Selected Epic
 
@@ -15,6 +15,7 @@ Suggested progression branches:
 - `05-build/02-sam-gov-adapter`
 - `05-build/03-sam-gov-attachments-document-intake`
 - `05-build/04-sam-gov-command-surface`
+- `05-build/05-sam-gov-command-surface-review-candidates`
 
 The slice should use official SAM.gov data to enrich a recompete or opportunity profile through entity records, known opportunity records, discovery searches, and approved attachment intake. It extends the Federal Data Capability boundary from ADR 0007 and the Document Intake extraction boundary from ADR 0006.
 
@@ -138,6 +139,14 @@ Known opportunity results persist beside the existing Entity Record and Opportun
 The fourth progression branch adds the Attachment Intake lane for official SAM.gov description and resource links surfaced by Known Opportunity and Opportunity Discovery records. It preserves pending-approval state during enrichment and page render, filters download eligibility to official SAM.gov surfaced links, and records non-SAM.gov or missing resource links as source limitations.
 
 Approved downloads use an explicit API action before fetching any file. Downloaded material creates Document Intake records with provenance back to the SAM.gov profile, attachment metadata, opportunity identifiers, and source mode. Generic readable material can continue through the existing generic extraction path; solicitation-family material is queued as parser-required Document Intake work for a future Solicitation Parser Capability. Inaccessible or expired official links become Attachment Intake source limitations rather than silent success.
+
+### Issue #39: Full SAM.gov Command Surface And Review Candidates
+
+The fifth progression branch makes the four-lane SAM.gov profile coherent as a saved command surface rather than separate read-only lane snippets. Opportunity Discovery can now be attached to an existing profile beside Entity Record, Known Opportunity, and Attachment Intake lanes. The Command Center links each saved profile to a detail page that reads persisted state only and does not trigger live SAM.gov calls or attachment downloads.
+
+The saved profile detail page and summary API show live readiness, source-mode labels, all lane states, source limitations, linked Document Intake records, review-gated candidate destinations, and explicit deferrals for Firecrawl/Web Enrichment Support, Specialized Solicitation Parser, Project Theseus parser integration, Artifact Renderer/export, Hermes/LangGraph, and additional federal data sources. The surface keeps fake-adapter output visually distinct from live SAM.gov success and repeats that trusted writes remain absent until an explicit reviewer action occurs.
+
+This branch provides the user-facing shape for human review. It does not close the human-review acceptance criterion until the user reviews the first UI shape or explicitly defers that review.
 
 ## Accepted Four-Lane Demo
 

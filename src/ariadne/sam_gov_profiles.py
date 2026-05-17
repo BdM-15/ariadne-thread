@@ -341,6 +341,38 @@ class SamGovEnrichmentProfile(BaseModel):
     updated_at: str
 
 
+class SamGovCommandLaneState(BaseModel):
+    lane_name: str
+    status: str
+    source_mode: str | None = None
+    primary_label: str
+    source_limitations: tuple[str, ...] = ()
+
+
+class SamGovCommandReviewSummary(BaseModel):
+    candidate_count: int
+    target_workflows: tuple[str, ...]
+    trusted_output_written_count: int
+    review_gate_message: str = (
+        "Review candidates are proposed destinations only; trusted outputs require "
+        "explicit reviewer acceptance."
+    )
+
+
+class SamGovCommandSurfaceSummary(BaseModel):
+    profile_id: str
+    normalized_pivot: str
+    live_ready: bool
+    source_mode_labels: tuple[str, ...]
+    lane_states: tuple[SamGovCommandLaneState, ...]
+    review_summary: SamGovCommandReviewSummary
+    linked_document_intake_record_ids: tuple[str, ...]
+    explicit_deferrals: tuple[str, ...]
+    no_auto_trusted_writes_message: str = (
+        "Trusted writes: none. SAM.gov candidates stay review-gated until accepted."
+    )
+
+
 def resolve_sam_gov_entity_lookup(
     input_pivot: str,
     *,
@@ -734,6 +766,94 @@ def add_sam_gov_known_opportunity_lane(
     )
 
 
+def add_sam_gov_opportunity_discovery_lane(
+    profile: SamGovEnrichmentProfile,
+    discovery: SamGovOpportunityDiscoveryResult,
+    *,
+    updated_at: str | None = None,
+) -> SamGovEnrichmentProfile:
+    timestamp = updated_at or datetime.now(UTC).isoformat()
+    lane = SamGovOpportunityDiscoveryLane(
+        query=discovery.query,
+        normalized_query=discovery.normalized_query,
+        discovery_status=discovery.status,
+        provenance=discovery.provenance,
+        records=discovery.records,
+        total_records=discovery.total_records,
+        source_limitations=discovery.source_limitations,
+        diagnostic_summary=discovery.diagnostic_summary,
+    )
+    review_candidates = _review_candidates_from_discovery_lane(
+        profile_id=profile.id,
+        normalized_pivot=discovery.normalized_query,
+        lane=lane,
+        created_at=timestamp,
+    )
+    hermes_events = _hermes_events_from_discovery_lane(
+        profile_id=profile.id,
+        normalized_pivot=discovery.normalized_query,
+        lane=lane,
+        review_candidates=review_candidates,
+        occurred_at=timestamp,
+        starting_event_count=len(profile.hermes_events),
+    )
+    updated_profile = profile.model_copy(
+        update={
+            "opportunity_discovery_lane": lane,
+            "review_candidates": (*profile.review_candidates, *review_candidates),
+            "hermes_events": (*profile.hermes_events, *hermes_events),
+            "updated_at": timestamp,
+        }
+    )
+    return _profile_with_refreshed_attachment_intake_lane(
+        updated_profile,
+        provenance=lane.provenance,
+        updated_at=timestamp,
+    )
+
+
+def build_sam_gov_command_surface_summary(
+    profile: SamGovEnrichmentProfile,
+    *,
+    live_ready: bool,
+) -> SamGovCommandSurfaceSummary:
+    source_modes = sorted(
+        {
+            source_mode.replace("_", " ")
+            for source_mode in _sam_gov_profile_source_modes(profile)
+        }
+    )
+    target_workflows = tuple(
+        sorted({candidate.target_workflow for candidate in profile.review_candidates})
+    )
+    trusted_output_count = sum(
+        candidate.trusted_output_written for candidate in profile.review_candidates
+    )
+    linked_intake_records = tuple(
+        attachment.intake_record_id
+        for attachment in (
+            profile.attachment_intake_lane.attachments
+            if profile.attachment_intake_lane is not None
+            else ()
+        )
+        if attachment.intake_record_id
+    )
+    return SamGovCommandSurfaceSummary(
+        profile_id=profile.id,
+        normalized_pivot=profile.normalized_pivot,
+        live_ready=live_ready,
+        source_mode_labels=tuple(source_modes),
+        lane_states=_sam_gov_command_lane_states(profile),
+        review_summary=SamGovCommandReviewSummary(
+            candidate_count=len(profile.review_candidates),
+            target_workflows=target_workflows,
+            trusted_output_written_count=trusted_output_count,
+        ),
+        linked_document_intake_record_ids=linked_intake_records,
+        explicit_deferrals=_SAM_GOV_COMMAND_SURFACE_DEFERRALS,
+    )
+
+
 def record_sam_gov_review_decision(
     profile: SamGovEnrichmentProfile,
     *,
@@ -951,6 +1071,126 @@ def record_sam_gov_attachment_download_failure(
             "updated_at": timestamp,
         }
     )
+
+
+_SAM_GOV_COMMAND_SURFACE_DEFERRALS = (
+    "Firecrawl/Web Enrichment Support implementation deferred.",
+    "Specialized Solicitation Parser deferred behind Document Intake.",
+    "Project Theseus parser integration deferred.",
+    "Artifact export deferred until Artifact Renderer work exists.",
+    "Hermes/LangGraph deferred; current events are observable-only.",
+    "Additional federal data sources deferred until later enrichment slices.",
+)
+
+
+def _sam_gov_profile_source_modes(profile: SamGovEnrichmentProfile) -> tuple[str, ...]:
+    source_modes: list[str] = []
+    if profile.entity_lane is not None:
+        source_modes.append(profile.entity_lane.provenance.source_mode.value)
+    if profile.known_opportunity_lane is not None:
+        source_modes.append(profile.known_opportunity_lane.provenance.source_mode.value)
+    if profile.opportunity_discovery_lane is not None:
+        source_modes.append(
+            profile.opportunity_discovery_lane.provenance.source_mode.value
+        )
+    if profile.attachment_intake_lane is not None:
+        source_modes.append(profile.attachment_intake_lane.provenance.source_mode.value)
+    return tuple(source_modes)
+
+
+def _sam_gov_command_lane_states(
+    profile: SamGovEnrichmentProfile,
+) -> tuple[SamGovCommandLaneState, ...]:
+    states: list[SamGovCommandLaneState] = []
+    if profile.entity_lane is not None:
+        lane = profile.entity_lane
+        match = lane.matches[0] if lane.matches else None
+        states.append(
+            SamGovCommandLaneState(
+                lane_name="Entity Record lane",
+                status=lane.lookup_status.value,
+                source_mode=lane.provenance.source_mode.value,
+                primary_label=(
+                    (match.legal_business_name or match.uei)
+                    if match is not None
+                    else "no official entity match"
+                ),
+                source_limitations=lane.source_limitations,
+            )
+        )
+    if profile.known_opportunity_lane is not None:
+        lane = profile.known_opportunity_lane
+        record = lane.records[0] if lane.records else None
+        states.append(
+            SamGovCommandLaneState(
+                lane_name="Known Opportunity lane",
+                status=lane.lookup_status.value,
+                source_mode=lane.provenance.source_mode.value,
+                primary_label=_sam_gov_record_label(record),
+                source_limitations=lane.source_limitations,
+            )
+        )
+    if profile.opportunity_discovery_lane is not None:
+        lane = profile.opportunity_discovery_lane
+        record = lane.records[0] if lane.records else None
+        states.append(
+            SamGovCommandLaneState(
+                lane_name="Opportunity Discovery lane",
+                status=lane.discovery_status.value,
+                source_mode=lane.provenance.source_mode.value,
+                primary_label=_sam_gov_record_label(record),
+                source_limitations=lane.source_limitations,
+            )
+        )
+    if profile.attachment_intake_lane is not None:
+        lane = profile.attachment_intake_lane
+        attachment = lane.attachments[0] if lane.attachments else None
+        states.append(
+            SamGovCommandLaneState(
+                lane_name="Attachment Intake lane",
+                status=_sam_gov_attachment_lane_status(lane),
+                source_mode=lane.provenance.source_mode.value,
+                primary_label=(
+                    attachment.title
+                    if attachment is not None
+                    else "no official attachments"
+                ),
+                source_limitations=lane.source_limitations,
+            )
+        )
+    return tuple(states)
+
+
+def _sam_gov_record_label(record: SamGovOpportunityRecord | None) -> str:
+    if record is None:
+        return "no official opportunity match"
+    return (
+        record.title
+        or record.solicitation_number
+        or record.notice_id
+        or "no official opportunity match"
+    )
+
+
+def _sam_gov_attachment_lane_status(lane: SamGovAttachmentIntakeLane) -> str:
+    if not lane.attachments:
+        return "no_official_attachments"
+    if all(
+        attachment.download_status is SamGovAttachmentDownloadStatus.DOWNLOADED
+        for attachment in lane.attachments
+    ):
+        return "downloaded"
+    if any(
+        attachment.download_status
+        in {
+            SamGovAttachmentDownloadStatus.INACCESSIBLE,
+            SamGovAttachmentDownloadStatus.UNSUPPORTED,
+            SamGovAttachmentDownloadStatus.OVERSIZED,
+        }
+        for attachment in lane.attachments
+    ):
+        return "source_limitation"
+    return "pending_approval"
 
 
 def _profile_with_refreshed_attachment_intake_lane(
@@ -2305,6 +2545,7 @@ def _hermes_events_from_discovery_lane(
     lane: SamGovOpportunityDiscoveryLane,
     review_candidates: tuple[SamGovReviewCandidate, ...],
     occurred_at: str,
+    starting_event_count: int = 0,
 ) -> tuple[SamGovHermesEvent, ...]:
     events: list[SamGovHermesEvent] = []
 
@@ -2318,7 +2559,7 @@ def _hermes_events_from_discovery_lane(
             SamGovHermesEvent(
                 id=(
                     f"sam_gov_event_{_safe_identifier(profile_id)}_"
-                    f"{len(events) + 1:03d}_{event_type.value}"
+                    f"{starting_event_count + len(events) + 1:03d}_{event_type.value}"
                 ),
                 event_type=event_type,
                 profile_id=profile_id,
@@ -2329,15 +2570,16 @@ def _hermes_events_from_discovery_lane(
             )
         )
 
-    append_event(
-        SamGovHermesEventType.PROFILE_STARTED,
-        summary="SAM.gov Enrichment Profile started.",
-        payload={
-            "profile_id": profile_id,
-            "normalized_pivot": normalized_pivot,
-            "source_mode": lane.provenance.source_mode.value,
-        },
-    )
+    if starting_event_count == 0:
+        append_event(
+            SamGovHermesEventType.PROFILE_STARTED,
+            summary="SAM.gov Enrichment Profile started.",
+            payload={
+                "profile_id": profile_id,
+                "normalized_pivot": normalized_pivot,
+                "source_mode": lane.provenance.source_mode.value,
+            },
+        )
     append_event(
         SamGovHermesEventType.OPPORTUNITY_DISCOVERY_RUN,
         summary="SAM.gov Opportunity Discovery lane searched official notices.",

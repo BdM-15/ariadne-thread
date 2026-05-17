@@ -40,6 +40,7 @@ from ariadne.sam_gov_profiles import (
     SamGovEnrichmentProfile,
     SamGovProfileStore,
     SamGovReviewCandidate,
+    build_sam_gov_command_surface_summary,
 )
 
 
@@ -755,6 +756,181 @@ def _render_sam_gov_enrichment_profiles_panel(
     </section>"""
 
 
+def render_sam_gov_enrichment_profile_shell(
+    settings: RuntimeSettings,
+    profile_id: str,
+    *,
+    workspace_root: Path | None = None,
+) -> str:
+    root = workspace_root or Path.cwd()
+    store = SamGovProfileStore(
+        _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
+    )
+    profile = store.read(profile_id)
+    live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
+    summary = build_sam_gov_command_surface_summary(profile, live_ready=live_ready)
+    readiness = (
+        "Live readiness: SAM.gov API key configured"
+        if live_ready
+        else "Live readiness: missing SAM.gov API key"
+    )
+    fake_note = (
+        "Fake adapter test data is not live SAM.gov source success."
+        if "fake adapter test" in summary.source_mode_labels
+        else "Live SAM.gov data still requires reviewer acceptance before trusted writes."
+    )
+    lane_rows = "".join(
+        _render_sam_gov_command_lane_state(lane) for lane in summary.lane_states
+    )
+    review_rows = "".join(
+        _render_sam_gov_review_candidate(candidate)
+        for candidate in profile.review_candidates
+    )
+    attachment_rows = _render_sam_gov_attachment_command_rows(profile)
+    deferral_rows = "".join(
+        f"""<div class="row"><strong>{escape(_sam_gov_deferral_label(deferral))}</strong><span>Visible deferral; no implementation is invoked from this command surface.</span></div>"""
+        for deferral in summary.explicit_deferrals
+    )
+    source_modes = ", ".join(summary.source_mode_labels) or "not started"
+    workflows = (
+        ", ".join(
+            _sam_gov_workflow_label(workflow)
+            for workflow in summary.review_summary.target_workflows
+        )
+        or "none"
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SAM.gov Enrichment Profile Command Surface</title>
+    <style>
+        :root {{ color-scheme: dark; --bg: #071018; --surface: #0f172a; --surface-strong: #111c31; --edge: #334155; --edge-soft: #243244; --text: #f8fafc; --muted: #b6c4d6; --quiet: #8292a8; --cyan: #22d3ee; --green: #22c55e; --amber: #fbbf24; --focus: #fbbf24; }}
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; min-height: 100dvh; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); }}
+        a {{ color: inherit; }}
+        a:focus-visible, button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+        .main {{ width: min(100% - 32px, 1320px); margin: 0 auto; padding: 24px 0 48px; }}
+        .topbar {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; }}
+        .back-link, .action-button {{ display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 14px; border: 1px solid var(--cyan); border-radius: 8px; color: var(--cyan); background: rgba(34, 211, 238, 0.1); text-decoration: none; font: inherit; font-weight: 900; }}
+        .action-button {{ cursor: not-allowed; opacity: 0.74; }}
+        h1 {{ margin: 0; font-size: 1.8rem; line-height: 1.12; letter-spacing: 0; }}
+        h2 {{ margin: 0; font-size: 1.05rem; line-height: 1.25; letter-spacing: 0; }}
+        p {{ margin: 0; color: var(--muted); line-height: 1.55; }}
+        .eyebrow {{ margin: 0 0 8px; color: var(--cyan); font-size: 0.78rem; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }}
+        .summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }}
+        .metric, .panel, .row {{ border: 1px solid var(--edge); border-radius: 8px; background: var(--surface); }}
+        .metric {{ min-height: 94px; padding: 14px; }}
+        .metric span {{ display: block; color: var(--quiet); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; }}
+        .metric strong {{ display: block; margin-top: 8px; color: var(--text); }}
+        .grid {{ display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 14px; }}
+        .panel {{ padding: 16px; }}
+        .panel-heading {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }}
+        .row-list {{ display: grid; gap: 8px; }}
+        .row {{ display: grid; gap: 6px; padding: 12px; background: var(--surface-strong); }}
+        .row span {{ color: var(--muted); line-height: 1.45; }}
+        .status-chip {{ display: inline-flex; align-items: center; min-height: 30px; padding: 5px 8px; border: 1px solid var(--edge); border-radius: 8px; color: var(--muted); background: #0b1220; font-size: 0.78rem; font-weight: 800; white-space: nowrap; }}
+        .status-chip.green {{ border-color: rgba(34, 197, 94, 0.55); color: var(--green); background: rgba(34, 197, 94, 0.1); }}
+        .status-chip.amber {{ border-color: rgba(251, 191, 36, 0.55); color: var(--amber); background: rgba(251, 191, 36, 0.1); }}
+        .actions {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
+        @media (max-width: 980px) {{ .summary, .grid {{ grid-template-columns: 1fr; }} .actions {{ grid-template-columns: 1fr; }} .topbar {{ align-items: flex-start; flex-direction: column; }} }}
+    </style>
+</head>
+<body>
+    <main class="main">
+        <div class="topbar"><a class="back-link" href="/#sam-gov-enrichment-profiles">Back to Command Center</a><span class="status-chip {"green" if live_ready else "amber"}">{escape(readiness)}</span></div>
+        <header>
+            <p class="eyebrow">Saved SAM.gov profile</p>
+            <h1>SAM.gov Enrichment Profile Command Surface</h1>
+            <p>Profile {escape(profile.id)} keeps Entity Record, Known Opportunity, Opportunity Discovery, and Attachment Intake lanes together for review. Page render reads saved state only.</p>
+        </header>
+        <section class="summary" aria-label="SAM.gov command surface summary">
+            <div class="metric"><span>Source modes</span><strong>{escape(source_modes)}</strong></div>
+            <div class="metric"><span>Review candidates</span><strong>{summary.review_summary.candidate_count}</strong></div>
+            <div class="metric"><span>Document Intake links</span><strong>{len(summary.linked_document_intake_record_ids)}</strong></div>
+            <div class="metric"><span>Trusted writes</span><strong>Trusted writes: none</strong></div>
+        </section>
+        <div class="grid">
+            <section class="panel" aria-labelledby="profile-source-heading">
+                <div class="panel-heading"><h2 id="profile-source-heading">Source And Readiness</h2><span class="status-chip {"green" if live_ready else "amber"}">{escape(readiness)}</span></div>
+                <div class="row-list">
+                    <div class="row"><strong>{escape(fake_note)}</strong><span>{escape(summary.no_auto_trusted_writes_message)}</span></div>
+                    <div class="row"><strong>Review target workflows</strong><span>{escape(workflows)}</span></div>
+                </div>
+            </section>
+            <section class="panel" aria-labelledby="lane-heading">
+                <div class="panel-heading"><h2 id="lane-heading">Four-Lane Workflow</h2><span class="status-chip amber">review gated</span></div>
+                <div class="row-list">{lane_rows}</div>
+            </section>
+            <section class="panel" aria-labelledby="attachment-heading">
+                <div class="panel-heading"><h2 id="attachment-heading">Attachment And Document Intake State</h2><span class="status-chip amber">explicit approval only</span></div>
+                <div class="row-list">{attachment_rows}</div>
+            </section>
+            <section class="panel" aria-labelledby="candidate-heading">
+                <div class="panel-heading"><h2 id="candidate-heading">Review Candidates</h2><span class="status-chip amber">no trusted writes</span></div>
+                <div class="row-list"><div class="row"><strong>Trusted writes: none</strong><span>{escape(summary.review_summary.review_gate_message)}</span><div class="actions"><button class="action-button" type="button" disabled>Accept Evidence Store</button><button class="action-button" type="button" disabled>Promote Briefing Packet</button><button class="action-button" type="button" disabled>Route Follow-up</button></div></div><div class="row"><strong>Candidate destinations</strong>{review_rows}</div></div>
+            </section>
+            <section class="panel" aria-labelledby="deferral-heading">
+                <div class="panel-heading"><h2 id="deferral-heading">Explicit Deferrals</h2><span class="status-chip amber">visible</span></div>
+                <div class="row-list">{deferral_rows}</div>
+            </section>
+            <section class="panel" aria-labelledby="json-heading">
+                <div class="panel-heading"><h2 id="json-heading">API Surface</h2><span class="status-chip green">saved</span></div>
+                <div class="row-list"><div class="row"><strong>Profile JSON</strong><span>/api/federal-data/sam-gov/enrichment-profiles/{escape(profile.id)}</span></div><div class="row"><strong>Command summary JSON</strong><span>/api/federal-data/sam-gov/enrichment-profiles/{escape(profile.id)}/command-surface</span></div></div>
+            </section>
+        </div>
+    </main>
+</body>
+</html>"""
+
+
+def _render_sam_gov_command_lane_state(lane) -> str:
+    source_mode = lane.source_mode.replace("_", " ") if lane.source_mode else "none"
+    limitations = "; ".join(lane.source_limitations) or "none"
+    return f"""<div class="row"><strong>{escape(lane.lane_name)}</strong><span>Status: {escape(lane.status.replace("_", " "))}</span><span>Primary: {escape(lane.primary_label)}</span><span>Source mode: {escape(source_mode)} - Source limitations: {escape(limitations)}</span></div>"""
+
+
+def _render_sam_gov_attachment_command_rows(profile: SamGovEnrichmentProfile) -> str:
+    if (
+        profile.attachment_intake_lane is None
+        or not profile.attachment_intake_lane.attachments
+    ):
+        return """<div class="row"><strong>No official attachments</strong><span>Attachment Intake waits for official SAM.gov resource links.</span></div>"""
+    rows = []
+    for attachment in profile.attachment_intake_lane.attachments:
+        status = attachment.download_status.value.replace("_", " ")
+        intake = attachment.intake_record_id or "not routed to Document Intake"
+        source = (
+            attachment.source_title
+            or attachment.source_solicitation_number
+            or "unknown source notice"
+        )
+        rows.append(
+            f"""<div class="row"><strong>{escape(attachment.title)}</strong><span>{escape(source)} - {escape(status)}</span><span>Document Intake record: {escape(intake)}</span><span>{escape(attachment.filename or attachment.url)}</span></div>"""
+        )
+    return "".join(rows)
+
+
+def _sam_gov_workflow_label(workflow: str) -> str:
+    return {
+        "evidence_store": "Evidence Store",
+        "living_briefing_packet": "Living Briefing Packet",
+        "capture_action_plan": "Capture Action Plan",
+        "risk_register": "Risk Register",
+        "call_plan": "Call Plan",
+        "document_intake": "Document Intake",
+        "web_enrichment_support": "Web Enrichment Support",
+    }.get(workflow, workflow.replace("_", " ").title())
+
+
+def _sam_gov_deferral_label(deferral: str) -> str:
+    return deferral.removesuffix(".").replace(
+        "Firecrawl/Web Enrichment Support implementation deferred",
+        "Firecrawl/Web Enrichment Support deferred",
+    )
+
+
 def _render_sam_gov_enrichment_profile_row(
     profile: SamGovEnrichmentProfile,
 ) -> str:
@@ -842,7 +1018,7 @@ def _render_sam_gov_enrichment_profile_row(
         _render_sam_gov_review_candidate(candidate)
         for candidate in profile.review_candidates[:8]
     )
-    return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Profile: {escape(profile.id)}</span><div class="row-list">{"".join(lane_rows)}<div class="row"><strong>SAM.gov review candidates</strong>{candidates}</div></div></div>"""
+    return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Profile: {escape(profile.id)}</span><a class="link-row" href="/federal-data/sam-gov/enrichment-profiles/{escape(profile.id)}">Open profile command surface</a><div class="row-list">{"".join(lane_rows)}<div class="row"><strong>SAM.gov review candidates</strong>{candidates}</div></div></div>"""
 
 
 def _render_sam_gov_review_candidate(candidate: SamGovReviewCandidate) -> str:

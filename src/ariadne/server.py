@@ -80,6 +80,12 @@ from ariadne.quick_capture import (
     route_capture_follow_up_questions,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
+from ariadne.usaspending import (
+    USAspendingAwardLookupResult,
+    USAspendingMcpToolRunner,
+    create_usaspending_lookup_runner,
+    resolve_usaspending_piid,
+)
 
 
 class ReviewDecisionAction(StrEnum):
@@ -174,6 +180,15 @@ class FederalDataSmokeCheckResponse(BaseModel):
     safe_smoke_check_method: str = "json_rpc_initialize_only"
 
 
+class USAspendingPiidLookupRequest(BaseModel):
+    contract_number: str
+    limit: int = Field(default=5, ge=1, le=100)
+
+
+class USAspendingPiidLookupResponse(BaseModel):
+    result: USAspendingAwardLookupResult
+
+
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
     extraction_bundle_id: str
     projection_id: str | None = None
@@ -253,6 +268,7 @@ def create_app(
     settings: RuntimeSettings | None = None,
     *,
     federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
+    usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -360,6 +376,24 @@ def create_app(
                 runner=federal_data_smoke_runner,
                 env=_federal_data_env_for_manifest(manifest, runtime_settings),
                 timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            )
+        )
+
+    @app.post("/api/federal-data/usaspending/piid-lookup")
+    def usaspending_piid_lookup(
+        request: USAspendingPiidLookupRequest,
+    ) -> USAspendingPiidLookupResponse:
+        manifest = _federal_data_manifest("usaspending")
+        runner = usaspending_lookup_runner or create_usaspending_lookup_runner(
+            command=manifest.command,
+            timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            env=_federal_data_env_for_manifest(manifest, runtime_settings),
+        )
+        return USAspendingPiidLookupResponse(
+            result=resolve_usaspending_piid(
+                request.contract_number,
+                runner=runner,
+                lookup_limit=request.limit,
             )
         )
 
@@ -780,6 +814,21 @@ def _federal_data_env_for_manifest(
     if manifest.id == "regulations_gov" and "API_DATA_GOV_KEY" in env:
         env.setdefault("REGULATIONS_GOV_API_KEY", env["API_DATA_GOV_KEY"])
     return env
+
+
+def _federal_data_manifest(capability_id: str) -> FederalDataCapabilityManifest:
+    registry = list_federal_data_capability_manifests()
+    manifest = next(
+        (
+            capability
+            for capability in registry.capabilities
+            if capability.id == capability_id
+        ),
+        None,
+    )
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Federal Data Capability not found")
+    return manifest
 
 
 def _write_intake_record_and_generic_bundle(

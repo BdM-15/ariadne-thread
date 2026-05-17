@@ -8,6 +8,7 @@ from ariadne.local_admin_model import (
     LocalAdminModelAssistStatus,
 )
 from ariadne.server import create_app
+from ariadne.usaspending import USAspendingMcpToolResult
 
 
 def test_quick_capture_reference_influences_api_exposes_wiki_matches(tmp_path) -> None:
@@ -583,6 +584,72 @@ def test_federal_data_smoke_check_api_uses_safe_initialize_runner() -> None:
     assert timeout_seconds == 7
     assert env["SAM_GOV_API_KEY"] == "live-sam-secret-value"
     assert env["SAM_API_KEY"] == "live-sam-secret-value"
+
+
+def test_usaspending_piid_lookup_api_returns_structured_success_result() -> None:
+    from fastapi.testclient import TestClient
+
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return USAspendingMcpToolResult(
+            ok=True,
+            payload={
+                "award_type": "contract",
+                "results": [
+                    {
+                        "Award ID": "FA8650-23-C-0001",
+                        "Recipient Name": "ACME FEDERAL LLC",
+                        "Awarding Agency": "Department of the Air Force",
+                        "generated_internal_id": "CONT_AWD_FA865023C0001_9700",
+                    }
+                ],
+            },
+        )
+
+    response = TestClient(
+        create_app(usaspending_lookup_runner=runner)
+    ).post(
+        "/api/federal-data/usaspending/piid-lookup",
+        json={"contract_number": " fa8650-23-c-0001 ", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["status"] == "success"
+    assert result["normalized_piid"] == "FA8650-23-C-0001"
+    assert result["resolved_award_id"] == "FA8650-23-C-0001"
+    assert result["generated_internal_id"] == "CONT_AWD_FA865023C0001_9700"
+    assert result["recipient_name"] == "ACME FEDERAL LLC"
+    assert result["awarding_agency_name"] == "Department of the Air Force"
+    assert result["provenance"]["source_capability_id"] == "usaspending"
+    assert result["provenance"]["source_tool_name"] == "lookup_piid"
+    assert "uvx --from" not in response.text
+    assert calls == [("lookup_piid", {"piid": "FA8650-23-C-0001", "limit": 5})]
+
+
+def test_usaspending_piid_lookup_api_returns_tool_error_result() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(
+        create_app(
+            usaspending_lookup_runner=lambda tool_name, arguments: (
+                USAspendingMcpToolResult(
+                    ok=False,
+                    error_message="lookup_piid failed: HTTP 429: rate limited",
+                )
+            )
+        )
+    ).post(
+        "/api/federal-data/usaspending/piid-lookup",
+        json={"contract_number": "FA8650-23-C-0001"},
+    )
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["status"] == "tool_error"
+    assert result["diagnostic_summary"] == "lookup_piid failed: HTTP 429: rate limited"
 
 
 def test_document_intake_runtime_lists_review_gated_capture_candidates(

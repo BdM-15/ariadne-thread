@@ -86,6 +86,14 @@ class FederalDataInitializeRunnerResult(BaseModel):
     diagnostic_summary: str
 
 
+class FederalDataMcpToolRunnerResult(BaseModel):
+    return_code: int | None = None
+    ok: bool = False
+    payload: dict[str, Any] | None = None
+    error_message: str | None = None
+    timed_out: bool = False
+
+
 class FederalDataSmokeCheckResult(BaseModel):
     capability_id: str
     capability_name: str
@@ -204,6 +212,80 @@ def run_mcp_initialize_command(
     )
 
 
+def run_mcp_tool_command(
+    command: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+    timeout_seconds: int,
+    env: dict[str, str],
+) -> FederalDataMcpToolRunnerResult:
+    request = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {"name": tool_name, "arguments": arguments},
+    }
+    stdin_payload = "\n".join(
+        (
+            json.dumps(_MCP_INITIALIZE_REQUEST),
+            json.dumps(
+                {"jsonrpc": "2.0", "method": "notifications/initialized"}
+            ),
+            json.dumps(request),
+            "",
+        )
+    )
+    try:
+        completed = subprocess.run(
+            shlex.split(command),
+            input=stdin_payload,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+            env=_minimal_process_env(env),
+        )
+    except FileNotFoundError as error:
+        return FederalDataMcpToolRunnerResult(
+            return_code=None,
+            ok=False,
+            error_message=f"command not found: {error.filename}",
+        )
+    except subprocess.TimeoutExpired:
+        return FederalDataMcpToolRunnerResult(
+            return_code=None,
+            ok=False,
+            timed_out=True,
+            error_message=f"tool call timed out after {timeout_seconds} seconds",
+        )
+
+    tool_response = _json_rpc_response_by_id(completed.stdout, request_id=2)
+    if completed.returncode != 0:
+        return FederalDataMcpToolRunnerResult(
+            return_code=completed.returncode,
+            ok=False,
+            error_message=_runner_diagnostic_summary(completed, initialized=False),
+        )
+    if tool_response is None:
+        return FederalDataMcpToolRunnerResult(
+            return_code=completed.returncode,
+            ok=False,
+            error_message="MCP tool response missing.",
+        )
+    if error := tool_response.get("error"):
+        return FederalDataMcpToolRunnerResult(
+            return_code=completed.returncode,
+            ok=False,
+            error_message=str(error),
+        )
+    payload = _payload_from_mcp_tool_result(tool_response.get("result"))
+    return FederalDataMcpToolRunnerResult(
+        return_code=completed.returncode,
+        ok=True,
+        payload=payload,
+    )
+
+
 _FEDERAL_CONTRACTING_MCPS_URL = (
     "https://github.com/1102tools/federal-contracting-mcps"
 )
@@ -231,14 +313,34 @@ def _redact_env_values(summary: str, env: dict[str, str]) -> str:
 
 
 def _contains_initialize_result(stdout: str) -> bool:
+    response = _json_rpc_response_by_id(stdout, request_id=1)
+    return response is not None and "result" in response
+
+
+def _json_rpc_response_by_id(stdout: str, *, request_id: int) -> dict[str, Any] | None:
     for line in stdout.splitlines():
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if payload.get("id") == _MCP_INITIALIZE_REQUEST["id"] and "result" in payload:
-            return True
-    return False
+        if payload.get("id") == request_id:
+            return payload
+    return None
+
+
+def _payload_from_mcp_tool_result(result: Any) -> dict[str, Any] | None:
+    if isinstance(result, dict) and "content" in result:
+        for item in result.get("content", ()):
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = str(item.get("text", ""))
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            return parsed if isinstance(parsed, dict) else {"value": parsed}
+        return result
+    return result if isinstance(result, dict) else None
 
 
 def _runner_diagnostic_summary(

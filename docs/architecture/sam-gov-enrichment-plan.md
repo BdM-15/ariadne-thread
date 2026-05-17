@@ -1,7 +1,7 @@
 # SAM.gov Enrichment Plan
 
 Date: 2026-05-17  
-Status: planning through `grill-with-docs`
+Status: implementation started through issue #35
 
 ## Selected Epic
 
@@ -112,6 +112,14 @@ Because the expected API allowance is 1,000 requests per day for a single-user l
 Automated tests should not be artificially limited to tiny result sets. They should use fake adapter responses that cover multiple entity matches, hierarchy clues, known opportunity matches, discovery searches, active and archived notices, pagination, attachments, inaccessible documents, rate/auth failures, and no-result cases. Test fixtures and demo profiles should carry provenance that marks them as fixture or fake-adapter output, not live source success. Separate live validation may exist for developer confidence, but it is not the normal unit-test path and does not change the product rule: live user workflows use live SAM.gov when configured.
 
 Only live-source SAM.gov outputs should be eligible for trusted Evidence promotion in normal product use. Fake-adapter tests may exercise review-gate mechanics and candidate projection, but their provenance must prevent fixture data from being confused with source truth.
+
+## Implementation Trail
+
+### Issue #35: Entity Record Profile Lane
+
+The first progression branch adds the SAM.gov Entity Record lane as a concrete product-integrated slice over the upstream `sam-gov-mcp` capability. It introduces a local SAM.gov Enrichment Profile module with source-mode provenance, fake/live runner separation, profile persistence, entity lookup by UEI or vendor name, review-gated candidates, review-decision events, FastAPI profile routes, a read-only Command Center panel, and public configuration for the SAM.gov profile store path.
+
+This slice intentionally does not implement known opportunity lookup, no-solicitation-ID discovery, attachment download/intake, Firecrawl, solicitation parsing, or trusted downstream promotion. Those remain in later SAM.gov issues.
 
 ## Accepted Four-Lane Demo
 

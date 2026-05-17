@@ -399,14 +399,15 @@ _FEDERAL_DATA_CAPABILITIES = (
             "Read-only entity registration, responsibility, opportunity, "
             "solicitation, and notice lookup for UEI, customer, incumbent, "
             "and recompete follow-on enrichment. Requires a SAM.gov API key; "
-            "registered now, product workflow deferred."
+            "product-integrated first through SAM.gov Enrichment Profile "
+            "entity records."
         ),
         package="sam-gov-mcp",
         version="0.4.1",
         command="uvx --from sam-gov-mcp==0.4.1 sam-gov-mcp",
         source_url=_FEDERAL_CONTRACTING_MCPS_URL,
         license="MIT",
-        product_status=FederalDataProductStatus.REGISTERED,
+        product_status=FederalDataProductStatus.PRODUCT_INTEGRATED,
         required_env_vars=("SAM_GOV_API_KEY",),
         upstream_env_vars=("SAM_API_KEY",),
     ),

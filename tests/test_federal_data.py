@@ -37,6 +37,9 @@ def test_lists_upstream_1102_federal_data_capability_manifests() -> None:
     assert "55 read-only tools" in by_id["usaspending"].description
     assert "No API key required" in by_id["usaspending"].description
     assert "Requires a SAM.gov API key" in by_id["sam_gov"].description
+    assert by_id["sam_gov"].product_status is (
+        FederalDataProductStatus.PRODUCT_INTEGRATED
+    )
     assert "product workflow deferred" in by_id["gsa_calc"].description
     assert by_id["sam_gov"].required_env_vars == ("SAM_GOV_API_KEY",)
     assert by_id["sam_gov"].upstream_env_vars == ("SAM_API_KEY",)

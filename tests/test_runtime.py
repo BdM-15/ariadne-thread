@@ -7,6 +7,7 @@ from ariadne.local_admin_model import (
     LocalAdminDraftSuggestion,
     LocalAdminModelAssistStatus,
 )
+from ariadne.sam_gov_profiles import SamGovMcpToolResult, SamGovSourceMode
 from ariadne.server import create_app
 from ariadne.usaspending import USAspendingMcpToolResult
 
@@ -499,8 +500,8 @@ def test_federal_data_runtime_reports_registered_mcp_capabilities() -> None:
     by_id = {capability["id"]: capability for capability in capabilities}
 
     assert len(capabilities) == 8
-    assert body["registered_count"] == 7
-    assert body["product_integrated_count"] == 1
+    assert body["registered_count"] == 6
+    assert body["product_integrated_count"] == 2
     assert body["smoke_tested_count"] == 0
     assert body["deferred_product_workflow_count"] == 0
     assert body["safe_smoke_check_method"] == "json_rpc_initialize_only"
@@ -509,6 +510,7 @@ def test_federal_data_runtime_reports_registered_mcp_capabilities() -> None:
     )
     assert by_id["usaspending"]["product_status"] == "product_integrated"
     assert by_id["usaspending"]["package"] == "usaspending-gov-mcp"
+    assert by_id["sam_gov"]["product_status"] == "product_integrated"
     assert by_id["sam_gov"]["required_env_vars"] == ["SAM_GOV_API_KEY"]
     assert by_id["sam_gov"]["upstream_env_vars"] == ["SAM_API_KEY"]
     assert all(
@@ -588,6 +590,222 @@ def test_federal_data_smoke_check_api_uses_safe_initialize_runner() -> None:
     assert timeout_seconds == 7
     assert env["SAM_GOV_API_KEY"] == "live-sam-secret-value"
     assert env["SAM_API_KEY"] == "live-sam-secret-value"
+
+
+def test_sam_gov_entity_profile_api_creates_and_persists_profile(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "entityRegistration": {
+                    "uei": "UEIACME12345",
+                    "legalBusinessName": "ACME FEDERAL LLC",
+                    "cageCode": "1ABC2",
+                    "registrationStatus": "Active",
+                },
+                "coreData": {
+                    "businessTypes": ["Small Business"],
+                    "entityHierarchy": {
+                        "parentUei": "UEIPARENT9999",
+                        "parentLegalBusinessName": "ACME HOLDING CORPORATION",
+                    },
+                },
+                "assertions": {"naicsCodes": ["541715"], "pscCodes": ["AC13"]},
+            },
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    response = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": " ueiacme12345 "},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    assert profile["normalized_pivot"] == "UEIACME12345"
+    assert profile["entity_lane"]["provenance"]["source_mode"] == "fake_adapter_test"
+    assert profile["entity_lane"]["matches"][0]["legal_business_name"] == (
+        "ACME FEDERAL LLC"
+    )
+    assert profile["entity_lane"]["matches"][0]["parent_uei"] == "UEIPARENT9999"
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in profile["review_candidates"]
+    )
+    assert all(
+        candidate["trusted_output_written"] is False
+        for candidate in profile["review_candidates"]
+    )
+
+    read_response = client.get(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}"
+    )
+    assert read_response.status_code == 200
+    assert read_response.json()["profile"] == profile
+
+    list_response = client.get("/api/federal-data/sam-gov/enrichment-profiles")
+    assert list_response.status_code == 200
+    assert list_response.json()["profiles"] == [profile]
+    assert calls == [
+        (
+            "lookup_entity_by_uei",
+            {
+                "uei": "UEIACME12345",
+                "include_sections": ["entityRegistration", "coreData", "assertions"],
+                "sam_registered": "Yes",
+            },
+        )
+    ]
+
+
+def test_sam_gov_entity_profile_api_uses_live_runner_factory_when_configured(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    factory_calls = []
+    tool_calls = []
+
+    def fake_runner_factory(command, timeout_seconds, env):
+        factory_calls.append((command, timeout_seconds, env))
+
+        def runner(tool_name, arguments):
+            tool_calls.append((tool_name, arguments))
+            return SamGovMcpToolResult(
+                ok=True,
+                payload={
+                    "entityRegistration": {
+                        "uei": "UEIACME12345",
+                        "legalBusinessName": "ACME FEDERAL LLC",
+                    },
+                },
+            )
+
+        return runner
+
+    monkeypatch.setattr(
+        "ariadne.server.create_sam_gov_lookup_runner",
+        fake_runner_factory,
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles"),
+            "SAM_GOV_API_KEY": "live-sam-secret-value",
+            "MCP_TOOL_TIMEOUT_SECONDS": "9",
+        }
+    )
+
+    response = TestClient(create_app(settings)).post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    assert profile["entity_lane"]["provenance"]["source_mode"] == "live_sam_gov"
+    assert "live-sam-secret-value" not in response.text
+    assert tool_calls[0][0] == "lookup_entity_by_uei"
+    command, timeout_seconds, env = factory_calls[0]
+    assert "sam-gov-mcp==0.4.1" in command
+    assert timeout_seconds == 9
+    assert env["SAM_GOV_API_KEY"] == "live-sam-secret-value"
+    assert env["SAM_API_KEY"] == "live-sam-secret-value"
+
+
+def test_sam_gov_entity_profile_api_requires_key_for_live_action(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+
+    response = TestClient(create_app(settings)).post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "SAM.gov API key is required for live SAM.gov entity enrichment"
+    )
+
+
+def test_sam_gov_entity_profile_review_decision_api_records_event(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+
+    def runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "entityRegistration": {
+                    "uei": "UEIACME12345",
+                    "legalBusinessName": "ACME FEDERAL LLC",
+                },
+            },
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+    source_candidate = next(
+        candidate
+        for candidate in profile["review_candidates"]
+        if candidate["candidate_type"] == "source_evidence"
+    )
+
+    response = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/review-decisions",
+        json={
+            "candidate_id": source_candidate["id"],
+            "review_state": "accepted",
+            "reviewer_rationale": "Entity identity is ready for later routing.",
+        },
+    )
+
+    assert response.status_code == 200
+    updated_profile = response.json()["profile"]
+    accepted_candidate = next(
+        candidate
+        for candidate in updated_profile["review_candidates"]
+        if candidate["id"] == source_candidate["id"]
+    )
+    assert accepted_candidate["review_state"] == "accepted"
+    assert accepted_candidate["trusted_output_written"] is False
+    assert updated_profile["hermes_events"][-1]["event_type"] == (
+        "review_decision_recorded"
+    )
+    assert updated_profile["hermes_events"][-1]["payload"]["candidate_id"] == (
+        source_candidate["id"]
+    )
 
 
 def test_usaspending_piid_lookup_api_returns_structured_success_result() -> None:
@@ -1289,6 +1507,16 @@ def test_runtime_settings_expose_piid_profile_store_path(tmp_path) -> None:
     assert settings.ariadne_piid_profiles_dir == profile_root
 
 
+def test_runtime_settings_expose_sam_gov_profile_store_path(tmp_path) -> None:
+    profile_root = tmp_path / "sam-gov-profiles"
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(profile_root)}
+    )
+
+    assert settings.ariadne_sam_gov_profiles_dir == profile_root
+
+
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     settings = RuntimeSettings.from_mapping(
         {
@@ -1470,6 +1698,50 @@ def test_command_center_shell_shows_persisted_document_intake_queue(tmp_path) ->
     assert "Queue: Ready" in response.text
     assert "Ready For Quick Capture" in response.text
     assert "Backed by persisted intake records" in response.text
+
+
+def test_command_center_shell_shows_sam_gov_profiles_without_live_call(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "entityRegistration": {
+                    "uei": "UEIACME12345",
+                    "legalBusinessName": "ACME FEDERAL LLC",
+                },
+                "coreData": {"businessTypes": ["Small Business"]},
+            },
+        )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    )
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "SAM.gov Enrichment Profiles" in response.text
+    assert "ACME FEDERAL LLC" in response.text
+    assert "fake adapter test" in response.text
+    assert "Live readiness: missing SAM.gov API key" in response.text
+    assert len(calls) == 1
 
 
 def test_command_center_shell_shows_extraction_bundle_queue_status(tmp_path) -> None:

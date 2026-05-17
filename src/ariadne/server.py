@@ -39,6 +39,11 @@ from ariadne.document_intake import (
     list_document_intake_adapter_declarations,
 )
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore
+from ariadne.federal_data import (
+    FederalDataCapabilityManifest,
+    FederalDataProductStatus,
+    list_federal_data_capability_manifests,
+)
 from ariadne.local_admin_model import request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
@@ -146,6 +151,14 @@ class DocumentIntakeCapabilitiesResponse(BaseModel):
         "Document Intake adapters must produce reviewable Extraction Bundles; "
         "deferred declarations do not invoke external tools."
     )
+
+
+class FederalDataCapabilitiesResponse(BaseModel):
+    capabilities: tuple[FederalDataCapabilityManifest, ...]
+    registered_count: int
+    smoke_tested_count: int
+    product_integrated_count: int
+    deferred_product_workflow_count: int
 
 
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
@@ -280,6 +293,31 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             ),
             deferred_count=sum(
                 capability.status is DocumentIntakeAdapterStatus.DEFERRED
+                for capability in capabilities
+            ),
+        )
+
+    @app.get("/api/federal-data/capabilities")
+    def federal_data_capabilities() -> FederalDataCapabilitiesResponse:
+        registry = list_federal_data_capability_manifests()
+        capabilities = registry.capabilities
+        return FederalDataCapabilitiesResponse(
+            capabilities=capabilities,
+            registered_count=sum(
+                capability.product_status is FederalDataProductStatus.REGISTERED
+                for capability in capabilities
+            ),
+            smoke_tested_count=sum(
+                capability.product_status is FederalDataProductStatus.SMOKE_TESTED
+                for capability in capabilities
+            ),
+            product_integrated_count=sum(
+                capability.product_status is FederalDataProductStatus.PRODUCT_INTEGRATED
+                for capability in capabilities
+            ),
+            deferred_product_workflow_count=sum(
+                capability.product_status
+                is FederalDataProductStatus.DEFERRED_PRODUCT_WORKFLOW
                 for capability in capabilities
             ),
         )

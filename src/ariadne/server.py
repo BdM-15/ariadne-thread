@@ -63,6 +63,11 @@ from ariadne.packets import (
     BriefingView,
     CoverageView,
 )
+from ariadne.piid_profiles import (
+    PiidContractIntelligenceProfile,
+    PiidProfileStore,
+    create_piid_contract_intelligence_profile,
+)
 from ariadne.quick_capture import (
     CaptureIntelligenceDraft,
     CaptureIntelligenceDraftPartType,
@@ -82,6 +87,7 @@ from ariadne.quick_capture import (
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 from ariadne.usaspending import (
     USAspendingAwardLookupResult,
+    USAspendingAwardLookupStatus,
     USAspendingMcpToolRunner,
     create_usaspending_lookup_runner,
     resolve_usaspending_piid,
@@ -187,6 +193,19 @@ class USAspendingPiidLookupRequest(BaseModel):
 
 class USAspendingPiidLookupResponse(BaseModel):
     result: USAspendingAwardLookupResult
+
+
+class USAspendingPiidProfileCreateRequest(BaseModel):
+    contract_number: str
+    limit: int = Field(default=5, ge=1, le=100)
+
+
+class USAspendingPiidProfileResponse(BaseModel):
+    profile: PiidContractIntelligenceProfile
+
+
+class USAspendingPiidProfilesResponse(BaseModel):
+    profiles: tuple[PiidContractIntelligenceProfile, ...]
 
 
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
@@ -369,7 +388,9 @@ def create_app(
             None,
         )
         if manifest is None:
-            raise HTTPException(status_code=404, detail="Federal Data Capability not found")
+            raise HTTPException(
+                status_code=404, detail="Federal Data Capability not found"
+            )
         return FederalDataSmokeCheckResponse(
             result=run_federal_data_initialize_smoke_check(
                 manifest,
@@ -396,6 +417,56 @@ def create_app(
                 lookup_limit=request.limit,
             )
         )
+
+    @app.get("/api/federal-data/usaspending/piid-profiles")
+    def usaspending_piid_profiles() -> USAspendingPiidProfilesResponse:
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        return USAspendingPiidProfilesResponse(profiles=tuple(store.list()))
+
+    @app.post("/api/federal-data/usaspending/piid-profiles")
+    def create_usaspending_piid_profile(
+        request: USAspendingPiidProfileCreateRequest,
+    ) -> USAspendingPiidProfileResponse:
+        manifest = _federal_data_manifest("usaspending")
+        runner = usaspending_lookup_runner or create_usaspending_lookup_runner(
+            command=manifest.command,
+            timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            env=_federal_data_env_for_manifest(manifest, runtime_settings),
+        )
+        lookup = resolve_usaspending_piid(
+            request.contract_number,
+            runner=runner,
+            lookup_limit=request.limit,
+        )
+        if lookup.status is not USAspendingAwardLookupStatus.SUCCESS:
+            raise HTTPException(
+                status_code=409,
+                detail="resolved USAspending award is required",
+            )
+        profile = create_piid_contract_intelligence_profile(lookup)
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        return USAspendingPiidProfileResponse(profile=store.write(profile))
+
+    @app.get("/api/federal-data/usaspending/piid-profiles/{profile_id}")
+    def usaspending_piid_profile(
+        profile_id: str,
+    ) -> USAspendingPiidProfileResponse:
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="PIID profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return USAspendingPiidProfileResponse(profile=profile)
 
     @app.get("/api/document-intake/queue")
     def document_intake_queue() -> DocumentIntakeQueueResponse:
@@ -802,7 +873,9 @@ def _federal_data_env_for_manifest(
         name: value
         for name, value in settings.federal_data_env.items()
         if name
-        in manifest.required_env_vars + manifest.optional_env_vars + manifest.upstream_env_vars
+        in manifest.required_env_vars
+        + manifest.optional_env_vars
+        + manifest.upstream_env_vars
     }
     for ariadne_name, upstream_name in zip(
         manifest.required_env_vars,

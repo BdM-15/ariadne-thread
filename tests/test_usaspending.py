@@ -67,7 +67,10 @@ def test_reports_not_found_when_usaspending_lookup_returns_no_results() -> None:
     assert result.status is USAspendingAwardLookupStatus.NOT_FOUND
     assert result.normalized_piid == "MISSING-PIID"
     assert result.candidates == ()
-    assert result.diagnostic_summary == "No contracts or IDVs found matching 'MISSING-PIID'."
+    assert (
+        result.diagnostic_summary
+        == "No contracts or IDVs found matching 'MISSING-PIID'."
+    )
 
 
 def test_reports_ambiguous_when_usaspending_lookup_returns_multiple_results() -> None:
@@ -137,3 +140,57 @@ def test_success_result_tolerates_sparse_usaspending_rows() -> None:
     assert result.resolved_award_id is None
     assert result.recipient_name is None
     assert result.awarding_agency_name is None
+
+
+def test_success_result_captures_optional_baseline_fields_from_lookup_row() -> None:
+    result = resolve_usaspending_piid(
+        "FA8650-23-F-0001",
+        runner=lambda tool_name, arguments: USAspendingMcpToolResult(
+            ok=True,
+            payload={
+                "award_type": "contract",
+                "results": [
+                    {
+                        "Award ID": "FA8650-23-F-0001",
+                        "Recipient Name": "ACME FEDERAL LLC",
+                        "Recipient UEI": "UEIACME12345",
+                        "Parent Recipient UEI": "UEIPARENT9999",
+                        "Awarding Agency": "Department of the Air Force",
+                        "Awarding Sub Agency": "Air Force Materiel Command",
+                        "Awarding Office": "AFLCMC/PZ",
+                        "Funding Agency": "Department of the Air Force",
+                        "Funding Sub Agency": "Air Force Research Laboratory",
+                        "Funding Office": "AFRL/RQ",
+                        "Award Amount": "$1,250,000.00",
+                        "Start Date": "2023-05-01",
+                        "End Date": "2026-04-30",
+                        "NAICS Code": "541715",
+                        "PSC Code": "AC13",
+                        "Solicitation ID": "FA8650-22-R-0001",
+                        "Parent IDV": "FA8650-20-D-0001",
+                        "generated_internal_id": "CONT_AWD_FA865023F0001_9700",
+                        "permalink": "https://www.usaspending.gov/award/CONT_AWD_FA865023F0001_9700",
+                    }
+                ],
+            },
+        ),
+        checked_at="2026-05-16T13:25:00Z",
+    )
+
+    assert result.recipient_uei == "UEIACME12345"
+    assert result.parent_recipient_uei == "UEIPARENT9999"
+    assert result.awarding_office_name == "AFLCMC/PZ"
+    assert result.funding_agency_name == "Department of the Air Force"
+    assert result.funding_sub_agency_name == "Air Force Research Laboratory"
+    assert result.funding_office_name == "AFRL/RQ"
+    assert result.award_amount == 1250000.0
+    assert result.start_date == "2023-05-01"
+    assert result.end_date == "2026-04-30"
+    assert result.naics_code == "541715"
+    assert result.psc_code == "AC13"
+    assert result.solicitation_id == "FA8650-22-R-0001"
+    assert result.parent_idv == "FA8650-20-D-0001"
+    assert (
+        result.permalink
+        == "https://www.usaspending.gov/award/CONT_AWD_FA865023F0001_9700"
+    )

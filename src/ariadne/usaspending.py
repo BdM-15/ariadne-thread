@@ -43,8 +43,22 @@ class USAspendingAwardCandidate(BaseModel):
     resolved_award_id: str | None = None
     generated_internal_id: str | None = None
     recipient_name: str | None = None
+    recipient_uei: str | None = None
+    parent_recipient_uei: str | None = None
     awarding_agency_name: str | None = None
     awarding_sub_agency_name: str | None = None
+    awarding_office_name: str | None = None
+    funding_agency_name: str | None = None
+    funding_sub_agency_name: str | None = None
+    funding_office_name: str | None = None
+    award_amount: float | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    naics_code: str | None = None
+    psc_code: str | None = None
+    solicitation_id: str | None = None
+    parent_idv: str | None = None
+    permalink: str | None = None
 
 
 class USAspendingAwardLookupResult(BaseModel):
@@ -56,8 +70,22 @@ class USAspendingAwardLookupResult(BaseModel):
     resolved_award_id: str | None = None
     generated_internal_id: str | None = None
     recipient_name: str | None = None
+    recipient_uei: str | None = None
+    parent_recipient_uei: str | None = None
     awarding_agency_name: str | None = None
     awarding_sub_agency_name: str | None = None
+    awarding_office_name: str | None = None
+    funding_agency_name: str | None = None
+    funding_sub_agency_name: str | None = None
+    funding_office_name: str | None = None
+    award_amount: float | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    naics_code: str | None = None
+    psc_code: str | None = None
+    solicitation_id: str | None = None
+    parent_idv: str | None = None
+    permalink: str | None = None
     candidates: tuple[USAspendingAwardCandidate, ...] = ()
     diagnostic_summary: str
 
@@ -81,7 +109,8 @@ def resolve_usaspending_piid(
             normalized_piid=normalized_piid,
             status=USAspendingAwardLookupStatus.TOOL_ERROR,
             provenance=provenance,
-            diagnostic_summary=tool_result.error_message or "USAspending lookup failed.",
+            diagnostic_summary=tool_result.error_message
+            or "USAspending lookup failed.",
         )
 
     payload = tool_result.payload or {}
@@ -99,8 +128,22 @@ def resolve_usaspending_piid(
             resolved_award_id=candidate.resolved_award_id,
             generated_internal_id=candidate.generated_internal_id,
             recipient_name=candidate.recipient_name,
+            recipient_uei=candidate.recipient_uei,
+            parent_recipient_uei=candidate.parent_recipient_uei,
             awarding_agency_name=candidate.awarding_agency_name,
             awarding_sub_agency_name=candidate.awarding_sub_agency_name,
+            awarding_office_name=candidate.awarding_office_name,
+            funding_agency_name=candidate.funding_agency_name,
+            funding_sub_agency_name=candidate.funding_sub_agency_name,
+            funding_office_name=candidate.funding_office_name,
+            award_amount=candidate.award_amount,
+            start_date=candidate.start_date,
+            end_date=candidate.end_date,
+            naics_code=candidate.naics_code,
+            psc_code=candidate.psc_code,
+            solicitation_id=candidate.solicitation_id,
+            parent_idv=candidate.parent_idv,
+            permalink=candidate.permalink,
             candidates=(candidate,),
             diagnostic_summary="Resolved one USAspending award match.",
         )
@@ -112,7 +155,8 @@ def resolve_usaspending_piid(
             status=USAspendingAwardLookupStatus.NOT_FOUND,
             provenance=provenance,
             award_type=payload.get("award_type"),
-            diagnostic_summary=payload.get("message") or "No USAspending award match found.",
+            diagnostic_summary=payload.get("message")
+            or "No USAspending award match found.",
         )
 
     candidates = tuple(_candidate_from_lookup_row(result) for result in results)
@@ -152,11 +196,58 @@ def create_usaspending_lookup_runner(
 
 def _candidate_from_lookup_row(row: dict[str, Any]) -> USAspendingAwardCandidate:
     return USAspendingAwardCandidate(
-        resolved_award_id=_string_or_none(row.get("Award ID")),
-        generated_internal_id=_string_or_none(row.get("generated_internal_id")),
-        recipient_name=_string_or_none(row.get("Recipient Name")),
-        awarding_agency_name=_string_or_none(row.get("Awarding Agency")),
-        awarding_sub_agency_name=_string_or_none(row.get("Awarding Sub Agency")),
+        resolved_award_id=_string_from_keys(row, "Award ID", "piid", "award_id"),
+        generated_internal_id=_string_from_keys(row, "generated_internal_id"),
+        recipient_name=_string_from_keys(row, "Recipient Name", "recipient_name"),
+        recipient_uei=_string_from_keys(row, "Recipient UEI", "recipient_uei", "UEI"),
+        parent_recipient_uei=_string_from_keys(
+            row,
+            "Parent Recipient UEI",
+            "parent_recipient_uei",
+            "Parent UEI",
+        ),
+        awarding_agency_name=_string_from_keys(
+            row, "Awarding Agency", "awarding_agency_name"
+        ),
+        awarding_sub_agency_name=_string_from_keys(
+            row,
+            "Awarding Sub Agency",
+            "awarding_sub_agency_name",
+        ),
+        awarding_office_name=_string_from_keys(
+            row, "Awarding Office", "awarding_office_name"
+        ),
+        funding_agency_name=_string_from_keys(
+            row, "Funding Agency", "funding_agency_name"
+        ),
+        funding_sub_agency_name=_string_from_keys(
+            row,
+            "Funding Sub Agency",
+            "funding_sub_agency_name",
+        ),
+        funding_office_name=_string_from_keys(
+            row, "Funding Office", "funding_office_name"
+        ),
+        award_amount=_amount_or_none(
+            _value_from_keys(row, "Award Amount", "award_amount")
+        ),
+        start_date=_string_from_keys(
+            row, "Start Date", "start_date", "period_of_performance_start_date"
+        ),
+        end_date=_string_from_keys(
+            row,
+            "End Date",
+            "Last Date to Order",
+            "end_date",
+            "period_of_performance_current_end_date",
+        ),
+        naics_code=_string_from_keys(row, "NAICS Code", "naics_code"),
+        psc_code=_string_from_keys(row, "PSC Code", "psc_code"),
+        solicitation_id=_string_from_keys(row, "Solicitation ID", "solicitation_id"),
+        parent_idv=_string_from_keys(
+            row, "Parent IDV", "parent_idv", "parent_award_id"
+        ),
+        permalink=_string_from_keys(row, "permalink", "Permalink", "Award URL"),
     )
 
 
@@ -178,3 +269,28 @@ def _string_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _string_from_keys(row: dict[str, Any], *keys: str) -> str | None:
+    return _string_or_none(_value_from_keys(row, *keys))
+
+
+def _value_from_keys(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in row:
+            return row[key]
+    return None
+
+
+def _amount_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    text = str(value).strip().replace("$", "").replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None

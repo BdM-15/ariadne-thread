@@ -511,11 +511,15 @@ def test_federal_data_runtime_reports_registered_mcp_capabilities() -> None:
     assert by_id["usaspending"]["package"] == "usaspending-gov-mcp"
     assert by_id["sam_gov"]["required_env_vars"] == ["SAM_GOV_API_KEY"]
     assert by_id["sam_gov"]["upstream_env_vars"] == ["SAM_API_KEY"]
-    assert all("=" not in env_var for capability in capabilities for env_var in (
-        capability["required_env_vars"]
-        + capability["optional_env_vars"]
-        + capability["upstream_env_vars"]
-    ))
+    assert all(
+        "=" not in env_var
+        for capability in capabilities
+        for env_var in (
+            capability["required_env_vars"]
+            + capability["optional_env_vars"]
+            + capability["upstream_env_vars"]
+        )
+    )
 
 
 def test_federal_data_smoke_check_api_reports_missing_env_without_runner_call() -> None:
@@ -608,9 +612,7 @@ def test_usaspending_piid_lookup_api_returns_structured_success_result() -> None
             },
         )
 
-    response = TestClient(
-        create_app(usaspending_lookup_runner=runner)
-    ).post(
+    response = TestClient(create_app(usaspending_lookup_runner=runner)).post(
         "/api/federal-data/usaspending/piid-lookup",
         json={"contract_number": " fa8650-23-c-0001 ", "limit": 5},
     )
@@ -650,6 +652,90 @@ def test_usaspending_piid_lookup_api_returns_tool_error_result() -> None:
     result = response.json()["result"]
     assert result["status"] == "tool_error"
     assert result["diagnostic_summary"] == "lookup_piid failed: HTTP 429: rate limited"
+
+
+def test_usaspending_piid_profile_api_creates_and_persists_profile(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_PIID_PROFILES_DIR": str(tmp_path / "piid-profiles")}
+    )
+
+    def runner(tool_name, arguments):
+        return USAspendingMcpToolResult(
+            ok=True,
+            payload={
+                "award_type": "contract",
+                "results": [
+                    {
+                        "Award ID": "FA8650-23-F-0001",
+                        "Recipient Name": "ACME FEDERAL LLC",
+                        "Recipient UEI": "UEIACME12345",
+                        "Awarding Agency": "Department of the Air Force",
+                        "Awarding Sub Agency": "Air Force Materiel Command",
+                        "Award Amount": 1250000,
+                        "Start Date": "2023-05-01",
+                        "End Date": "2026-04-30",
+                        "NAICS Code": "541715",
+                        "PSC Code": "AC13",
+                        "Solicitation ID": "FA8650-22-R-0001",
+                        "generated_internal_id": "CONT_AWD_FA865023F0001_9700",
+                    }
+                ],
+            },
+        )
+
+    client = TestClient(create_app(settings, usaspending_lookup_runner=runner))
+    response = client.post(
+        "/api/federal-data/usaspending/piid-profiles",
+        json={"contract_number": " fa8650-23-f-0001 "},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    assert profile["normalized_piid"] == "FA8650-23-F-0001"
+    assert profile["scenario"] == "standalone_contract"
+    assert profile["award_baseline"]["recipient_uei"] == "UEIACME12345"
+    assert profile["award_baseline"]["award_amount"] == 1250000
+    assert profile["provenance"]["source_capability_id"] == "usaspending"
+
+    profile_id = profile["id"]
+    read_response = client.get(
+        f"/api/federal-data/usaspending/piid-profiles/{profile_id}"
+    )
+    assert read_response.status_code == 200
+    assert read_response.json()["profile"] == profile
+
+    list_response = client.get("/api/federal-data/usaspending/piid-profiles")
+    assert list_response.status_code == 200
+    assert list_response.json()["profiles"] == [profile]
+
+
+def test_usaspending_piid_profile_api_requires_resolved_award(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_PIID_PROFILES_DIR": str(tmp_path / "piid-profiles")}
+    )
+    client = TestClient(
+        create_app(
+            settings,
+            usaspending_lookup_runner=lambda tool_name, arguments: (
+                USAspendingMcpToolResult(
+                    ok=True,
+                    payload={"award_type": None, "results": []},
+                )
+            ),
+        )
+    )
+
+    response = client.post(
+        "/api/federal-data/usaspending/piid-profiles",
+        json={"contract_number": "missing-piid"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "resolved USAspending award is required"
 
 
 def test_document_intake_runtime_lists_review_gated_capture_candidates(
@@ -928,6 +1014,16 @@ def test_runtime_settings_default_to_ariadne_port_not_theseus_port() -> None:
 
     assert settings.port == 9622
     assert settings.local_url == "http://127.0.0.1:9622"
+
+
+def test_runtime_settings_expose_piid_profile_store_path(tmp_path) -> None:
+    profile_root = tmp_path / "profiles"
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_PIID_PROFILES_DIR": str(profile_root)}
+    )
+
+    assert settings.ariadne_piid_profiles_dir == profile_root
 
 
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:

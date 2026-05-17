@@ -21,6 +21,7 @@ class RuntimeSettings(BaseModel):
     ariadne_workspace: str = "default"
     ariadne_evidence_dir: Path = Field(default=Path(".ariadne/evidence"))
     ariadne_document_intake_dir: Path = Field(default=Path(".ariadne/document-intake"))
+    ariadne_piid_profiles_dir: Path = Field(default=Path(".ariadne/piid-profiles"))
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
@@ -64,6 +65,12 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_DOCUMENT_INTAKE_DIR",
                     str(cls.model_fields["ariadne_document_intake_dir"].default),
+                )
+            ),
+            ariadne_piid_profiles_dir=Path(
+                values.get(
+                    "ARIADNE_PIID_PROFILES_DIR",
+                    str(cls.model_fields["ariadne_piid_profiles_dir"].default),
                 )
             ),
             ariadne_reference_wiki_dir=Path(

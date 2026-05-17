@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ariadne.usaspending import USAspendingAwardLookupResult
+from ariadne.usaspending import (
+    USAspendingAwardHistoryResult,
+    USAspendingAwardLookupResult,
+)
 
 
 class PiidScenarioClassification(StrEnum):
@@ -79,6 +82,50 @@ class PiidProfileGap(BaseModel):
     recommended_enrichment_route: str
 
 
+class PiidAwardTransaction(BaseModel):
+    transaction_id: str | None = None
+    action_date: str | None = None
+    fiscal_year: int | None = None
+    modification_number: str | None = None
+    action_type: str | None = None
+    obligation: float | None = None
+    description: str | None = None
+
+
+class PiidBurnPosture(BaseModel):
+    net_obligations: float | None = None
+    fiscal_year_obligations: dict[int, float] = Field(default_factory=dict)
+    period_start: str | None = None
+    period_end: str | None = None
+    period_days: int | None = None
+    monthly_burn_rate: float | None = None
+    daily_burn_rate: float | None = None
+    transaction_count: int = 0
+    modification_count: int = 0
+    option_signals: tuple[str, ...] = ()
+    deobligation_warnings: tuple[str, ...] = ()
+    derivation_notes: tuple[str, ...] = ()
+    completeness: str = "unavailable"
+
+
+class PiidVehicleRelatedAward(BaseModel):
+    piid: str | None = None
+    generated_internal_id: str | None = None
+    recipient_name: str | None = None
+    obligated_amount: float | None = None
+    period_start: str | None = None
+    period_end: str | None = None
+
+
+class PiidVehicleContext(BaseModel):
+    parent_idv: str | None = None
+    parent_generated_internal_id: str | None = None
+    child_orders: tuple[PiidVehicleRelatedAward, ...] = ()
+    sibling_or_related_orders: tuple[PiidVehicleRelatedAward, ...] = ()
+    linkage_confidence: str = "none"
+    derivation_notes: tuple[str, ...] = ()
+
+
 class PiidContractIntelligenceProfile(BaseModel):
     id: str
     input_contract_number: str
@@ -86,6 +133,10 @@ class PiidContractIntelligenceProfile(BaseModel):
     scenario: PiidScenarioClassification
     provenance: PiidProfileProvenance
     award_baseline: PiidAwardBaseline
+    transaction_history: tuple[PiidAwardTransaction, ...] = ()
+    modification_history: tuple[PiidAwardTransaction, ...] = ()
+    burn_posture: PiidBurnPosture = Field(default_factory=PiidBurnPosture)
+    vehicle_context: PiidVehicleContext = Field(default_factory=PiidVehicleContext)
     deterministic_pivots: tuple[PiidDeterministicPivot, ...] = ()
     gaps: tuple[PiidProfileGap, ...] = ()
     created_at: str
@@ -143,6 +194,7 @@ class PiidProfileStore:
 def create_piid_contract_intelligence_profile(
     lookup: USAspendingAwardLookupResult,
     *,
+    award_history: USAspendingAwardHistoryResult | None = None,
     profile_id: str | None = None,
     created_at: str | None = None,
 ) -> PiidContractIntelligenceProfile:
@@ -169,11 +221,12 @@ def create_piid_contract_intelligence_profile(
         parent_idv=lookup.parent_idv,
         permalink=lookup.permalink,
     )
+    vehicle_context = _vehicle_context_from_history(baseline, award_history)
     return PiidContractIntelligenceProfile(
         id=profile_id or _profile_id_for_piid(lookup.normalized_piid),
         input_contract_number=lookup.input_contract_number,
         normalized_piid=lookup.normalized_piid,
-        scenario=classify_piid_scenario(baseline),
+        scenario=classify_piid_scenario(baseline, vehicle_context),
         provenance=PiidProfileProvenance(
             source_capability_id=lookup.provenance.source_capability_id,
             source_tool_name=lookup.provenance.source_tool_name,
@@ -183,6 +236,10 @@ def create_piid_contract_intelligence_profile(
             lookup_status=lookup.status.value,
         ),
         award_baseline=baseline,
+        transaction_history=_transactions_from_history(award_history),
+        modification_history=_modifications_from_history(award_history),
+        burn_posture=_burn_posture_from_history(baseline, award_history),
+        vehicle_context=vehicle_context,
         deterministic_pivots=_deterministic_pivots_from_baseline(baseline),
         gaps=_gaps_from_baseline(baseline),
         created_at=timestamp,
@@ -190,12 +247,160 @@ def create_piid_contract_intelligence_profile(
     )
 
 
+def _transactions_from_history(
+    award_history: USAspendingAwardHistoryResult | None,
+) -> tuple[PiidAwardTransaction, ...]:
+    if award_history is None:
+        return ()
+    return tuple(
+        PiidAwardTransaction(
+            transaction_id=transaction.transaction_id,
+            action_date=transaction.action_date,
+            fiscal_year=transaction.fiscal_year,
+            modification_number=transaction.modification_number,
+            action_type=transaction.action_type,
+            obligation=transaction.obligation,
+            description=transaction.description,
+        )
+        for transaction in award_history.transaction_history
+    )
+
+
+def _modifications_from_history(
+    award_history: USAspendingAwardHistoryResult | None,
+) -> tuple[PiidAwardTransaction, ...]:
+    return tuple(
+        transaction
+        for transaction in _transactions_from_history(award_history)
+        if transaction.modification_number
+        and transaction.modification_number.strip().upper() not in {"0", "00", "000"}
+    )
+
+
+def _burn_posture_from_history(
+    baseline: PiidAwardBaseline,
+    award_history: USAspendingAwardHistoryResult | None,
+) -> PiidBurnPosture:
+    transactions = _transactions_from_history(award_history)
+    obligations = [
+        transaction.obligation
+        for transaction in transactions
+        if transaction.obligation is not None
+    ]
+    net_obligations = round(sum(obligations), 2) if obligations else None
+    derivation_notes = list(award_history.derivation_notes if award_history else ())
+    if net_obligations is None and baseline.award_amount is not None:
+        net_obligations = baseline.award_amount
+        derivation_notes.append(
+            "Used award baseline award_amount because transaction history was empty."
+        )
+    fiscal_year_obligations: dict[int, float] = {}
+    for transaction in transactions:
+        if transaction.fiscal_year is None or transaction.obligation is None:
+            continue
+        fiscal_year_obligations[transaction.fiscal_year] = round(
+            fiscal_year_obligations.get(transaction.fiscal_year, 0.0)
+            + transaction.obligation,
+            2,
+        )
+    period_days = _inclusive_period_days(baseline.start_date, baseline.end_date)
+    daily_burn_rate = None
+    monthly_burn_rate = None
+    if net_obligations is not None and period_days:
+        daily_burn_rate = round(net_obligations / period_days, 2)
+        monthly_burn_rate = round(net_obligations / (period_days / 30.5), 2)
+    if obligations and period_days:
+        completeness = "complete"
+    elif net_obligations is not None or period_days is not None:
+        completeness = "partial"
+    else:
+        completeness = "unavailable"
+    return PiidBurnPosture(
+        net_obligations=net_obligations,
+        fiscal_year_obligations=fiscal_year_obligations,
+        period_start=baseline.start_date,
+        period_end=baseline.end_date,
+        period_days=period_days,
+        monthly_burn_rate=monthly_burn_rate,
+        daily_burn_rate=daily_burn_rate,
+        transaction_count=len(transactions),
+        modification_count=len(_modifications_from_history(award_history)),
+        option_signals=_option_signals_from_transactions(transactions),
+        deobligation_warnings=_deobligation_warnings_from_transactions(transactions),
+        derivation_notes=tuple(derivation_notes),
+        completeness=completeness,
+    )
+
+
+def _option_signals_from_transactions(
+    transactions: tuple[PiidAwardTransaction, ...],
+) -> tuple[str, ...]:
+    signals = []
+    for transaction in transactions:
+        text = " ".join(
+            piece
+            for piece in (transaction.action_type, transaction.description)
+            if piece
+        ).lower()
+        if "option" in text:
+            signals.append(_transaction_summary(transaction))
+    return tuple(signals)
+
+
+def _deobligation_warnings_from_transactions(
+    transactions: tuple[PiidAwardTransaction, ...],
+) -> tuple[str, ...]:
+    warnings = []
+    for transaction in transactions:
+        if transaction.obligation is not None and transaction.obligation < 0:
+            warnings.append(
+                f"{_transaction_label(transaction)} deobligated "
+                f"${abs(transaction.obligation):,.2f}"
+            )
+    return tuple(warnings)
+
+
+def _transaction_summary(transaction: PiidAwardTransaction) -> str:
+    description = transaction.description or transaction.action_type or "transaction"
+    return f"{_transaction_label(transaction)}: {description}"
+
+
+def _transaction_label(transaction: PiidAwardTransaction) -> str:
+    modification = (
+        transaction.modification_number or transaction.transaction_id or "transaction"
+    )
+    if transaction.action_date:
+        return f"{modification} on {transaction.action_date}"
+    return modification
+
+
+def _inclusive_period_days(
+    period_start: str | None,
+    period_end: str | None,
+) -> int | None:
+    if not period_start or not period_end:
+        return None
+    try:
+        return (
+            date.fromisoformat(period_end) - date.fromisoformat(period_start)
+        ).days + 1
+    except ValueError:
+        return None
+
+
 def classify_piid_scenario(
     baseline: PiidAwardBaseline,
+    vehicle_context: PiidVehicleContext | None = None,
 ) -> PiidScenarioClassification:
+    if vehicle_context and (
+        vehicle_context.parent_idv or vehicle_context.parent_generated_internal_id
+    ):
+        return PiidScenarioClassification.IDIQ_ORDER
     if baseline.parent_idv:
         return PiidScenarioClassification.IDIQ_ORDER
-    if baseline.award_type == "idv":
+    if baseline.award_type == "idv" or (
+        vehicle_context is not None and vehicle_context.child_orders
+    ):
         return PiidScenarioClassification.PARENT_IDIQ
     if baseline.award_type == "contract":
         return PiidScenarioClassification.STANDALONE_CONTRACT
@@ -242,6 +447,72 @@ def _deterministic_pivots_from_baseline(
         for pivot_type, value, source_field in pivot_specs
         if value
     )
+
+
+def _vehicle_context_from_history(
+    baseline: PiidAwardBaseline,
+    award_history: USAspendingAwardHistoryResult | None,
+) -> PiidVehicleContext:
+    detail = award_history.award_detail if award_history else {}
+    child_orders = _child_orders_from_history(award_history)
+    parent_idv = baseline.parent_idv or _string_from_keys(
+        detail,
+        "parent_award_piid",
+        "parent_piid",
+        "parent_idv",
+    )
+    parent_generated_internal_id = _string_from_keys(
+        detail,
+        "parent_award_generated_internal_id",
+        "parent_generated_internal_id",
+        "parent_award_id",
+    )
+    notes = []
+    if parent_idv or parent_generated_internal_id:
+        notes.append("Parent vehicle linkage came from get_award_detail.")
+    if child_orders:
+        notes.append("Child order context came from get_idv_children.")
+    linkage_confidence = "none"
+    if (parent_idv and parent_generated_internal_id) or child_orders:
+        linkage_confidence = "linked"
+    elif parent_idv or parent_generated_internal_id:
+        linkage_confidence = "partial"
+    return PiidVehicleContext(
+        parent_idv=parent_idv,
+        parent_generated_internal_id=parent_generated_internal_id,
+        child_orders=child_orders,
+        linkage_confidence=linkage_confidence,
+        derivation_notes=tuple(notes),
+    )
+
+
+def _child_orders_from_history(
+    award_history: USAspendingAwardHistoryResult | None,
+) -> tuple[PiidVehicleRelatedAward, ...]:
+    if award_history is None:
+        return ()
+    return tuple(
+        PiidVehicleRelatedAward(
+            piid=child.piid,
+            generated_internal_id=child.generated_internal_id,
+            recipient_name=child.recipient_name,
+            obligated_amount=child.obligated_amount,
+            period_start=child.period_start,
+            period_end=child.period_end,
+        )
+        for child in award_history.idv_children
+    )
+
+
+def _string_from_keys(row: dict[str, object], *keys: str) -> str | None:
+    for key in keys:
+        value = row.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
 
 
 def _gaps_from_baseline(baseline: PiidAwardBaseline) -> tuple[PiidProfileGap, ...]:

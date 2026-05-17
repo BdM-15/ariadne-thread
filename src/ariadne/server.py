@@ -90,6 +90,7 @@ from ariadne.usaspending import (
     USAspendingAwardLookupStatus,
     USAspendingMcpToolRunner,
     create_usaspending_lookup_runner,
+    fetch_usaspending_award_history,
     resolve_usaspending_piid,
 )
 
@@ -198,6 +199,9 @@ class USAspendingPiidLookupResponse(BaseModel):
 class USAspendingPiidProfileCreateRequest(BaseModel):
     contract_number: str
     limit: int = Field(default=5, ge=1, le=100)
+    transaction_limit: int = Field(default=100, ge=1, le=5000)
+    funding_limit: int = Field(default=50, ge=1, le=100)
+    vehicle_child_limit: int = Field(default=50, ge=1, le=100)
 
 
 class USAspendingPiidProfileResponse(BaseModel):
@@ -445,7 +449,17 @@ def create_app(
                 status_code=409,
                 detail="resolved USAspending award is required",
             )
-        profile = create_piid_contract_intelligence_profile(lookup)
+        award_history = fetch_usaspending_award_history(
+            lookup,
+            runner=runner,
+            transaction_limit=request.transaction_limit,
+            funding_limit=request.funding_limit,
+            vehicle_child_limit=request.vehicle_child_limit,
+        )
+        profile = create_piid_contract_intelligence_profile(
+            lookup,
+            award_history=award_history,
+        )
         store = PiidProfileStore(
             _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
         )

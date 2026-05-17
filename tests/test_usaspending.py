@@ -1,6 +1,7 @@
 from ariadne.usaspending import (
     USAspendingAwardLookupStatus,
     USAspendingMcpToolResult,
+    fetch_usaspending_award_history,
     resolve_usaspending_piid,
 )
 
@@ -194,3 +195,152 @@ def test_success_result_captures_optional_baseline_fields_from_lookup_row() -> N
         result.permalink
         == "https://www.usaspending.gov/award/CONT_AWD_FA865023F0001_9700"
     )
+
+
+def test_fetches_usaspending_award_history_from_mcp_tools() -> None:
+    lookup = resolve_usaspending_piid(
+        "FA8650-23-C-0001",
+        runner=lambda tool_name, arguments: USAspendingMcpToolResult(
+            ok=True,
+            payload={
+                "award_type": "contract",
+                "results": [
+                    {
+                        "Award ID": "FA8650-23-C-0001",
+                        "generated_internal_id": "CONT_AWD_FA865023C0001_9700",
+                    }
+                ],
+            },
+        ),
+        checked_at="2026-05-16T13:30:00Z",
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        if tool_name == "get_award_detail":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={"parent_award_piid": None},
+            )
+        if tool_name == "get_transactions":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "results": [
+                        {
+                            "id": "txn_base",
+                            "action_date": "2023-05-01",
+                            "fiscal_year": 2023,
+                            "modification_number": "0",
+                            "action_type": "Base Award",
+                            "federal_action_obligation": "800000",
+                            "description": "Base award",
+                        }
+                    ]
+                },
+            )
+        if tool_name == "get_award_funding":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "results": [
+                        {
+                            "reporting_fiscal_date": "2023-05-01",
+                            "fiscal_year": 2023,
+                            "transaction_obligated_amount": "800000",
+                            "account_title": "Research, Development, Test and Evaluation",
+                        }
+                    ]
+                },
+            )
+        raise AssertionError(f"unexpected tool {tool_name}")
+
+    history = fetch_usaspending_award_history(
+        lookup,
+        runner=runner,
+        transaction_limit=25,
+        funding_limit=10,
+        vehicle_child_limit=5,
+    )
+
+    assert calls == [
+        (
+            "get_award_detail",
+            {"generated_award_id": "CONT_AWD_FA865023C0001_9700"},
+        ),
+        (
+            "get_transactions",
+            {"generated_award_id": "CONT_AWD_FA865023C0001_9700", "limit": 25},
+        ),
+        (
+            "get_award_funding",
+            {"generated_award_id": "CONT_AWD_FA865023C0001_9700", "limit": 10},
+        ),
+    ]
+    assert history.generated_award_id == "CONT_AWD_FA865023C0001_9700"
+    assert history.award_detail == {"parent_award_piid": None}
+    assert history.transaction_history[0].transaction_id == "txn_base"
+    assert history.transaction_history[0].obligation == 800000.0
+    assert history.funding_history[0].account_title == (
+        "Research, Development, Test and Evaluation"
+    )
+    assert history.derivation_notes == (
+        "Fetched award detail from get_award_detail.",
+        "Fetched transaction history from get_transactions.",
+        "Fetched award funding from get_award_funding.",
+    )
+
+
+def test_fetches_idv_child_context_for_idv_awards() -> None:
+    lookup = resolve_usaspending_piid(
+        "FA8650-20-D-0001",
+        runner=lambda tool_name, arguments: USAspendingMcpToolResult(
+            ok=True,
+            payload={
+                "award_type": "idv",
+                "results": [
+                    {
+                        "Award ID": "FA8650-20-D-0001",
+                        "generated_internal_id": "CONT_IDV_FA865020D0001_9700",
+                    }
+                ],
+            },
+        ),
+        checked_at="2026-05-16T13:35:00Z",
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        if tool_name == "get_idv_children":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "results": [
+                        {
+                            "piid": "FA8650-23-F-0001",
+                            "generated_unique_award_id": "CONT_AWD_FA865023F0001_9700_CONT_IDV_FA865020D0001_9700",
+                            "recipient_name": "ACME FEDERAL LLC",
+                            "obligated_amount": "1250000",
+                            "period_of_performance_start_date": "2023-05-01",
+                            "period_of_performance_current_end_date": "2026-04-30",
+                        }
+                    ]
+                },
+            )
+        return USAspendingMcpToolResult(ok=True, payload={"results": []})
+
+    history = fetch_usaspending_award_history(
+        lookup,
+        runner=runner,
+        vehicle_child_limit=7,
+    )
+
+    assert (
+        "get_idv_children",
+        {"generated_idv_id": "CONT_IDV_FA865020D0001_9700", "limit": 7},
+    ) in calls
+    assert history.idv_children[0].piid == "FA8650-23-F-0001"
+    assert history.idv_children[0].obligated_amount == 1250000.0
+    assert "Fetched IDV children from get_idv_children." in history.derivation_notes

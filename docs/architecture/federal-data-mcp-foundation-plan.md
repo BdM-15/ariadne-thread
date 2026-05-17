@@ -1,10 +1,10 @@
 # Federal Data MCP Foundation Plan
 
 Date: 2026-05-16  
-Status: selected next vertical epic  
+Status: completed through Command Center demo
 Planned epic branch: `04-build/federal-data-mcp-foundation`
 
-## Selected Epic
+## Completed Epic
 
 Build the **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake** vertical slice.
 

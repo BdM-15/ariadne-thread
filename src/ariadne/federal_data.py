@@ -378,8 +378,11 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="usaspending",
         name="USAspending",
         description=(
-            "Public federal award, obligation, transaction, recipient, agency, "
-            "and vehicle context for recompete intelligence."
+            "USASpending.gov MCP server from 1102tools/federal-contracting-mcps. "
+            "Provides 55 read-only tools for federal awards, contracts, IDVs, "
+            "subawards, recipients, agencies, federal accounts, obligations, "
+            "and transaction history. No API key required; first Ariadne "
+            "product-integrated source for PIID recompete profiles."
         ),
         package="usaspending-gov-mcp",
         version="0.3.2",
@@ -392,8 +395,11 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="sam_gov",
         name="SAM.gov",
         description=(
-            "Public entity, registration, opportunity, and solicitation lookup "
-            "candidate for follow-on enrichment."
+            "SAM.gov MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only entity registration, responsibility, opportunity, "
+            "solicitation, and notice lookup for UEI, customer, incumbent, "
+            "and recompete follow-on enrichment. Requires a SAM.gov API key; "
+            "registered now, product workflow deferred."
         ),
         package="sam-gov-mcp",
         version="0.4.1",
@@ -408,8 +414,10 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="gsa_calc",
         name="GSA CALC+",
         description=(
-            "Labor category and ceiling-rate context candidate for pricing and "
-            "market-rate enrichment."
+            "GSA CALC+ MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only labor category, awarded-rate, ceiling-rate, vendor, "
+            "schedule, and market-rate context for price-to-win and labor "
+            "category enrichment. No API key required; product workflow deferred."
         ),
         package="gsa-calc-mcp",
         version="0.2.7",
@@ -422,8 +430,11 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="bls_oews",
         name="BLS OEWS",
         description=(
-            "Occupational wage context candidate for labor-market enrichment "
-            "from NAICS, geography, and labor signals."
+            "BLS OEWS MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only occupational employment and wage statistics for SOC, "
+            "geography, labor-market, and compensation context seeded by NAICS, "
+            "place of performance, or role signals. API key optional; product "
+            "workflow deferred."
         ),
         package="bls-oews-mcp",
         version="0.2.7",
@@ -437,8 +448,11 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="gsa_per_diem",
         name="GSA Per Diem",
         description=(
-            "Travel and locality-rate context candidate for opportunity cost and "
-            "execution-environment enrichment."
+            "GSA Per Diem MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only lodging, meals, incidentals, and locality-rate lookup "
+            "for travel cost, place-of-performance, and execution-context "
+            "enrichment. API key optional or recommended; product workflow "
+            "deferred."
         ),
         package="gsa-perdiem-mcp",
         version="0.2.6",
@@ -452,8 +466,10 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="ecfr",
         name="eCFR",
         description=(
-            "Regulatory text context candidate for compliance, acquisition, and "
-            "policy-driven capture implications."
+            "eCFR MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only Code of Federal Regulations lookup for FAR, DFARS, "
+            "agency supplements, compliance clauses, and policy-driven capture "
+            "implications. No API key required; product workflow deferred."
         ),
         package="ecfr-mcp",
         version="0.2.6",
@@ -466,8 +482,11 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="federal_register",
         name="Federal Register",
         description=(
-            "Federal notice and rulemaking context candidate for policy and "
-            "market-timing enrichment."
+            "Federal Register MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only notice, proposed rule, final rule, presidential document, "
+            "agency, topic, and publication-date lookup for policy timing and "
+            "market-signal enrichment. No API key required; product workflow "
+            "deferred."
         ),
         package="federal-register-mcp",
         version="0.2.7",
@@ -482,8 +501,11 @@ _FEDERAL_DATA_CAPABILITIES = (
         id="regulations_gov",
         name="Regulations.gov",
         description=(
-            "Public docket and comment context candidate for regulatory and "
-            "stakeholder-signal enrichment."
+            "Regulations.gov MCP server from 1102tools/federal-contracting-mcps. "
+            "Read-only docket, document, comment, agency, rulemaking, and "
+            "stakeholder-signal lookup for regulatory context around capture "
+            "strategy. API.data.gov key optional or recommended; product "
+            "workflow deferred."
         ),
         package="regulationsgov-mcp",
         version="0.2.5",

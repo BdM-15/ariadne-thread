@@ -1,7 +1,7 @@
 # SAM.gov Enrichment Plan
 
 Date: 2026-05-17  
-Status: implementation started through issue #39; human UI review pending
+Status: completed; first command-surface UI shape accepted as good enough for now
 
 ## Selected Epic
 
@@ -146,7 +146,11 @@ The fifth progression branch makes the four-lane SAM.gov profile coherent as a s
 
 The saved profile detail page and summary API show live readiness, source-mode labels, all lane states, source limitations, linked Document Intake records, review-gated candidate destinations, and explicit deferrals for Firecrawl/Web Enrichment Support, Specialized Solicitation Parser, Project Theseus parser integration, Artifact Renderer/export, Hermes/LangGraph, and additional federal data sources. The surface keeps fake-adapter output visually distinct from live SAM.gov success and repeats that trusted writes remain absent until an explicit reviewer action occurs.
 
-This branch provides the user-facing shape for human review. It does not close the human-review acceptance criterion until the user reviews the first UI shape or explicitly defers that review.
+This branch provided the user-facing shape for human review. The first UI shape was accepted as good enough for now, so the SAM.gov epic can merge to `main` and later UI polish can be selected through a separate documented slice.
+
+## Completion Note
+
+SAM.gov Enrichment Profile is complete for this epic. The accepted scope includes all four lanes, saved profile detail pages, command-surface summary API, fake/live/demo provenance, live readiness, review-gated candidates, explicit deferrals, source limitations, attachment approval, and Document Intake provenance. Remaining ideas should be treated as future slices rather than unfinished work inside this epic.
 
 ## Accepted Four-Lane Demo
 

@@ -40,7 +40,7 @@ RAG should sit behind a Knowledge Layer adapter. The product should ask for sour
 
 ### External APIs
 
-SAM.gov, USAspending, BLS, Firecrawl, api.data.gov tools, MCPs, and future research connectors should run as Capability Modules or CLI-first harnesses. Their outputs become Source Evidence or Capability Run Outputs with API metadata, timestamps, confidence, and provenance. Credit-spending or broad external research should use the ask-before-running autonomy tier.
+USAspending and SAM.gov are now the first product-integrated external/federal data sources. BLS, Firecrawl, api.data.gov tools, additional 1102 MCPs, and future research connectors should follow the same pattern: run as Capability Modules or CLI-first harnesses, preserve source provenance, surface limitations, and land outputs as Source Evidence or Capability Run Outputs with API metadata, timestamps, confidence, and review state. Credit-spending or broad external research should use the ask-before-running autonomy tier.
 
 ### Advanced Skills
 

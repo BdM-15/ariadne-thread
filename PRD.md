@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.12**
+**Product Requirements Document (PRD) v1.13**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 17, 2026
-**Status:** SAM.gov Enrichment Profile command surface implemented on `05-build/sam-gov-enrichment-profile`; human UI review pending
+**Status:** SAM.gov Enrichment Profile complete; ready for the next `grill-with-docs` session
 
 ---
 
@@ -36,8 +36,9 @@
 - The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
 - A fresh `grill-with-docs` planning session selected the **SAM.gov Enrichment Profile** as the next vertical product epic. `CONTEXT.md` now defines SAM.gov Enrichment Profile, SAM.gov Entity Record, SAM.gov Opportunity Record, SAM.gov Opportunity Discovery, SAM.gov Opportunity Attachment Intake, and Web Enrichment Support.
 - `docs/architecture/sam-gov-enrichment-plan.md` records the selected SAM.gov epic plan: one combined profile with entity, known opportunity, discovery, and attachment-intake lanes; live SAM.gov product behavior when `SAM_GOV_API_KEY` is configured; fake-adapter tests that never masquerade as live source success; source-mode provenance; approved official-link attachment downloads into Document Intake; and review-gated downstream candidates.
-- SAM.gov Enrichment Profile implementation now includes the Entity Record lane, Opportunity Discovery lane, Known Opportunity Record lane, Attachment Intake lane, saved-profile command surface, and command-surface summary API on the SAM.gov epic branch, with live/fake/demo source-mode boundaries, local profile persistence, Command Center links, source limitations, explicit attachment-download approval, Document Intake provenance, explicit deferrals, and review-gated downstream candidates for Evidence, Living Briefing Packet, Capture Action Plan, Risk Register, Call Plan, Document Intake, and follow-up routes.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the SAM.gov Command Surface branch, with 192 tests passing.
+- SAM.gov Enrichment Profile is complete on the SAM.gov epic branch: Entity Record lane, Opportunity Discovery lane, Known Opportunity Record lane, Attachment Intake lane, saved-profile command surface, and command-surface summary API. It preserves live/fake/demo source-mode boundaries, local profile persistence, Command Center links, source limitations, explicit attachment-download approval, Document Intake provenance, explicit deferrals, and review-gated downstream candidates for Evidence, Living Briefing Packet, Capture Action Plan, Risk Register, Call Plan, Document Intake, and follow-up routes.
+- The first SAM.gov command-surface UI shape was reviewed as good enough for now and can be merged to `main` before the next planning session.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the SAM.gov epic branch, with 192 tests passing.
 
 **Still Deferred**
 
@@ -46,12 +47,11 @@
 
 **Next Build Gate**
 
-- Complete human review of the **SAM.gov Enrichment Profile** command surface on epic branch `05-build/sam-gov-enrichment-profile`, then decide the next documented vertical slice.
-- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/sam-gov-enrichment-plan.md` as implementation inputs.
-- Preserve the Federal Data Capability boundary: SAM.gov search, entity, and opportunity data should flow through the upstream `sam-gov-mcp` capability rather than a duplicate Ariadne MCP.
-- Preserve the Document Intake boundary: downloaded SAM.gov attachments enter Document Intake, then material classification determines generic extraction versus future Solicitation Parser Capability routing.
-- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration deferred until selected through their own documented slices.
-- Keep the SAM.gov epic vertical and review-gated across entity records, known opportunity records, opportunity discovery, attachment intake, review candidates, and Command Center behavior.
+- Run the next **grill-with-docs** session to choose the vertical epic after SAM.gov Enrichment Profile.
+- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/document-intake-command-surface-plan.md`, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/sam-gov-enrichment-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as planning inputs.
+- Force the next slice to declare whether it is primarily a Command Center UI workflow, CLI-first harness, external integration adapter, or a deliberately paired UI plus CLI workflow.
+- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, skill chaining/LangGraph, graph visualization, and Next.js migration deferred unless the next grill session explicitly selects one.
+- Preserve the completed SAM.gov boundaries as precedent: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, and all trusted downstream writes remain review-gated.
 
 ---
 

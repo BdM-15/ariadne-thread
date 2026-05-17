@@ -36,6 +36,12 @@ from ariadne.quick_capture_demo import (
     build_quick_capture_demo_thread,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence
+from ariadne.sam_gov_profiles import (
+    SamGovEnrichmentProfile,
+    SamGovProfileStore,
+    SamGovReviewCandidate,
+    build_sam_gov_command_surface_summary,
+)
 
 
 def render_command_center_shell(
@@ -80,6 +86,11 @@ def render_command_center_shell(
         _resolve_runtime_path(root, settings.ariadne_piid_profiles_dir)
     )
     piid_profiles = piid_profile_store.list()
+    sam_gov_profile_store = SamGovProfileStore(
+        _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
+    )
+    sam_gov_profiles = sam_gov_profile_store.list()
+    sam_gov_live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -355,6 +366,7 @@ def render_command_center_shell(
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{len(catalog.entries)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
+          <a href="#sam-gov-enrichment-profiles">SAM.gov Profiles <small>{len(sam_gov_profiles)}</small></a>
           <a href="#piid-profile-command-surface">PIID Profiles <small>{len(piid_profiles)}</small></a>
         </nav>
       </div>
@@ -379,6 +391,7 @@ def render_command_center_shell(
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
         {_render_federal_data_capabilities_panel(federal_data_registry.capabilities)}
+        {_render_sam_gov_enrichment_profiles_panel(sam_gov_profiles, sam_gov_live_ready)}
         {_render_piid_profile_command_surface_panel(piid_profiles)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
@@ -633,8 +646,7 @@ def _render_federal_data_capabilities_panel(
     manifests: tuple[FederalDataCapabilityManifest, ...],
 ) -> str:
     product_integrated_count = sum(
-        manifest.product_status.value == "product_integrated"
-        for manifest in manifests
+        manifest.product_status.value == "product_integrated" for manifest in manifests
     )
     rows = "".join(
         _render_federal_data_capability_row(manifest) for manifest in manifests
@@ -653,11 +665,14 @@ def _render_federal_data_capability_row(
     manifest: FederalDataCapabilityManifest,
 ) -> str:
     status = manifest.product_status.value.replace("_", " ")
-    env_vars = ", ".join(
-        manifest.required_env_vars
-        + manifest.optional_env_vars
-        + manifest.upstream_env_vars
-    ) or "no env vars"
+    env_vars = (
+        ", ".join(
+            manifest.required_env_vars
+            + manifest.optional_env_vars
+            + manifest.upstream_env_vars
+        )
+        or "no env vars"
+    )
     return f"""<div class="row"><strong>{escape(manifest.name)}</strong><span>{escape(status)} - {escape(manifest.package)} {escape(manifest.version)}</span><span>{escape(manifest.description)}</span><span>Env names: {escape(env_vars)}</span></div>"""
 
 
@@ -689,10 +704,13 @@ def _render_piid_profile_row(profile: PiidContractIntelligenceProfile) -> str:
         _render_piid_review_candidate(candidate)
         for candidate in profile.review_candidates
     )
-    pivots = ", ".join(
-        f"{pivot.pivot_type.value}: {pivot.value}"
-        for pivot in profile.deterministic_pivots[:8]
-    ) or "none"
+    pivots = (
+        ", ".join(
+            f"{pivot.pivot_type.value}: {pivot.value}"
+            for pivot in profile.deterministic_pivots[:8]
+        )
+        or "none"
+    )
     gaps = ", ".join(gap.field_key for gap in profile.gaps[:8]) or "none"
     return f"""<div class="row"><strong>{escape(profile.normalized_piid)}</strong><span>Scenario: {escape(profile.scenario.value.replace("_", " ").title())} - Profile: {escape(profile.id)}</span><span>Award baseline: {escape(baseline.recipient_name or "recipient unknown")} - {escape(baseline.awarding_agency_name or "agency unknown")} - {escape(_money_label(baseline.award_amount))}</span><span>Burn posture: net obligations {escape(_money_label(burn.net_obligations))} - transactions {burn.transaction_count} - completeness {escape(burn.completeness)}</span><span>Vehicle context: {escape(vehicle.linkage_confidence)} - parent {escape(vehicle.parent_idv or vehicle.parent_generated_internal_id or "none")}</span><span>Deterministic pivots: {escape(pivots)}</span><span>Gaps: {escape(gaps)}</span><span>Provenance: {escape(profile.provenance.source_capability_id)} - {escape(profile.provenance.source_tool_name)} - {escape(profile.provenance.source_package)} {escape(profile.provenance.source_package_version)}</span><div class="row-list"><div class="row"><strong>Recommended enrichments</strong>{routes}</div><div class="row"><strong>PIID review candidates</strong>{candidates}</div><div class="row"><strong>Deferred artifact actions</strong><span>Draft report - Deferred until Artifact Renderer work exists.</span><span>Export XLSX - Deferred until Artifact Renderer work exists.</span><span>Export DOCX - Deferred until Artifact Renderer work exists.</span><span>Prepare visual briefing - Deferred until Artifact Renderer work exists.</span><div class="action-strip" aria-label="Deferred PIID artifact actions"><button class="action-button secondary" type="button" disabled>Draft report</button><button class="action-button secondary" type="button" disabled>Export XLSX</button><button class="action-button secondary" type="button" disabled>Export DOCX</button><button class="action-button secondary" type="button" disabled>Prepare visual briefing</button></div></div></div></div>"""
 
@@ -703,6 +721,307 @@ def _render_piid_enrichment_route(route: PiidEnrichmentRoute) -> str:
 
 
 def _render_piid_review_candidate(candidate: PiidReviewCandidate) -> str:
+    state = candidate.review_state.value.replace("_", " ").title()
+    trusted_state = (
+        "trusted output written"
+        if candidate.trusted_output_written
+        else "trusted output not written"
+    )
+    workflow = candidate.target_workflow.replace("_", " ").title()
+    return f"""<span>{escape(candidate.title)} - {escape(workflow)} - Review State: {escape(state)} - {escape(trusted_state)}</span>"""
+
+
+def _render_sam_gov_enrichment_profiles_panel(
+    profiles: list[SamGovEnrichmentProfile],
+    live_ready: bool,
+) -> str:
+    readiness = (
+        "Live readiness: SAM.gov API key configured"
+        if live_ready
+        else "Live readiness: missing SAM.gov API key"
+    )
+    readiness_class = "green" if live_ready else "amber"
+    if not profiles:
+        rows = """<div class="row"><strong>No SAM.gov profiles yet</strong><span>Create one through POST /api/federal-data/sam-gov/enrichment-profiles with an input_pivot.</span><span>Page render reads persisted profiles only and does not start upstream MCP processes.</span></div>"""
+    else:
+        rows = "".join(
+            _render_sam_gov_enrichment_profile_row(profile) for profile in profiles[-3:]
+        )
+    return f"""<section class="panel" id="sam-gov-enrichment-profiles" aria-labelledby="sam-gov-enrichment-profiles-heading">
+      <div class="panel-heading"><h2 id="sam-gov-enrichment-profiles-heading">SAM.gov Enrichment Profiles</h2><span class="status-chip {readiness_class}">{len(profiles)} persisted</span></div>
+    <div class="row-list">
+        <div class="row"><strong>Entity Record, Known Opportunity, Opportunity Discovery, and Attachment Intake lanes</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
+      {rows}
+      </div>
+    </section>"""
+
+
+def render_sam_gov_enrichment_profile_shell(
+    settings: RuntimeSettings,
+    profile_id: str,
+    *,
+    workspace_root: Path | None = None,
+) -> str:
+    root = workspace_root or Path.cwd()
+    store = SamGovProfileStore(
+        _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
+    )
+    profile = store.read(profile_id)
+    live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
+    summary = build_sam_gov_command_surface_summary(profile, live_ready=live_ready)
+    readiness = (
+        "Live readiness: SAM.gov API key configured"
+        if live_ready
+        else "Live readiness: missing SAM.gov API key"
+    )
+    fake_note = (
+        "Fake adapter test data is not live SAM.gov source success."
+        if "fake adapter test" in summary.source_mode_labels
+        else "Live SAM.gov data still requires reviewer acceptance before trusted writes."
+    )
+    lane_rows = "".join(
+        _render_sam_gov_command_lane_state(lane) for lane in summary.lane_states
+    )
+    review_rows = "".join(
+        _render_sam_gov_review_candidate(candidate)
+        for candidate in profile.review_candidates
+    )
+    attachment_rows = _render_sam_gov_attachment_command_rows(profile)
+    deferral_rows = "".join(
+        f"""<div class="row"><strong>{escape(_sam_gov_deferral_label(deferral))}</strong><span>Visible deferral; no implementation is invoked from this command surface.</span></div>"""
+        for deferral in summary.explicit_deferrals
+    )
+    source_modes = ", ".join(summary.source_mode_labels) or "not started"
+    workflows = (
+        ", ".join(
+            _sam_gov_workflow_label(workflow)
+            for workflow in summary.review_summary.target_workflows
+        )
+        or "none"
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SAM.gov Enrichment Profile Command Surface</title>
+    <style>
+        :root {{ color-scheme: dark; --bg: #071018; --surface: #0f172a; --surface-strong: #111c31; --edge: #334155; --edge-soft: #243244; --text: #f8fafc; --muted: #b6c4d6; --quiet: #8292a8; --cyan: #22d3ee; --green: #22c55e; --amber: #fbbf24; --focus: #fbbf24; }}
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; min-height: 100dvh; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); }}
+        a {{ color: inherit; }}
+        a:focus-visible, button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+        .main {{ width: min(100% - 32px, 1320px); margin: 0 auto; padding: 24px 0 48px; }}
+        .topbar {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; }}
+        .back-link, .action-button {{ display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 14px; border: 1px solid var(--cyan); border-radius: 8px; color: var(--cyan); background: rgba(34, 211, 238, 0.1); text-decoration: none; font: inherit; font-weight: 900; }}
+        .action-button {{ cursor: not-allowed; opacity: 0.74; }}
+        h1 {{ margin: 0; font-size: 1.8rem; line-height: 1.12; letter-spacing: 0; }}
+        h2 {{ margin: 0; font-size: 1.05rem; line-height: 1.25; letter-spacing: 0; }}
+        p {{ margin: 0; color: var(--muted); line-height: 1.55; }}
+        .eyebrow {{ margin: 0 0 8px; color: var(--cyan); font-size: 0.78rem; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }}
+        .summary {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }}
+        .metric, .panel, .row {{ border: 1px solid var(--edge); border-radius: 8px; background: var(--surface); }}
+        .metric {{ min-height: 94px; padding: 14px; }}
+        .metric span {{ display: block; color: var(--quiet); font-size: 0.78rem; font-weight: 800; text-transform: uppercase; }}
+        .metric strong {{ display: block; margin-top: 8px; color: var(--text); }}
+        .grid {{ display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 14px; }}
+        .panel {{ padding: 16px; }}
+        .panel-heading {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }}
+        .row-list {{ display: grid; gap: 8px; }}
+        .row {{ display: grid; gap: 6px; padding: 12px; background: var(--surface-strong); }}
+        .row span {{ color: var(--muted); line-height: 1.45; }}
+        .status-chip {{ display: inline-flex; align-items: center; min-height: 30px; padding: 5px 8px; border: 1px solid var(--edge); border-radius: 8px; color: var(--muted); background: #0b1220; font-size: 0.78rem; font-weight: 800; white-space: nowrap; }}
+        .status-chip.green {{ border-color: rgba(34, 197, 94, 0.55); color: var(--green); background: rgba(34, 197, 94, 0.1); }}
+        .status-chip.amber {{ border-color: rgba(251, 191, 36, 0.55); color: var(--amber); background: rgba(251, 191, 36, 0.1); }}
+        .actions {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
+        @media (max-width: 980px) {{ .summary, .grid {{ grid-template-columns: 1fr; }} .actions {{ grid-template-columns: 1fr; }} .topbar {{ align-items: flex-start; flex-direction: column; }} }}
+    </style>
+</head>
+<body>
+    <main class="main">
+        <div class="topbar"><a class="back-link" href="/#sam-gov-enrichment-profiles">Back to Command Center</a><span class="status-chip {"green" if live_ready else "amber"}">{escape(readiness)}</span></div>
+        <header>
+            <p class="eyebrow">Saved SAM.gov profile</p>
+            <h1>SAM.gov Enrichment Profile Command Surface</h1>
+            <p>Profile {escape(profile.id)} keeps Entity Record, Known Opportunity, Opportunity Discovery, and Attachment Intake lanes together for review. Page render reads saved state only.</p>
+        </header>
+        <section class="summary" aria-label="SAM.gov command surface summary">
+            <div class="metric"><span>Source modes</span><strong>{escape(source_modes)}</strong></div>
+            <div class="metric"><span>Review candidates</span><strong>{summary.review_summary.candidate_count}</strong></div>
+            <div class="metric"><span>Document Intake links</span><strong>{len(summary.linked_document_intake_record_ids)}</strong></div>
+            <div class="metric"><span>Trusted writes</span><strong>Trusted writes: none</strong></div>
+        </section>
+        <div class="grid">
+            <section class="panel" aria-labelledby="profile-source-heading">
+                <div class="panel-heading"><h2 id="profile-source-heading">Source And Readiness</h2><span class="status-chip {"green" if live_ready else "amber"}">{escape(readiness)}</span></div>
+                <div class="row-list">
+                    <div class="row"><strong>{escape(fake_note)}</strong><span>{escape(summary.no_auto_trusted_writes_message)}</span></div>
+                    <div class="row"><strong>Review target workflows</strong><span>{escape(workflows)}</span></div>
+                </div>
+            </section>
+            <section class="panel" aria-labelledby="lane-heading">
+                <div class="panel-heading"><h2 id="lane-heading">Four-Lane Workflow</h2><span class="status-chip amber">review gated</span></div>
+                <div class="row-list">{lane_rows}</div>
+            </section>
+            <section class="panel" aria-labelledby="attachment-heading">
+                <div class="panel-heading"><h2 id="attachment-heading">Attachment And Document Intake State</h2><span class="status-chip amber">explicit approval only</span></div>
+                <div class="row-list">{attachment_rows}</div>
+            </section>
+            <section class="panel" aria-labelledby="candidate-heading">
+                <div class="panel-heading"><h2 id="candidate-heading">Review Candidates</h2><span class="status-chip amber">no trusted writes</span></div>
+                <div class="row-list"><div class="row"><strong>Trusted writes: none</strong><span>{escape(summary.review_summary.review_gate_message)}</span><div class="actions"><button class="action-button" type="button" disabled>Accept Evidence Store</button><button class="action-button" type="button" disabled>Promote Briefing Packet</button><button class="action-button" type="button" disabled>Route Follow-up</button></div></div><div class="row"><strong>Candidate destinations</strong>{review_rows}</div></div>
+            </section>
+            <section class="panel" aria-labelledby="deferral-heading">
+                <div class="panel-heading"><h2 id="deferral-heading">Explicit Deferrals</h2><span class="status-chip amber">visible</span></div>
+                <div class="row-list">{deferral_rows}</div>
+            </section>
+            <section class="panel" aria-labelledby="json-heading">
+                <div class="panel-heading"><h2 id="json-heading">API Surface</h2><span class="status-chip green">saved</span></div>
+                <div class="row-list"><div class="row"><strong>Profile JSON</strong><span>/api/federal-data/sam-gov/enrichment-profiles/{escape(profile.id)}</span></div><div class="row"><strong>Command summary JSON</strong><span>/api/federal-data/sam-gov/enrichment-profiles/{escape(profile.id)}/command-surface</span></div></div>
+            </section>
+        </div>
+    </main>
+</body>
+</html>"""
+
+
+def _render_sam_gov_command_lane_state(lane) -> str:
+    source_mode = lane.source_mode.replace("_", " ") if lane.source_mode else "none"
+    limitations = "; ".join(lane.source_limitations) or "none"
+    return f"""<div class="row"><strong>{escape(lane.lane_name)}</strong><span>Status: {escape(lane.status.replace("_", " "))}</span><span>Primary: {escape(lane.primary_label)}</span><span>Source mode: {escape(source_mode)} - Source limitations: {escape(limitations)}</span></div>"""
+
+
+def _render_sam_gov_attachment_command_rows(profile: SamGovEnrichmentProfile) -> str:
+    if (
+        profile.attachment_intake_lane is None
+        or not profile.attachment_intake_lane.attachments
+    ):
+        return """<div class="row"><strong>No official attachments</strong><span>Attachment Intake waits for official SAM.gov resource links.</span></div>"""
+    rows = []
+    for attachment in profile.attachment_intake_lane.attachments:
+        status = attachment.download_status.value.replace("_", " ")
+        intake = attachment.intake_record_id or "not routed to Document Intake"
+        source = (
+            attachment.source_title
+            or attachment.source_solicitation_number
+            or "unknown source notice"
+        )
+        rows.append(
+            f"""<div class="row"><strong>{escape(attachment.title)}</strong><span>{escape(source)} - {escape(status)}</span><span>Document Intake record: {escape(intake)}</span><span>{escape(attachment.filename or attachment.url)}</span></div>"""
+        )
+    return "".join(rows)
+
+
+def _sam_gov_workflow_label(workflow: str) -> str:
+    return {
+        "evidence_store": "Evidence Store",
+        "living_briefing_packet": "Living Briefing Packet",
+        "capture_action_plan": "Capture Action Plan",
+        "risk_register": "Risk Register",
+        "call_plan": "Call Plan",
+        "document_intake": "Document Intake",
+        "web_enrichment_support": "Web Enrichment Support",
+    }.get(workflow, workflow.replace("_", " ").title())
+
+
+def _sam_gov_deferral_label(deferral: str) -> str:
+    return deferral.removesuffix(".").replace(
+        "Firecrawl/Web Enrichment Support implementation deferred",
+        "Firecrawl/Web Enrichment Support deferred",
+    )
+
+
+def _render_sam_gov_enrichment_profile_row(
+    profile: SamGovEnrichmentProfile,
+) -> str:
+    lane_rows = []
+    if profile.entity_lane is not None:
+        lane = profile.entity_lane
+        match = lane.matches[0] if lane.matches else None
+        match_label = (
+            match.legal_business_name or match.uei or "no official entity match"
+            if match is not None
+            else "no official entity match"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Entity Record lane</strong><span>Entity status: {escape(lane.lookup_status.value.replace("_", " "))}</span><span>Entity match: {escape(match_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if profile.known_opportunity_lane is not None:
+        lane = profile.known_opportunity_lane
+        record = lane.records[0] if lane.records else None
+        record_label = (
+            record.title
+            or record.solicitation_number
+            or record.notice_id
+            or "no official opportunity match"
+            if record is not None
+            else "no official opportunity match"
+        )
+        notice_label = (
+            record.notice_type if record is not None and record.notice_type else "none"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Known Opportunity lane</strong><span>Lookup status: {escape(lane.lookup_status.value.replace("_", " "))} - Pivot: {escape(lane.normalized_pivot)}</span><span>Top notice: {escape(record_label)} - {escape(notice_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if profile.opportunity_discovery_lane is not None:
+        lane = profile.opportunity_discovery_lane
+        record = lane.records[0] if lane.records else None
+        record_label = (
+            record.title
+            or record.solicitation_number
+            or record.notice_id
+            or "no official opportunity match"
+            if record is not None
+            else "no official opportunity match"
+        )
+        notice_label = (
+            record.notice_type if record is not None and record.notice_type else "none"
+        )
+        confidence = (
+            f"{record.match_confidence:.2f}" if record is not None else "unknown"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Opportunity Discovery lane</strong><span>Discovery status: {escape(lane.discovery_status.value.replace("_", " "))} - Records: {len(lane.records)}</span><span>Top notice: {escape(record_label)} - {escape(notice_label)} - confidence {escape(confidence)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if profile.attachment_intake_lane is not None:
+        lane = profile.attachment_intake_lane
+        attachment = lane.attachments[0] if lane.attachments else None
+        attachment_label = (
+            attachment.title if attachment is not None else "no official attachments"
+        )
+        attachment_status = (
+            attachment.download_status.value.replace("_", " ")
+            if attachment is not None
+            else "none"
+        )
+        intake_label = (
+            attachment.intake_record_id
+            if attachment is not None and attachment.intake_record_id
+            else "not routed to Document Intake"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Attachment Intake lane</strong><span>Attachments: {len(lane.attachments)} - First: {escape(attachment_label)}</span><span>Download state: {escape(attachment_status)} - Document Intake: {escape(intake_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if not lane_rows:
+        lane_rows.append(
+            """<div class="row"><strong>No SAM.gov lane started</strong><span>Create an entity or opportunity discovery profile through the API.</span></div>"""
+        )
+    candidates = "".join(
+        _render_sam_gov_review_candidate(candidate)
+        for candidate in profile.review_candidates[:8]
+    )
+    return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Profile: {escape(profile.id)}</span><a class="link-row" href="/federal-data/sam-gov/enrichment-profiles/{escape(profile.id)}">Open profile command surface</a><div class="row-list">{"".join(lane_rows)}<div class="row"><strong>SAM.gov review candidates</strong>{candidates}</div></div></div>"""
+
+
+def _render_sam_gov_review_candidate(candidate: SamGovReviewCandidate) -> str:
     state = candidate.review_state.value.replace("_", " ").title()
     trusted_state = (
         "trusted output written"

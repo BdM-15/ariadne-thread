@@ -631,6 +631,7 @@ def _render_federal_data_capabilities_panel(
       <div class="panel-heading"><h2 id="federal-data-capabilities-heading">Federal Data Capabilities</h2><span class="status-chip cyan">{product_integrated_count} product integrated</span></div>
       <div class="row-list">
         <div class="row"><strong>1102tools MCP registry</strong><span>No upstream MCP source is vendored into Ariadne.</span><span>Manifests record pinned packages, command shapes, provenance, and env-var names only.</span><a class="action-button secondary" href="/api/federal-data/capabilities">Open federal data report</a></div>
+        <div class="row"><strong>Initialize smoke checks</strong><span>Initialize smoke checks use JSON-RPC initialize only.</span><span>POST /api/federal-data/capabilities/{{capability_id}}/smoke-check</span><span>Page render never starts upstream MCP processes.</span></div>
         {rows}
       </div>
     </section>"""

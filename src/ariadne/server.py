@@ -41,8 +41,12 @@ from ariadne.document_intake import (
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore
 from ariadne.federal_data import (
     FederalDataCapabilityManifest,
+    FederalDataInitializeRunner,
     FederalDataProductStatus,
+    FederalDataSmokeCheckResult,
     list_federal_data_capability_manifests,
+    run_federal_data_initialize_smoke_check,
+    run_mcp_initialize_command,
 )
 from ariadne.local_admin_model import request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
@@ -159,6 +163,15 @@ class FederalDataCapabilitiesResponse(BaseModel):
     smoke_tested_count: int
     product_integrated_count: int
     deferred_product_workflow_count: int
+    safe_smoke_check_method: str = "json_rpc_initialize_only"
+    smoke_check_endpoint_template: str = (
+        "/api/federal-data/capabilities/{capability_id}/smoke-check"
+    )
+
+
+class FederalDataSmokeCheckResponse(BaseModel):
+    result: FederalDataSmokeCheckResult
+    safe_smoke_check_method: str = "json_rpc_initialize_only"
 
 
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
@@ -236,7 +249,11 @@ class CapturePromotionResponse(BaseModel):
     decision: DraftPartPromotionDecision | None = None
 
 
-def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
+def create_app(
+    settings: RuntimeSettings | None = None,
+    *,
+    federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
+) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
 
@@ -320,6 +337,30 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 is FederalDataProductStatus.DEFERRED_PRODUCT_WORKFLOW
                 for capability in capabilities
             ),
+        )
+
+    @app.post("/api/federal-data/capabilities/{capability_id}/smoke-check")
+    def federal_data_capability_smoke_check(
+        capability_id: str,
+    ) -> FederalDataSmokeCheckResponse:
+        registry = list_federal_data_capability_manifests()
+        manifest = next(
+            (
+                capability
+                for capability in registry.capabilities
+                if capability.id == capability_id
+            ),
+            None,
+        )
+        if manifest is None:
+            raise HTTPException(status_code=404, detail="Federal Data Capability not found")
+        return FederalDataSmokeCheckResponse(
+            result=run_federal_data_initialize_smoke_check(
+                manifest,
+                runner=federal_data_smoke_runner,
+                env=_federal_data_env_for_manifest(manifest, runtime_settings),
+                timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            )
         )
 
     @app.get("/api/document-intake/queue")
@@ -717,6 +758,28 @@ def _resolve_runtime_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _federal_data_env_for_manifest(
+    manifest: FederalDataCapabilityManifest,
+    settings: RuntimeSettings,
+) -> dict[str, str]:
+    env = {
+        name: value
+        for name, value in settings.federal_data_env.items()
+        if name
+        in manifest.required_env_vars + manifest.optional_env_vars + manifest.upstream_env_vars
+    }
+    for ariadne_name, upstream_name in zip(
+        manifest.required_env_vars,
+        manifest.upstream_env_vars,
+        strict=False,
+    ):
+        if ariadne_name in env and upstream_name not in env:
+            env[upstream_name] = env[ariadne_name]
+    if manifest.id == "regulations_gov" and "API_DATA_GOV_KEY" in env:
+        env.setdefault("REGULATIONS_GOV_API_KEY", env["API_DATA_GOV_KEY"])
+    return env
 
 
 def _write_intake_record_and_generic_bundle(

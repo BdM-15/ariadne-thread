@@ -1,4 +1,5 @@
 from ariadne.sam_gov_profiles import (
+    SamGovAttachmentDownloadStatus,
     SamGovEntityLookupProvenance,
     SamGovEntityLookupResult,
     SamGovEntityLookupStatus,
@@ -758,4 +759,100 @@ def test_known_opportunity_lookup_marks_ambiguous_archived_records() -> None:
     assert (
         "SAM.gov opportunity record appears inactive, archived, or stale; verify current status before capture action."
         in lookup.source_limitations
+    )
+
+
+def test_known_opportunity_surfaces_official_attachment_metadata_pending_approval() -> (
+    None
+):
+    profile = create_sam_gov_enrichment_profile(
+        SamGovEntityLookupResult(
+            input_pivot="UEIACME12345",
+            normalized_pivot="UEIACME12345",
+            pivot_type="uei",
+            status=SamGovEntityLookupStatus.SUCCESS,
+            provenance=SamGovEntityLookupProvenance(
+                source_package="sam-gov-mcp",
+                source_package_version="0.4.1",
+                checked_at="2026-05-17T18:00:00Z",
+                source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+            ),
+            matches=(SamGovEntityMatch(legal_business_name="ACME FEDERAL LLC"),),
+            diagnostic_summary="Fake adapter resolved one SAM.gov entity record.",
+        ),
+        profile_id="sam_profile_UEIACME12345",
+        created_at="2026-05-17T18:01:00Z",
+    )
+    lookup = resolve_sam_gov_known_opportunity(
+        SamGovKnownOpportunityQuery(
+            input_pivot="FA8650-26-R-0001",
+            pivot_type=SamGovKnownOpportunityPivotType.SOLICITATION_NUMBER,
+            posted_from="05/01/2026",
+            posted_to="05/31/2026",
+        ),
+        runner=lambda tool_name, arguments: SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-known-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix final RFP",
+                        "type": "Solicitation",
+                        "description": "https://sam.gov/opp/notice-known-001/description",
+                        "resourceLinks": [
+                            {
+                                "title": "Project Phoenix RFP package",
+                                "url": "https://sam.gov/api/prod/opps/v3/resources/files/notice-known-001/rfp-package.pdf",
+                                "filename": "project-phoenix-rfp.pdf",
+                                "mimeType": "application/pdf",
+                                "size": 512000,
+                            },
+                            {
+                                "title": "Unofficial mirror",
+                                "url": "https://example.com/project-phoenix-rfp.pdf",
+                            },
+                        ],
+                    }
+                ]
+            },
+        ),
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T18:05:00Z",
+    )
+
+    updated_profile = add_sam_gov_known_opportunity_lane(
+        profile,
+        lookup,
+        updated_at="2026-05-17T18:06:00Z",
+    )
+
+    record = lookup.records[0]
+    assert [attachment.title for attachment in record.attachments] == [
+        "SAM.gov opportunity description",
+        "Project Phoenix RFP package",
+    ]
+    assert (
+        record.attachments[0].url == "https://sam.gov/opp/notice-known-001/description"
+    )
+    assert record.attachments[1].filename == "project-phoenix-rfp.pdf"
+    assert updated_profile.attachment_intake_lane is not None
+    attachment_lane = updated_profile.attachment_intake_lane
+    assert [
+        attachment.download_status for attachment in attachment_lane.attachments
+    ] == [
+        SamGovAttachmentDownloadStatus.PENDING_APPROVAL,
+        SamGovAttachmentDownloadStatus.PENDING_APPROVAL,
+    ]
+    assert all(
+        attachment.intake_record_id is None
+        for attachment in attachment_lane.attachments
+    )
+    assert (
+        "SAM.gov opportunity record exposed non-SAM.gov resource link; download blocked."
+        in attachment_lane.source_limitations
+    )
+    assert any(
+        candidate.title == "Action Plan: review SAM.gov opportunity attachments"
+        for candidate in updated_profile.review_candidates
     )

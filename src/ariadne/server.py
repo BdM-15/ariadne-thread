@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
@@ -88,6 +90,8 @@ from ariadne.quick_capture import (
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 from ariadne.sam_gov_profiles import (
+    SamGovAttachmentFetchResult,
+    SamGovAttachmentFetcher,
     SamGovEnrichmentProfile,
     SamGovKnownOpportunityQuery,
     SamGovMcpToolRunner,
@@ -99,6 +103,10 @@ from ariadne.sam_gov_profiles import (
     create_sam_gov_enrichment_profile,
     create_sam_gov_lookup_runner,
     create_sam_gov_opportunity_discovery_profile,
+    find_sam_gov_attachment,
+    is_official_sam_gov_attachment_url,
+    record_sam_gov_attachment_download,
+    record_sam_gov_attachment_download_failure,
     record_sam_gov_review_decision,
     resolve_sam_gov_entity_lookup,
     resolve_sam_gov_known_opportunity,
@@ -264,6 +272,15 @@ class SamGovEnrichmentProfileReviewDecisionRequest(BaseModel):
     reviewer_rationale: str
 
 
+class SamGovAttachmentDownloadApprovalRequest(BaseModel):
+    reviewer_rationale: str
+
+
+class SamGovAttachmentDownloadResponse(BaseModel):
+    profile: SamGovEnrichmentProfile
+    intake_record: DocumentIntakeRecord | None = None
+
+
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
     extraction_bundle_id: str
     projection_id: str | None = None
@@ -346,6 +363,7 @@ def create_app(
     usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
     sam_gov_entity_runner: SamGovMcpToolRunner | None = None,
     sam_gov_opportunity_runner: SamGovMcpToolRunner | None = None,
+    sam_gov_attachment_fetcher: SamGovAttachmentFetcher | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
@@ -648,6 +666,93 @@ def create_app(
         )
         updated_profile = add_sam_gov_known_opportunity_lane(profile, lookup)
         return SamGovEnrichmentProfileResponse(profile=store.write(updated_profile))
+
+    @app.post(
+        "/api/federal-data/sam-gov/enrichment-profiles/{profile_id}/attachments/{attachment_id}/approve-download"
+    )
+    def approve_sam_gov_attachment_download_api(
+        profile_id: str,
+        attachment_id: str,
+        request: SamGovAttachmentDownloadApprovalRequest,
+    ) -> SamGovAttachmentDownloadResponse:
+        if not request.reviewer_rationale.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="reviewer_rationale is required to approve attachment download",
+            )
+        profile_store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        try:
+            profile = profile_store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        attachment = find_sam_gov_attachment(profile, attachment_id)
+        if attachment is None:
+            raise HTTPException(status_code=404, detail="SAM.gov attachment not found")
+        if not is_official_sam_gov_attachment_url(attachment.url):
+            raise HTTPException(
+                status_code=400,
+                detail="SAM.gov attachment download requires an official SAM.gov surfaced link",
+            )
+
+        fetcher = sam_gov_attachment_fetcher or _fetch_sam_gov_attachment
+        fetched = fetcher(attachment.url)
+        if not fetched.ok or fetched.content is None:
+            updated_profile = record_sam_gov_attachment_download_failure(
+                profile,
+                attachment_id=attachment.id,
+                source_limitation=(
+                    fetched.error_message or "SAM.gov attachment download failed"
+                ),
+            )
+            return SamGovAttachmentDownloadResponse(
+                profile=profile_store.write(updated_profile),
+                intake_record=None,
+            )
+
+        source_material = classify_uploaded_source_material(
+            filename=fetched.filename or attachment.filename,
+            mime_type=fetched.mime_type or attachment.mime_type,
+            content=fetched.content,
+        )
+        intake_store = DocumentIntakeStore(
+            _resolve_runtime_path(runtime_settings.ariadne_document_intake_dir)
+        )
+        intake_record = _write_intake_record_and_generic_bundle(
+            intake_store,
+            create_document_intake_record(
+                source_material,
+                opportunity_id=profile.id,
+                record_id=f"intake_{attachment.id}",
+                source_provenance=_sam_gov_attachment_source_provenance(
+                    profile,
+                    attachment,
+                ),
+            ),
+            source_material,
+        )
+        updated_profile = record_sam_gov_attachment_download(
+            profile,
+            attachment_id=attachment.id,
+            intake_record_id=intake_record.id,
+            intake_record_source_ref=intake_record.source_ref,
+            intake_material_type=(
+                intake_record.material_type.value
+                if intake_record.material_type is not None
+                else "unknown"
+            ),
+            intake_status=intake_record.status.value,
+        )
+        return SamGovAttachmentDownloadResponse(
+            profile=profile_store.write(updated_profile),
+            intake_record=intake_record,
+        )
 
     @app.get("/api/federal-data/sam-gov/enrichment-profiles/{profile_id}")
     def sam_gov_enrichment_profile(
@@ -1160,6 +1265,59 @@ def _sam_gov_entity_runner_and_source_mode(
         ),
         injected_source_mode or SamGovSourceMode.LIVE_SAM_GOV,
     )
+
+
+def _fetch_sam_gov_attachment(url: str) -> SamGovAttachmentFetchResult:
+    request = Request(url, headers={"User-Agent": "ariadne-thread/0.1"})
+    try:
+        with urlopen(request, timeout=30) as response:
+            content = response.read(25 * 1024 * 1024 + 1)
+            if len(content) > 25 * 1024 * 1024:
+                return SamGovAttachmentFetchResult(
+                    ok=False,
+                    error_message="SAM.gov attachment exceeded local download size limit.",
+                )
+            return SamGovAttachmentFetchResult(
+                ok=True,
+                content=content,
+                filename=Path(url).name or None,
+                mime_type=response.headers.get_content_type(),
+            )
+    except HTTPError as error:
+        return SamGovAttachmentFetchResult(
+            ok=False,
+            error_message=f"SAM.gov attachment download failed: HTTP {error.code}",
+        )
+    except URLError as error:
+        return SamGovAttachmentFetchResult(
+            ok=False,
+            error_message=f"SAM.gov attachment download failed: {error.reason}",
+        )
+
+
+def _sam_gov_attachment_source_provenance(
+    profile: SamGovEnrichmentProfile,
+    attachment,
+) -> dict[str, str]:
+    source_mode = (
+        profile.attachment_intake_lane.provenance.source_mode.value
+        if profile.attachment_intake_lane is not None
+        else SamGovSourceMode.LIVE_SAM_GOV.value
+    )
+    provenance = {
+        "source_system": "sam.gov",
+        "sam_gov_profile_id": profile.id,
+        "sam_gov_attachment_id": attachment.id,
+        "sam_gov_attachment_url": attachment.url,
+        "sam_gov_source_mode": source_mode,
+    }
+    if attachment.source_notice_id:
+        provenance["sam_gov_source_notice_id"] = attachment.source_notice_id
+    if attachment.source_solicitation_number:
+        provenance["sam_gov_source_solicitation_number"] = (
+            attachment.source_solicitation_number
+        )
+    return provenance
 
 
 def _write_intake_record_and_generic_bundle(

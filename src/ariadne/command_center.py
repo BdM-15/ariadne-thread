@@ -748,8 +748,8 @@ def _render_sam_gov_enrichment_profiles_panel(
         )
     return f"""<section class="panel" id="sam-gov-enrichment-profiles" aria-labelledby="sam-gov-enrichment-profiles-heading">
       <div class="panel-heading"><h2 id="sam-gov-enrichment-profiles-heading">SAM.gov Enrichment Profiles</h2><span class="status-chip {readiness_class}">{len(profiles)} persisted</span></div>
-      <div class="row-list">
-            <div class="row"><strong>Entity Record and Opportunity Discovery lanes</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
+    <div class="row-list">
+        <div class="row"><strong>Entity Record, Known Opportunity, and Opportunity Discovery lanes</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
       {rows}
       </div>
     </section>"""
@@ -771,6 +771,23 @@ def _render_sam_gov_enrichment_profile_row(
         limitations = "; ".join(lane.source_limitations) or "none"
         lane_rows.append(
             f"""<div class="row"><strong>Entity Record lane</strong><span>Entity status: {escape(lane.lookup_status.value.replace("_", " "))}</span><span>Entity match: {escape(match_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if profile.known_opportunity_lane is not None:
+        lane = profile.known_opportunity_lane
+        record = lane.records[0] if lane.records else None
+        record_label = (
+            record.title
+            or record.solicitation_number
+            or record.notice_id
+            or "no official opportunity match"
+            if record is not None
+            else "no official opportunity match"
+        )
+        notice_label = record.notice_type if record is not None else "none"
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Known Opportunity lane</strong><span>Lookup status: {escape(lane.lookup_status.value.replace("_", " "))} - Pivot: {escape(lane.normalized_pivot)}</span><span>Top notice: {escape(record_label)} - {escape(notice_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
         )
     if profile.opportunity_discovery_lane is not None:
         lane = profile.opportunity_discovery_lane

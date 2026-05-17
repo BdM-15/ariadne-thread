@@ -36,6 +36,11 @@ from ariadne.quick_capture_demo import (
     build_quick_capture_demo_thread,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence
+from ariadne.sam_gov_profiles import (
+  SamGovEnrichmentProfile,
+  SamGovProfileStore,
+  SamGovReviewCandidate,
+)
 
 
 def render_command_center_shell(
@@ -80,6 +85,11 @@ def render_command_center_shell(
         _resolve_runtime_path(root, settings.ariadne_piid_profiles_dir)
     )
     piid_profiles = piid_profile_store.list()
+    sam_gov_profile_store = SamGovProfileStore(
+      _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
+    )
+    sam_gov_profiles = sam_gov_profile_store.list()
+    sam_gov_live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -355,6 +365,7 @@ def render_command_center_shell(
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{len(catalog.entries)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
+          <a href="#sam-gov-enrichment-profiles">SAM.gov Profiles <small>{len(sam_gov_profiles)}</small></a>
           <a href="#piid-profile-command-surface">PIID Profiles <small>{len(piid_profiles)}</small></a>
         </nav>
       </div>
@@ -379,6 +390,7 @@ def render_command_center_shell(
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
         {_render_federal_data_capabilities_panel(federal_data_registry.capabilities)}
+        {_render_sam_gov_enrichment_profiles_panel(sam_gov_profiles, sam_gov_live_ready)}
         {_render_piid_profile_command_surface_panel(piid_profiles)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
@@ -703,6 +715,66 @@ def _render_piid_enrichment_route(route: PiidEnrichmentRoute) -> str:
 
 
 def _render_piid_review_candidate(candidate: PiidReviewCandidate) -> str:
+    state = candidate.review_state.value.replace("_", " ").title()
+    trusted_state = (
+        "trusted output written"
+        if candidate.trusted_output_written
+        else "trusted output not written"
+    )
+    workflow = candidate.target_workflow.replace("_", " ").title()
+    return f"""<span>{escape(candidate.title)} - {escape(workflow)} - Review State: {escape(state)} - {escape(trusted_state)}</span>"""
+
+
+def _render_sam_gov_enrichment_profiles_panel(
+    profiles: list[SamGovEnrichmentProfile],
+    live_ready: bool,
+) -> str:
+    readiness = (
+        "Live readiness: SAM.gov API key configured"
+        if live_ready
+        else "Live readiness: missing SAM.gov API key"
+    )
+    readiness_class = "green" if live_ready else "amber"
+    if not profiles:
+        rows = """<div class="row"><strong>No SAM.gov profiles yet</strong><span>Create one through POST /api/federal-data/sam-gov/enrichment-profiles with an input_pivot.</span><span>Page render reads persisted profiles only and does not start upstream MCP processes.</span></div>"""
+    else:
+        rows = "".join(
+            _render_sam_gov_enrichment_profile_row(profile)
+            for profile in profiles[-3:]
+        )
+    return f"""<section class="panel" id="sam-gov-enrichment-profiles" aria-labelledby="sam-gov-enrichment-profiles-heading">
+      <div class="panel-heading"><h2 id="sam-gov-enrichment-profiles-heading">SAM.gov Enrichment Profiles</h2><span class="status-chip {readiness_class}">{len(profiles)} persisted</span></div>
+      <div class="row-list">
+      <div class="row"><strong>Entity Record lane</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
+      {rows}
+      </div>
+    </section>"""
+
+
+def _render_sam_gov_enrichment_profile_row(
+    profile: SamGovEnrichmentProfile,
+) -> str:
+    lane = profile.entity_lane
+    if lane is None:
+        return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Entity lane not started - Profile: {escape(profile.id)}</span></div>"""
+    match = lane.matches[0] if lane.matches else None
+    match_label = (
+        match.legal_business_name
+        or match.uei
+        or "no official entity match"
+        if match is not None
+        else "no official entity match"
+    )
+    source_mode = lane.provenance.source_mode.value.replace("_", " ")
+    limitations = "; ".join(lane.source_limitations) or "none"
+    candidates = "".join(
+        _render_sam_gov_review_candidate(candidate)
+        for candidate in profile.review_candidates[:8]
+    )
+    return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Profile: {escape(profile.id)} - Entity status: {escape(lane.lookup_status.value.replace("_", " "))}</span><span>Entity match: {escape(match_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span><div class="row-list"><div class="row"><strong>SAM.gov review candidates</strong>{candidates}</div></div></div>"""
+
+
+def _render_sam_gov_review_candidate(candidate: SamGovReviewCandidate) -> str:
     state = candidate.review_state.value.replace("_", " ").title()
     trusted_state = (
         "trusted output written"

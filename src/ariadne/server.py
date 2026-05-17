@@ -87,6 +87,17 @@ from ariadne.quick_capture import (
     route_capture_follow_up_questions,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
+from ariadne.sam_gov_profiles import (
+    SamGovEnrichmentProfile,
+    SamGovMcpToolRunner,
+    SamGovProfileStore,
+    SamGovReviewState,
+    SamGovSourceMode,
+    create_sam_gov_enrichment_profile,
+    create_sam_gov_lookup_runner,
+    record_sam_gov_review_decision,
+    resolve_sam_gov_entity_lookup,
+)
 from ariadne.usaspending import (
     USAspendingAwardLookupResult,
     USAspendingAwardLookupStatus,
@@ -220,6 +231,25 @@ class USAspendingPiidProfilesResponse(BaseModel):
     profiles: tuple[PiidContractIntelligenceProfile, ...]
 
 
+class SamGovEnrichmentProfileCreateRequest(BaseModel):
+    input_pivot: str
+    limit: int = Field(default=10, ge=1, le=10)
+
+
+class SamGovEnrichmentProfileResponse(BaseModel):
+    profile: SamGovEnrichmentProfile
+
+
+class SamGovEnrichmentProfilesResponse(BaseModel):
+    profiles: tuple[SamGovEnrichmentProfile, ...]
+
+
+class SamGovEnrichmentProfileReviewDecisionRequest(BaseModel):
+    candidate_id: str
+    review_state: SamGovReviewState
+    reviewer_rationale: str
+
+
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
     extraction_bundle_id: str
     projection_id: str | None = None
@@ -300,6 +330,8 @@ def create_app(
     *,
     federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
     usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
+    sam_gov_entity_runner: SamGovMcpToolRunner | None = None,
+    sam_gov_source_mode: SamGovSourceMode | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -515,6 +547,77 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return USAspendingPiidProfileResponse(profile=store.write(updated_profile))
+
+    @app.get("/api/federal-data/sam-gov/enrichment-profiles")
+    def sam_gov_enrichment_profiles() -> SamGovEnrichmentProfilesResponse:
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        return SamGovEnrichmentProfilesResponse(profiles=tuple(store.list()))
+
+    @app.post("/api/federal-data/sam-gov/enrichment-profiles")
+    def create_sam_gov_enrichment_profile_api(
+        request: SamGovEnrichmentProfileCreateRequest,
+    ) -> SamGovEnrichmentProfileResponse:
+        runner, source_mode = _sam_gov_entity_runner_and_source_mode(
+            runtime_settings,
+            injected_runner=sam_gov_entity_runner,
+            injected_source_mode=sam_gov_source_mode,
+        )
+        lookup = resolve_sam_gov_entity_lookup(
+            request.input_pivot,
+            runner=runner,
+            source_mode=source_mode,
+            lookup_limit=request.limit,
+        )
+        profile = create_sam_gov_enrichment_profile(lookup)
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        return SamGovEnrichmentProfileResponse(profile=store.write(profile))
+
+    @app.get("/api/federal-data/sam-gov/enrichment-profiles/{profile_id}")
+    def sam_gov_enrichment_profile(
+        profile_id: str,
+    ) -> SamGovEnrichmentProfileResponse:
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return SamGovEnrichmentProfileResponse(profile=profile)
+
+    @app.post(
+        "/api/federal-data/sam-gov/enrichment-profiles/{profile_id}/review-decisions"
+    )
+    def sam_gov_enrichment_profile_review_decision(
+        profile_id: str,
+        request: SamGovEnrichmentProfileReviewDecisionRequest,
+    ) -> SamGovEnrichmentProfileResponse:
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+            updated_profile = record_sam_gov_review_decision(
+                profile,
+                candidate_id=request.candidate_id,
+                review_state=request.review_state,
+                reviewer_rationale=request.reviewer_rationale,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return SamGovEnrichmentProfileResponse(profile=store.write(updated_profile))
 
     @app.get("/api/document-intake/queue")
     def document_intake_queue() -> DocumentIntakeQueueResponse:
@@ -950,6 +1053,41 @@ def _federal_data_manifest(capability_id: str) -> FederalDataCapabilityManifest:
     if manifest is None:
         raise HTTPException(status_code=404, detail="Federal Data Capability not found")
     return manifest
+
+
+def _sam_gov_entity_runner_and_source_mode(
+    settings: RuntimeSettings,
+    *,
+    injected_runner: SamGovMcpToolRunner | None,
+    injected_source_mode: SamGovSourceMode | None,
+) -> tuple[SamGovMcpToolRunner, SamGovSourceMode]:
+    if injected_runner is not None:
+        return (
+            injected_runner,
+            injected_source_mode or SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    manifest = _federal_data_manifest("sam_gov")
+    env = _federal_data_env_for_manifest(manifest, settings)
+    missing_env_vars = tuple(
+        env_var_name
+        for env_var_name in manifest.required_env_vars
+        if not env.get(env_var_name)
+    )
+    if missing_env_vars:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "SAM.gov API key is required for live SAM.gov entity enrichment"
+            ),
+        )
+    return (
+        create_sam_gov_lookup_runner(
+            command=manifest.command,
+            timeout_seconds=settings.mcp_tool_timeout_seconds,
+            env=env,
+        ),
+        injected_source_mode or SamGovSourceMode.LIVE_SAM_GOV,
+    )
 
 
 def _write_intake_record_and_generic_bundle(

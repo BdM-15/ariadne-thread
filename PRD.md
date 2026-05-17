@@ -1,16 +1,16 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.9**
+**Product Requirements Document (PRD) v1.10**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
-**Date:** May 16, 2026  
-**Status:** Federal Data MCP Foundation + USAspending Recompete Intelligence Intake complete through Command Center demo
+**Date:** May 17, 2026
+**Status:** Federal Data MCP Foundation + USAspending Recompete Intelligence Intake complete; ready for next `grill-with-docs` selection
 
 ---
 
-## 0. Current State Snapshot (May 16, 2026)
+## 0. Current State Snapshot (May 17, 2026)
 
 **Completed**
 
@@ -32,8 +32,8 @@
 - ADR 0006 records the Document Intake extraction boundary: parser, retrieval, OCR, multimodal, MinerU, RAGAnything, LightRAG, and Theseus-style tools produce reviewable Extraction Bundles, while Ariadne owns trusted entities, relationships, provenance, and review gates.
 - `docs/architecture/document-intake-command-surface-plan.md` records the completed Document Intake implementation trail and hand-off notes for future parser/retrieval integration work.
 - A `grill-with-docs` planning session selected **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake** as a vertical product epic. ADR 0007 records that Ariadne should integrate upstream `1102tools/federal-contracting-mcps` as manifest-only Federal Data Capabilities instead of creating unique Ariadne MCP servers for the same public data sources.
-- `docs/architecture/federal-data-mcp-foundation-plan.md` captures the next epic plan: register all eight 1102 MCPs with honest status labels, deeply integrate USAspending first, and build a structured PIID Contract Intelligence Profile workflow for recompete capture research.
-- The Federal Data MCP Foundation epic now includes manifest registration, safe initialize smoke checks, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
+- `docs/architecture/federal-data-mcp-foundation-plan.md` records the completed Federal Data MCP Foundation epic plan and implementation trail: all eight 1102 MCPs are registered with honest status labels, USAspending is the first product-integrated source, and the PIID Contract Intelligence Profile workflow supports recompete capture research.
+- The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
 - Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Federal Data MCP Foundation branch, with 160 tests passing.
 
 **Still Deferred**
@@ -43,10 +43,10 @@
 
 **Next Build Gate**
 
-- Keep `04-build/federal-data-mcp-foundation` as the completed Federal Data MCP Foundation epic branch until it is reviewed and merged toward `main`.
-- Treat USAspending PIID profiles as the first completed product integration over the upstream 1102tools MCP foundation.
-- Use accepted PIID profile content and review decisions as the starting point for future SAM.gov, BLS/GSA pricing, Firecrawl/web enrichment, focused profile skills, and artifact renderer slices.
-- Keep SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov product workflows, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, artifact rendering, and Next.js migration explicitly deferred.
+- Run a fresh `grill-with-docs` session before selecting the next vertical slice.
+- Use `PRD.md`, `CONTEXT.md`, ADRs, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as the session inputs.
+- Candidate directions include SAM.gov entity/opportunity enrichment, BLS/GSA pricing context, Firecrawl/web enrichment, focused competitor/customer/subaward/vehicle profiles, Artifact Renderer export from accepted PIID profile content, Hermes operational learning, Capability Studio progression, and Knowledge Graph sensemaking.
+- Keep SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov product workflows, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, artifact rendering, and Next.js migration explicitly deferred until chosen through a documented slice.
 - Keep the next epic a vertical product slice with real behavior and review gates, not a broad platform sweep.
 
 ---
@@ -301,7 +301,7 @@ The Knowledge Layer should include a Knowledge Graph View that visualizes Ariadn
 
 If Obsidian or another Knowledge Mirror is edited directly, those edits should return to Ariadne as Mirror Update Proposals rather than directly overwriting structured knowledge. Ariadne should classify, validate, and route those proposals through the same Knowledge Processing Workflow used by Quick Capture so traceability and source-of-truth discipline are preserved.
 
-The next vertical epic is the Federal Data MCP Foundation + USAspending Recompete Intelligence Intake. It should register all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile should start from one contract number and produce award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It should remain structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices.
+The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices until selected through a fresh `grill-with-docs` session.
 
 ## 6.2 Future Capability Integration Strategy
 
@@ -373,20 +373,21 @@ Each future slice should leave a short documentation trail before code: what is 
 - Generated Knowledge Note Projections as one-way Markdown-style notes over accepted Ariadne knowledge; they support lightweight sensemaking and future retrieval without becoming source of truth.
 - Deferred full MinerU, RAGAnything, LightRAG, Theseus, OCR, frontier multimodal extraction, Knowledge Graph storage, bidirectional Obsidian sync, complex skill-chain execution, and broad storage-platform work.
 
-**Federal Data MCP Foundation + USAspending Recompete Intelligence Intake Epic** ← **PLANNED NEXT**
+**Federal Data MCP Foundation + USAspending Recompete Intelligence Intake Epic** ← **COMPLETE**
 
-- Register all eight upstream `1102tools/federal-contracting-mcps` servers as manifest-only Federal Data Capabilities rather than creating unique Ariadne MCP servers or vendoring upstream MCP source.
-- Use pinned upstream versions, command shapes, provenance, license metadata, env-var names, and product integration status labels so Ariadne can keep up with upstream updates through manifest bumps.
-- Deeply integrate USAspending first because recompete-heavy capture work depends on award history, incumbents, customer buying behavior, vehicles, obligations, spending patterns, and timing signals.
-- Build a PIID Contract Intelligence Profile workflow that starts from one contract number and produces structured award baseline, burn posture, vehicle context, deterministic pivots, PRIME gaps, recommended next enrichments, review-gated candidates, and Hermes-observable events.
-- Treat user-provided PIID intelligence templates as strategy input, not product specs; build Ariadne behavior around the upstream USAspending MCP and Ariadne's evidence/review model.
-- Keep artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
-- Defer product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI.
+- Registered all eight upstream `1102tools/federal-contracting-mcps` servers as manifest-only Federal Data Capabilities rather than creating unique Ariadne MCP servers or vendoring upstream MCP source.
+- Recorded pinned upstream versions, command shapes, provenance, license metadata, env-var names, richer operational descriptions, and product integration status labels so Ariadne can keep up with upstream updates through manifest bumps.
+- Deeply integrated USAspending first because recompete-heavy capture work depends on award history, incumbents, customer buying behavior, vehicles, obligations, spending patterns, and timing signals.
+- Built a PIID Contract Intelligence Profile workflow that starts from one contract number and produces structured award baseline, burn posture, vehicle context, deterministic pivots, PRIME gaps, recommended next enrichments, review-gated candidates, and Hermes-observable events.
+- Treated user-provided PIID intelligence templates as strategy input, not product specs; Ariadne behavior is built around the upstream USAspending MCP and Ariadne's evidence/review model.
+- Kept artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
+- Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI.
 
 **Next Implementation Gate**
 
-- Break the Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic into issue-sized slices, starting with manifest registry tests and the USAspending PIID profile domain model.
+- Start the next conversation with a `grill-with-docs` session to select the next vertical epic after the completed Federal Data MCP Foundation.
 - Keep the Command Center command-first: pulse check, quick action, recommendations, skill-chain options, and AI support should take priority over passive data display.
+- Before implementation, document the selected slice, explicit deferrals, evidence/provenance/review rules, and any new domain terms in the PRD, `CONTEXT.md`, an architecture note, and ADRs only where needed.
 
 **Phase 1 – Core Infrastructure**
 

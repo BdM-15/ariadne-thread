@@ -109,6 +109,10 @@ The acceptance demo should show one PIID flowing through the real USAspending-ba
 6. Surface the workflow through FastAPI API routes and the existing Command Center shell.
 7. Add tests and update docs/PRD with the completed behavior before moving to the next enrichment slice.
 
+## Progress Note Through Issue #32
+
+The PIID profile now projects populated USAspending profile data into recommended enrichment routes, review-gated candidates for Evidence, Packet Field Answer, Action Plan, Risk Register, Call Plan, and follow-up route workflows, and Hermes-observable event records. Review decisions update candidate state and emit `review_decision_recorded` events, but they do not write trusted Evidence, Packet, Action Plan, Risk Register, or Call Plan outputs.
+
 ## Next Slice Candidates After This Epic
 
 - SAM.gov Entity and Opportunity enrichment from UEI or solicitation pivots.

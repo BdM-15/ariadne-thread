@@ -801,6 +801,179 @@ def test_usaspending_piid_profile_api_includes_burn_posture_and_vehicle_context(
     ) in calls
 
 
+def test_usaspending_piid_profile_api_exposes_review_candidates_and_events(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    piid_root = tmp_path / "piid-profiles"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_PIID_PROFILES_DIR": str(piid_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    def runner(tool_name, arguments):
+        if tool_name == "lookup_piid":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "award_type": "contract",
+                    "results": [
+                        {
+                            "Award ID": "FA8650-23-F-0001",
+                            "Recipient Name": "ACME FEDERAL LLC",
+                            "Recipient UEI": "UEIACME12345",
+                            "Awarding Agency": "Department of the Air Force",
+                            "Award Amount": 1250000,
+                            "Start Date": "2023-05-01",
+                            "End Date": "2026-04-30",
+                            "NAICS Code": "541715",
+                            "PSC Code": "AC13",
+                            "Solicitation ID": "FA8650-22-R-0001",
+                            "generated_internal_id": "CONT_AWD_FA865023F0001_9700",
+                        }
+                    ],
+                },
+            )
+        if tool_name in {"get_award_detail", "get_award_funding"}:
+            return USAspendingMcpToolResult(ok=True, payload={"results": []})
+        if tool_name == "get_transactions":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "results": [
+                        {
+                            "id": "txn_base",
+                            "action_date": "2023-05-01",
+                            "fiscal_year": 2023,
+                            "modification_number": "0",
+                            "action_type": "Base Award",
+                            "federal_action_obligation": 1250000,
+                            "description": "Base award",
+                        }
+                    ]
+                },
+            )
+        raise AssertionError(f"unexpected tool {tool_name}")
+
+    response = TestClient(create_app(settings, usaspending_lookup_runner=runner)).post(
+        "/api/federal-data/usaspending/piid-profiles",
+        json={"contract_number": "FA8650-23-F-0001"},
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    candidate_types = {
+        candidate["candidate_type"] for candidate in profile["review_candidates"]
+    }
+    assert {
+        "source_evidence",
+        "derived_evidence",
+        "packet_field_answer",
+        "action_plan_item",
+        "risk_register_signal",
+        "call_plan_signal",
+        "follow_up_route",
+    } <= candidate_types
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in profile["review_candidates"]
+    )
+    assert all(
+        candidate["trusted_output_written"] is False
+        for candidate in profile["review_candidates"]
+    )
+    event_types = {event["event_type"] for event in profile["hermes_events"]}
+    assert {
+        "profile_started",
+        "award_resolved",
+        "scenario_classified",
+        "burn_posture_computed",
+        "pivots_identified",
+        "gap_detected",
+        "next_enrichment_recommended",
+    } <= event_types
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_usaspending_piid_profile_review_decision_api_records_event_without_promotion(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    piid_root = tmp_path / "piid-profiles"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_PIID_PROFILES_DIR": str(piid_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    def runner(tool_name, arguments):
+        if tool_name == "lookup_piid":
+            return USAspendingMcpToolResult(
+                ok=True,
+                payload={
+                    "award_type": "contract",
+                    "results": [
+                        {
+                            "Award ID": "FA8650-23-F-0001",
+                            "Recipient Name": "ACME FEDERAL LLC",
+                            "Recipient UEI": "UEIACME12345",
+                            "Awarding Agency": "Department of the Air Force",
+                            "Award Amount": 1250000,
+                            "generated_internal_id": "CONT_AWD_FA865023F0001_9700",
+                        }
+                    ],
+                },
+            )
+        if tool_name in {"get_award_detail", "get_transactions", "get_award_funding"}:
+            return USAspendingMcpToolResult(ok=True, payload={"results": []})
+        raise AssertionError(f"unexpected tool {tool_name}")
+
+    client = TestClient(create_app(settings, usaspending_lookup_runner=runner))
+    create_response = client.post(
+        "/api/federal-data/usaspending/piid-profiles",
+        json={"contract_number": "FA8650-23-F-0001"},
+    )
+    profile = create_response.json()["profile"]
+    source_candidate = next(
+        candidate
+        for candidate in profile["review_candidates"]
+        if candidate["candidate_type"] == "source_evidence"
+    )
+
+    response = client.post(
+        f"/api/federal-data/usaspending/piid-profiles/{profile['id']}/review-decisions",
+        json={
+            "candidate_id": source_candidate["id"],
+            "review_state": "accepted",
+            "reviewer_rationale": "Baseline facts are ready to route later.",
+        },
+    )
+
+    assert response.status_code == 200
+    updated_profile = response.json()["profile"]
+    accepted_candidate = next(
+        candidate
+        for candidate in updated_profile["review_candidates"]
+        if candidate["id"] == source_candidate["id"]
+    )
+    assert accepted_candidate["review_state"] == "accepted"
+    assert accepted_candidate["trusted_output_written"] is False
+    assert updated_profile["hermes_events"][-1]["event_type"] == (
+        "review_decision_recorded"
+    )
+    assert updated_profile["hermes_events"][-1]["payload"]["candidate_id"] == (
+        source_candidate["id"]
+    )
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
 def test_usaspending_piid_profile_api_requires_resolved_award(tmp_path) -> None:
     from fastapi.testclient import TestClient
 

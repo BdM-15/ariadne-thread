@@ -33,7 +33,8 @@
 - `docs/architecture/document-intake-command-surface-plan.md` records the completed Document Intake implementation trail and hand-off notes for future parser/retrieval integration work.
 - A `grill-with-docs` planning session selected **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake** as the next vertical epic. ADR 0007 records that Ariadne should integrate upstream `1102tools/federal-contracting-mcps` as manifest-only Federal Data Capabilities instead of creating unique Ariadne MCP servers for the same public data sources.
 - `docs/architecture/federal-data-mcp-foundation-plan.md` captures the next epic plan: register all eight 1102 MCPs with honest status labels, deeply integrate USAspending first, and build a structured PIID Contract Intelligence Profile workflow for recompete capture research.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the Document Intake Command Surface epic, with 116 tests passing at merge time.
+- The Federal Data MCP Foundation epic now includes manifest registration, safe initialize smoke checks, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, and review-decision recording without automatic trusted-output promotion.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Federal Data MCP Foundation branch, with 159 tests passing.
 
 **Still Deferred**
 

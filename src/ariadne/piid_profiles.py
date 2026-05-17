@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ariadne.usaspending import (
     USAspendingAwardHistoryResult,
@@ -35,6 +35,45 @@ class PiidPivotType(StrEnum):
 
 class PiidGapCategory(StrEnum):
     SOURCE_LIMITATION = "source_limitation"
+
+
+class PiidEnrichmentRouteType(StrEnum):
+    SAM_GOV_ENTITY = "sam_gov_entity"
+    SAM_GOV_OPPORTUNITY = "sam_gov_opportunity"
+    BLS_GSA_PRICING_CONTEXT = "bls_gsa_pricing_context"
+    FIRECRAWL_WEB_ENRICHMENT = "firecrawl_web_enrichment"
+    SUBAWARD_PROFILE = "subaward_profile"
+    COMPETITOR_PROFILE = "competitor_profile"
+    CUSTOMER_PROFILE = "customer_profile"
+    ARTIFACT_PREPARATION = "artifact_preparation"
+
+
+class PiidReviewCandidateType(StrEnum):
+    SOURCE_EVIDENCE = "source_evidence"
+    DERIVED_EVIDENCE = "derived_evidence"
+    PACKET_FIELD_ANSWER = "packet_field_answer"
+    ACTION_PLAN_ITEM = "action_plan_item"
+    RISK_REGISTER_SIGNAL = "risk_register_signal"
+    CALL_PLAN_SIGNAL = "call_plan_signal"
+    FOLLOW_UP_ROUTE = "follow_up_route"
+
+
+class PiidReviewState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ACCEPTED = "accepted"
+    DISCARDED = "discarded"
+    ROUTED = "routed"
+
+
+class PiidHermesEventType(StrEnum):
+    PROFILE_STARTED = "profile_started"
+    AWARD_RESOLVED = "award_resolved"
+    SCENARIO_CLASSIFIED = "scenario_classified"
+    BURN_POSTURE_COMPUTED = "burn_posture_computed"
+    PIVOTS_IDENTIFIED = "pivots_identified"
+    GAP_DETECTED = "gap_detected"
+    NEXT_ENRICHMENT_RECOMMENDED = "next_enrichment_recommended"
+    REVIEW_DECISION_RECORDED = "review_decision_recorded"
 
 
 class PiidProfileProvenance(BaseModel):
@@ -80,6 +119,61 @@ class PiidProfileGap(BaseModel):
     category: PiidGapCategory = PiidGapCategory.SOURCE_LIMITATION
     source_limitation: str
     recommended_enrichment_route: str
+
+
+class PiidEnrichmentRoute(BaseModel):
+    id: str
+    route_type: PiidEnrichmentRouteType
+    title: str
+    target_capability: str
+    recommendation: str
+    rationale: str
+    source_fields: tuple[str, ...]
+    source_values: tuple[str, ...]
+    review_required: bool = True
+    deferred_product_workflow: bool = True
+
+
+class PiidReviewCandidate(BaseModel):
+    id: str
+    candidate_type: PiidReviewCandidateType
+    title: str
+    content: str
+    target_workflow: str
+    recommendation: str
+    rationale: str
+    source_profile_id: str
+    normalized_piid: str
+    source_fields: tuple[str, ...]
+    source_values: tuple[str, ...]
+    field_key: str | None = None
+    route_id: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    review_state: PiidReviewState = PiidReviewState.PENDING_REVIEW
+    trusted_output_written: bool = False
+    created_at: str
+
+    @model_validator(mode="after")
+    def validate_review_gate(self) -> PiidReviewCandidate:
+        if not self.source_fields:
+            raise ValueError("PIID review candidate requires source_fields")
+        if self.trusted_output_written and self.review_state is not (
+            PiidReviewState.ACCEPTED
+        ):
+            raise ValueError("trusted output requires accepted review state")
+        return self
+
+
+class PiidHermesEvent(BaseModel):
+    id: str
+    event_type: PiidHermesEventType
+    profile_id: str
+    normalized_piid: str
+    occurred_at: str
+    summary: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    source_capability_id: str = "usaspending"
+    observable_only: bool = True
 
 
 class PiidAwardTransaction(BaseModel):
@@ -139,6 +233,9 @@ class PiidContractIntelligenceProfile(BaseModel):
     vehicle_context: PiidVehicleContext = Field(default_factory=PiidVehicleContext)
     deterministic_pivots: tuple[PiidDeterministicPivot, ...] = ()
     gaps: tuple[PiidProfileGap, ...] = ()
+    recommended_enrichment_routes: tuple[PiidEnrichmentRoute, ...] = ()
+    review_candidates: tuple[PiidReviewCandidate, ...] = ()
+    hermes_events: tuple[PiidHermesEvent, ...] = ()
     created_at: str
     updated_at: str
 
@@ -199,6 +296,7 @@ def create_piid_contract_intelligence_profile(
     created_at: str | None = None,
 ) -> PiidContractIntelligenceProfile:
     timestamp = created_at or datetime.now(UTC).isoformat()
+    resolved_profile_id = profile_id or _profile_id_for_piid(lookup.normalized_piid)
     baseline = PiidAwardBaseline(
         award_type=lookup.award_type,
         resolved_award_id=lookup.resolved_award_id,
@@ -222,11 +320,43 @@ def create_piid_contract_intelligence_profile(
         permalink=lookup.permalink,
     )
     vehicle_context = _vehicle_context_from_history(baseline, award_history)
+    transaction_history = _transactions_from_history(award_history)
+    modification_history = _modifications_from_history(award_history)
+    burn_posture = _burn_posture_from_history(baseline, award_history)
+    scenario = classify_piid_scenario(baseline, vehicle_context)
+    deterministic_pivots = _deterministic_pivots_from_baseline(baseline)
+    gaps = _gaps_from_baseline(baseline)
+    recommended_enrichment_routes = _recommended_enrichment_routes_from_baseline(
+        baseline,
+        resolved_profile_id,
+    )
+    review_candidates = _review_candidates_from_profile_parts(
+        profile_id=resolved_profile_id,
+        normalized_piid=lookup.normalized_piid,
+        scenario=scenario,
+        baseline=baseline,
+        burn_posture=burn_posture,
+        gaps=gaps,
+        recommended_enrichment_routes=recommended_enrichment_routes,
+        created_at=timestamp,
+    )
+    hermes_events = _hermes_events_from_profile_parts(
+        profile_id=resolved_profile_id,
+        normalized_piid=lookup.normalized_piid,
+        source_capability_id=lookup.provenance.source_capability_id,
+        scenario=scenario,
+        baseline=baseline,
+        burn_posture=burn_posture,
+        deterministic_pivots=deterministic_pivots,
+        gaps=gaps,
+        recommended_enrichment_routes=recommended_enrichment_routes,
+        occurred_at=timestamp,
+    )
     return PiidContractIntelligenceProfile(
-        id=profile_id or _profile_id_for_piid(lookup.normalized_piid),
+        id=resolved_profile_id,
         input_contract_number=lookup.input_contract_number,
         normalized_piid=lookup.normalized_piid,
-        scenario=classify_piid_scenario(baseline, vehicle_context),
+        scenario=scenario,
         provenance=PiidProfileProvenance(
             source_capability_id=lookup.provenance.source_capability_id,
             source_tool_name=lookup.provenance.source_tool_name,
@@ -236,14 +366,735 @@ def create_piid_contract_intelligence_profile(
             lookup_status=lookup.status.value,
         ),
         award_baseline=baseline,
-        transaction_history=_transactions_from_history(award_history),
-        modification_history=_modifications_from_history(award_history),
-        burn_posture=_burn_posture_from_history(baseline, award_history),
+        transaction_history=transaction_history,
+        modification_history=modification_history,
+        burn_posture=burn_posture,
         vehicle_context=vehicle_context,
-        deterministic_pivots=_deterministic_pivots_from_baseline(baseline),
-        gaps=_gaps_from_baseline(baseline),
+        deterministic_pivots=deterministic_pivots,
+        gaps=gaps,
+        recommended_enrichment_routes=recommended_enrichment_routes,
+        review_candidates=review_candidates,
+        hermes_events=hermes_events,
         created_at=timestamp,
         updated_at=timestamp,
+    )
+
+
+def record_piid_review_decision(
+    profile: PiidContractIntelligenceProfile,
+    *,
+    candidate_id: str,
+    review_state: PiidReviewState,
+    reviewer_rationale: str,
+    decided_at: str | None = None,
+) -> PiidContractIntelligenceProfile:
+    if review_state is PiidReviewState.PENDING_REVIEW:
+        raise ValueError("review decision must accept, discard, or route a candidate")
+    if not reviewer_rationale.strip():
+        raise ValueError("review decision requires reviewer_rationale")
+    timestamp = decided_at or datetime.now(UTC).isoformat()
+    updated_candidates = []
+    matched_candidate: PiidReviewCandidate | None = None
+    for candidate in profile.review_candidates:
+        if candidate.id != candidate_id:
+            updated_candidates.append(candidate)
+            continue
+        matched_candidate = candidate.model_copy(
+            update={
+                "review_state": review_state,
+                "trusted_output_written": False,
+            }
+        )
+        updated_candidates.append(matched_candidate)
+    if matched_candidate is None:
+        raise ValueError("PIID review candidate not found")
+    review_event = _hermes_event(
+        event_type=PiidHermesEventType.REVIEW_DECISION_RECORDED,
+        profile_id=profile.id,
+        normalized_piid=profile.normalized_piid,
+        source_capability_id=profile.provenance.source_capability_id,
+        occurred_at=timestamp,
+        sequence=len(profile.hermes_events) + 1,
+        summary=f"Review decision recorded for {matched_candidate.candidate_type.value}.",
+        payload={
+            "candidate_id": candidate_id,
+            "candidate_type": matched_candidate.candidate_type.value,
+            "review_state": review_state.value,
+            "reviewer_rationale": reviewer_rationale,
+            "trusted_output_written": False,
+        },
+    )
+    return profile.model_copy(
+        update={
+            "review_candidates": tuple(updated_candidates),
+            "hermes_events": (*profile.hermes_events, review_event),
+            "updated_at": timestamp,
+        }
+    )
+
+
+def _recommended_enrichment_routes_from_baseline(
+    baseline: PiidAwardBaseline,
+    profile_id: str,
+) -> tuple[PiidEnrichmentRoute, ...]:
+    routes: list[PiidEnrichmentRoute] = []
+    if baseline.recipient_uei:
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.SAM_GOV_ENTITY,
+                title="SAM.gov entity enrichment",
+                target_capability="sam_gov_entity",
+                recommendation="Review the recipient UEI before routing to SAM.gov entity enrichment.",
+                rationale="Recipient UEI is populated by USAspending and can seed entity research.",
+                source_fields=("recipient_uei",),
+                source_values=(baseline.recipient_uei,),
+            )
+        )
+    if baseline.solicitation_id:
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.SAM_GOV_OPPORTUNITY,
+                title="SAM.gov opportunity enrichment",
+                target_capability="sam_gov_opportunity",
+                recommendation="Review the solicitation ID before routing to SAM.gov opportunity or document intake work.",
+                rationale="Solicitation ID is populated and can seed opportunity history research.",
+                source_fields=("solicitation_id",),
+                source_values=(baseline.solicitation_id,),
+            )
+        )
+    pricing_fields = tuple(
+        field
+        for field, value in (
+            ("naics_code", baseline.naics_code),
+            ("psc_code", baseline.psc_code),
+        )
+        if value
+    )
+    pricing_values = tuple(
+        value
+        for value in (baseline.naics_code, baseline.psc_code)
+        if value
+    )
+    if pricing_fields:
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.BLS_GSA_PRICING_CONTEXT,
+                title="BLS/GSA pricing context",
+                target_capability="pricing_context",
+                recommendation="Review NAICS or PSC values before routing to wage, labor, or rate context.",
+                rationale="Populated NAICS or PSC values can seed future BLS and GSA pricing workflows.",
+                source_fields=pricing_fields,
+                source_values=pricing_values,
+            )
+        )
+    web_fields = _populated_fields(
+        ("recipient_name", baseline.recipient_name),
+        ("awarding_agency_name", baseline.awarding_agency_name),
+        ("awarding_sub_agency_name", baseline.awarding_sub_agency_name),
+    )
+    if web_fields:
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.FIRECRAWL_WEB_ENRICHMENT,
+                title="Web enrichment",
+                target_capability="firecrawl_web_enrichment",
+                recommendation="Review populated organization names before routing to web enrichment.",
+                rationale="USAspending populated organization names that can seed future web research.",
+                source_fields=tuple(field for field, value in web_fields),
+                source_values=tuple(value for field, value in web_fields),
+            )
+        )
+    if baseline.generated_internal_id or baseline.permalink:
+        subaward_fields = _populated_fields(
+            ("generated_internal_id", baseline.generated_internal_id),
+            ("permalink", baseline.permalink),
+        )
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.SUBAWARD_PROFILE,
+                title="Subaward profile",
+                target_capability="subaward_profile",
+                recommendation="Review the award identifier before routing to subaward profile enrichment.",
+                rationale="USAspending award identifiers can seed future subaward checks.",
+                source_fields=tuple(field for field, value in subaward_fields),
+                source_values=tuple(value for field, value in subaward_fields),
+            )
+        )
+    if baseline.recipient_name:
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.COMPETITOR_PROFILE,
+                title="Competitor profile",
+                target_capability="competitor_profile",
+                recommendation="Review the recipient name as an incumbent or competitor profile seed.",
+                rationale="Recipient name is populated and can seed future incumbent or competitor research.",
+                source_fields=("recipient_name",),
+                source_values=(baseline.recipient_name,),
+            )
+        )
+    customer_fields = _populated_fields(
+        ("awarding_agency_name", baseline.awarding_agency_name),
+        ("awarding_sub_agency_name", baseline.awarding_sub_agency_name),
+        ("funding_agency_name", baseline.funding_agency_name),
+        ("funding_sub_agency_name", baseline.funding_sub_agency_name),
+    )
+    if customer_fields:
+        routes.append(
+            _enrichment_route(
+                PiidEnrichmentRouteType.CUSTOMER_PROFILE,
+                title="Customer profile",
+                target_capability="customer_profile",
+                recommendation="Review the agency and office values before routing to customer profile enrichment.",
+                rationale="Populated agency values can seed future customer research.",
+                source_fields=tuple(field for field, value in customer_fields),
+                source_values=tuple(value for field, value in customer_fields),
+            )
+        )
+    routes.append(
+        _enrichment_route(
+            PiidEnrichmentRouteType.ARTIFACT_PREPARATION,
+            title="Artifact preparation",
+            target_capability="artifact_preparation",
+            recommendation="Review the structured profile before preparing downstream artifacts.",
+            rationale="The PIID profile is structured enough to seed future renderer-ready artifact work.",
+            source_fields=("profile_id",),
+            source_values=(profile_id,),
+        )
+    )
+    return tuple(routes)
+
+
+def _enrichment_route(
+    route_type: PiidEnrichmentRouteType,
+    *,
+    title: str,
+    target_capability: str,
+    recommendation: str,
+    rationale: str,
+    source_fields: tuple[str, ...],
+    source_values: tuple[str, ...],
+) -> PiidEnrichmentRoute:
+    return PiidEnrichmentRoute(
+        id=f"piid_route_{route_type.value}",
+        route_type=route_type,
+        title=title,
+        target_capability=target_capability,
+        recommendation=recommendation,
+        rationale=rationale,
+        source_fields=source_fields,
+        source_values=source_values,
+    )
+
+
+def _populated_fields(
+    *field_values: tuple[str, object | None],
+) -> tuple[tuple[str, str], ...]:
+    populated_fields = []
+    for field, value in field_values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            populated_fields.append((field, text))
+    return tuple(populated_fields)
+
+
+def _review_candidates_from_profile_parts(
+    *,
+    profile_id: str,
+    normalized_piid: str,
+    scenario: PiidScenarioClassification,
+    baseline: PiidAwardBaseline,
+    burn_posture: PiidBurnPosture,
+    gaps: tuple[PiidProfileGap, ...],
+    recommended_enrichment_routes: tuple[PiidEnrichmentRoute, ...],
+    created_at: str,
+) -> tuple[PiidReviewCandidate, ...]:
+    candidates: list[PiidReviewCandidate] = []
+    baseline_fields = _baseline_candidate_fields(baseline)
+    if baseline_fields:
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.SOURCE_EVIDENCE,
+                candidate_key="source_evidence_award_baseline",
+                title="Source Evidence: USAspending award baseline",
+                content=_baseline_candidate_content(baseline_fields),
+                target_workflow="evidence_store",
+                recommendation="Review before accepting award baseline facts as Source Evidence.",
+                rationale="USAspending supplied populated award baseline fields; blanks remain source limitations.",
+                source_fields=tuple(field for field, value in baseline_fields),
+                source_values=tuple(value for field, value in baseline_fields),
+                confidence=0.82,
+                created_at=created_at,
+            )
+        )
+
+    burn_fields = _burn_posture_candidate_fields(burn_posture)
+    if burn_fields:
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.DERIVED_EVIDENCE,
+                candidate_key="derived_evidence_burn_posture",
+                title="Derived Evidence: burn posture",
+                content=_burn_posture_candidate_content(burn_posture),
+                target_workflow="evidence_store",
+                recommendation="Review before accepting burn posture as Derived Evidence.",
+                rationale="Burn posture is computed from populated transaction or baseline values.",
+                source_fields=tuple(field for field, value in burn_fields),
+                source_values=tuple(value for field, value in burn_fields),
+                confidence=_burn_posture_confidence(burn_posture),
+                created_at=created_at,
+            )
+        )
+
+    candidates.extend(
+        _packet_field_candidates(
+            profile_id=profile_id,
+            normalized_piid=normalized_piid,
+            scenario=scenario,
+            baseline=baseline,
+            burn_posture=burn_posture,
+            gaps=gaps,
+            created_at=created_at,
+        )
+    )
+
+    if recommended_enrichment_routes or gaps:
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.ACTION_PLAN_ITEM,
+                candidate_key="action_plan_next_enrichment",
+                title="Action Plan: route PIID enrichment",
+                content="Review PIID profile gaps and route the next enrichment step.",
+                target_workflow="capture_action_plan",
+                recommendation="Create an action only after review confirms the next capture outcome.",
+                rationale="The profile has reviewable gaps or enrichment routes, but no task is trusted yet.",
+                source_fields=("profile_id",),
+                source_values=(profile_id,),
+                confidence=0.68,
+                created_at=created_at,
+            )
+        )
+
+    risk_fields = _risk_candidate_fields(burn_posture, gaps)
+    if risk_fields:
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.RISK_REGISTER_SIGNAL,
+                candidate_key="risk_register_burn_and_gap_signal",
+                title="Risk Register signal: burn posture and gaps",
+                content=_risk_candidate_content(burn_posture, gaps),
+                target_workflow="risk_register",
+                recommendation="Review before treating this as a pursuit risk.",
+                rationale="Burn warnings and source limitations can affect recompete posture.",
+                source_fields=tuple(field for field, value in risk_fields),
+                source_values=tuple(value for field, value in risk_fields),
+                confidence=0.62,
+                created_at=created_at,
+            )
+        )
+
+    customer_fields = _customer_candidate_fields(baseline)
+    if customer_fields:
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.CALL_PLAN_SIGNAL,
+                candidate_key="call_plan_customer_validation",
+                title="Call Plan signal: validate recompete posture",
+                content="Prepare customer engagement around agency, incumbent, value, and timing signals.",
+                target_workflow="call_plan",
+                recommendation="Review before preparing customer engagement from this profile.",
+                rationale="Populated agency fields can guide future call plan preparation.",
+                source_fields=tuple(field for field, value in customer_fields),
+                source_values=tuple(value for field, value in customer_fields),
+                confidence=0.66,
+                created_at=created_at,
+            )
+        )
+
+    for route in recommended_enrichment_routes:
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.FOLLOW_UP_ROUTE,
+                candidate_key=f"follow_up_{route.route_type.value}",
+                title=f"Follow-up route: {route.title}",
+                content=route.recommendation,
+                target_workflow="follow_up_routes",
+                recommendation="Review before routing this enrichment through another capability.",
+                rationale=route.rationale,
+                source_fields=route.source_fields,
+                source_values=route.source_values,
+                route_id=route.id,
+                confidence=0.7,
+                created_at=created_at,
+            )
+        )
+    return tuple(candidates)
+
+
+def _review_candidate(
+    *,
+    profile_id: str,
+    normalized_piid: str,
+    candidate_type: PiidReviewCandidateType,
+    candidate_key: str,
+    title: str,
+    content: str,
+    target_workflow: str,
+    recommendation: str,
+    rationale: str,
+    source_fields: tuple[str, ...],
+    source_values: tuple[str, ...],
+    created_at: str,
+    field_key: str | None = None,
+    route_id: str | None = None,
+    confidence: float | None = None,
+) -> PiidReviewCandidate:
+    return PiidReviewCandidate(
+        id=f"piid_candidate_{_safe_identifier(profile_id)}_{_safe_identifier(candidate_key)}",
+        candidate_type=candidate_type,
+        title=title,
+        content=content,
+        target_workflow=target_workflow,
+        recommendation=recommendation,
+        rationale=rationale,
+        source_profile_id=profile_id,
+        normalized_piid=normalized_piid,
+        source_fields=source_fields,
+        source_values=source_values,
+        field_key=field_key,
+        route_id=route_id,
+        confidence=confidence,
+        created_at=created_at,
+    )
+
+
+def _packet_field_candidates(
+    *,
+    profile_id: str,
+    normalized_piid: str,
+    scenario: PiidScenarioClassification,
+    baseline: PiidAwardBaseline,
+    burn_posture: PiidBurnPosture,
+    gaps: tuple[PiidProfileGap, ...],
+    created_at: str,
+) -> tuple[PiidReviewCandidate, ...]:
+    candidates = []
+    packet_specs = (
+        (
+            "incumbent",
+            _populated_fields(("award_baseline.recipient_name", baseline.recipient_name)),
+            f"Incumbent or awardee signal: {baseline.recipient_name}",
+        ),
+        (
+            "customer",
+            _customer_candidate_fields(baseline),
+            "Customer signal from awarding or funding agency fields.",
+        ),
+        (
+            "value",
+            _value_candidate_fields(baseline, burn_posture),
+            "Value signal from award amount or computed net obligations.",
+        ),
+        (
+            "timing",
+            _populated_fields(
+                ("award_baseline.start_date", baseline.start_date),
+                ("award_baseline.end_date", baseline.end_date),
+            ),
+            "Timing signal from period of performance dates.",
+        ),
+        (
+            "competition",
+            _competition_candidate_fields(scenario, baseline),
+            f"Competition signal from {scenario.value} profile context.",
+        ),
+        (
+            "risk",
+            _risk_candidate_fields(burn_posture, gaps),
+            "Risk signal from burn posture warnings or profile gaps.",
+        ),
+    )
+    for field_key, field_values, content in packet_specs:
+        if not field_values:
+            continue
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                candidate_type=PiidReviewCandidateType.PACKET_FIELD_ANSWER,
+                candidate_key=f"packet_field_{field_key}",
+                title=f"Packet Field Answer: {field_key}",
+                content=content,
+                target_workflow="living_briefing_packet",
+                recommendation="Review before accepting as a packet field answer.",
+                rationale="The PIID profile supports this packet field, but the answer is not trusted yet.",
+                source_fields=tuple(field for field, value in field_values),
+                source_values=tuple(value for field, value in field_values),
+                field_key=field_key,
+                confidence=0.7,
+                created_at=created_at,
+            )
+        )
+    return tuple(candidates)
+
+
+def _baseline_candidate_fields(
+    baseline: PiidAwardBaseline,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("award_baseline.resolved_award_id", baseline.resolved_award_id),
+        ("award_baseline.generated_internal_id", baseline.generated_internal_id),
+        ("award_baseline.recipient_name", baseline.recipient_name),
+        ("award_baseline.recipient_uei", baseline.recipient_uei),
+        ("award_baseline.awarding_agency_name", baseline.awarding_agency_name),
+        ("award_baseline.awarding_sub_agency_name", baseline.awarding_sub_agency_name),
+        ("award_baseline.award_amount", baseline.award_amount),
+        ("award_baseline.start_date", baseline.start_date),
+        ("award_baseline.end_date", baseline.end_date),
+        ("award_baseline.naics_code", baseline.naics_code),
+        ("award_baseline.psc_code", baseline.psc_code),
+        ("award_baseline.solicitation_id", baseline.solicitation_id),
+        ("award_baseline.parent_idv", baseline.parent_idv),
+        ("award_baseline.permalink", baseline.permalink),
+    )
+
+
+def _burn_posture_candidate_fields(
+    burn_posture: PiidBurnPosture,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("burn_posture.net_obligations", burn_posture.net_obligations),
+        ("burn_posture.monthly_burn_rate", burn_posture.monthly_burn_rate),
+        ("burn_posture.daily_burn_rate", burn_posture.daily_burn_rate),
+        ("burn_posture.transaction_count", burn_posture.transaction_count),
+        ("burn_posture.modification_count", burn_posture.modification_count),
+        ("burn_posture.completeness", burn_posture.completeness),
+    )
+
+
+def _customer_candidate_fields(
+    baseline: PiidAwardBaseline,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("award_baseline.awarding_agency_name", baseline.awarding_agency_name),
+        ("award_baseline.awarding_sub_agency_name", baseline.awarding_sub_agency_name),
+        ("award_baseline.awarding_office_name", baseline.awarding_office_name),
+        ("award_baseline.funding_agency_name", baseline.funding_agency_name),
+        ("award_baseline.funding_sub_agency_name", baseline.funding_sub_agency_name),
+        ("award_baseline.funding_office_name", baseline.funding_office_name),
+    )
+
+
+def _value_candidate_fields(
+    baseline: PiidAwardBaseline,
+    burn_posture: PiidBurnPosture,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("award_baseline.award_amount", baseline.award_amount),
+        ("burn_posture.net_obligations", burn_posture.net_obligations),
+    )
+
+
+def _competition_candidate_fields(
+    scenario: PiidScenarioClassification,
+    baseline: PiidAwardBaseline,
+) -> tuple[tuple[str, str], ...]:
+    if scenario is PiidScenarioClassification.UNKNOWN and not baseline.recipient_name:
+        return ()
+    return _populated_fields(
+        ("profile.scenario", scenario.value),
+        ("award_baseline.recipient_name", baseline.recipient_name),
+        ("award_baseline.parent_idv", baseline.parent_idv),
+    )
+
+
+def _risk_candidate_fields(
+    burn_posture: PiidBurnPosture,
+    gaps: tuple[PiidProfileGap, ...],
+) -> tuple[tuple[str, str], ...]:
+    fields = list(
+        _populated_fields(
+            (
+                "burn_posture.deobligation_warnings",
+                "; ".join(burn_posture.deobligation_warnings),
+            ),
+            ("burn_posture.completeness", burn_posture.completeness),
+        )
+    )
+    fields.extend((f"gaps.{gap.field_key}", gap.source_limitation) for gap in gaps)
+    return tuple(fields)
+
+
+def _baseline_candidate_content(field_values: tuple[tuple[str, str], ...]) -> str:
+    return "USAspending award baseline: " + "; ".join(
+        f"{field.removeprefix('award_baseline.')}: {value}"
+        for field, value in field_values
+    )
+
+
+def _burn_posture_candidate_content(burn_posture: PiidBurnPosture) -> str:
+    pieces = [f"net obligations {burn_posture.net_obligations}"]
+    if burn_posture.monthly_burn_rate is not None:
+        pieces.append(f"monthly burn rate {burn_posture.monthly_burn_rate}")
+    if burn_posture.deobligation_warnings:
+        pieces.append(
+            "deobligation warnings " + "; ".join(burn_posture.deobligation_warnings)
+        )
+    pieces.append(f"completeness {burn_posture.completeness}")
+    return "Burn posture: " + "; ".join(pieces)
+
+
+def _risk_candidate_content(
+    burn_posture: PiidBurnPosture,
+    gaps: tuple[PiidProfileGap, ...],
+) -> str:
+    pieces = []
+    if burn_posture.deobligation_warnings:
+        pieces.append("; ".join(burn_posture.deobligation_warnings))
+    if gaps:
+        pieces.append("source limitations: " + ", ".join(gap.field_key for gap in gaps))
+    return "Risk signals: " + "; ".join(pieces)
+
+
+def _burn_posture_confidence(burn_posture: PiidBurnPosture) -> float:
+    if burn_posture.completeness == "complete":
+        return 0.8
+    if burn_posture.completeness == "partial":
+        return 0.58
+    return 0.3
+
+
+def _hermes_events_from_profile_parts(
+    *,
+    profile_id: str,
+    normalized_piid: str,
+    source_capability_id: str,
+    scenario: PiidScenarioClassification,
+    baseline: PiidAwardBaseline,
+    burn_posture: PiidBurnPosture,
+    deterministic_pivots: tuple[PiidDeterministicPivot, ...],
+    gaps: tuple[PiidProfileGap, ...],
+    recommended_enrichment_routes: tuple[PiidEnrichmentRoute, ...],
+    occurred_at: str,
+) -> tuple[PiidHermesEvent, ...]:
+    events: list[PiidHermesEvent] = []
+
+    def append_event(
+        event_type: PiidHermesEventType,
+        *,
+        summary: str,
+        payload: dict[str, object],
+    ) -> None:
+        events.append(
+            _hermes_event(
+                event_type=event_type,
+                profile_id=profile_id,
+                normalized_piid=normalized_piid,
+                source_capability_id=source_capability_id,
+                occurred_at=occurred_at,
+                sequence=len(events) + 1,
+                summary=summary,
+                payload=payload,
+            )
+        )
+
+    append_event(
+        PiidHermesEventType.PROFILE_STARTED,
+        summary="PIID Contract Intelligence Profile started.",
+        payload={"profile_id": profile_id, "normalized_piid": normalized_piid},
+    )
+    if baseline.resolved_award_id or baseline.generated_internal_id:
+        append_event(
+            PiidHermesEventType.AWARD_RESOLVED,
+            summary="USAspending award resolved for PIID profile.",
+            payload={
+                "resolved_award_id": baseline.resolved_award_id,
+                "generated_internal_id": baseline.generated_internal_id,
+            },
+        )
+    append_event(
+        PiidHermesEventType.SCENARIO_CLASSIFIED,
+        summary=f"PIID scenario classified as {scenario.value}.",
+        payload={"scenario": scenario.value},
+    )
+    append_event(
+        PiidHermesEventType.BURN_POSTURE_COMPUTED,
+        summary="Burn posture computed for PIID profile.",
+        payload={
+            "net_obligations": burn_posture.net_obligations,
+            "transaction_count": burn_posture.transaction_count,
+            "modification_count": burn_posture.modification_count,
+            "completeness": burn_posture.completeness,
+        },
+    )
+    if deterministic_pivots:
+        append_event(
+            PiidHermesEventType.PIVOTS_IDENTIFIED,
+            summary="Deterministic enrichment pivots identified.",
+            payload={
+                "pivot_count": len(deterministic_pivots),
+                "pivot_types": [pivot.pivot_type.value for pivot in deterministic_pivots],
+            },
+        )
+    if gaps:
+        append_event(
+            PiidHermesEventType.GAP_DETECTED,
+            summary="PIID profile source limitations detected.",
+            payload={
+                "gap_count": len(gaps),
+                "gap_fields": [gap.field_key for gap in gaps],
+            },
+        )
+    if recommended_enrichment_routes:
+        append_event(
+            PiidHermesEventType.NEXT_ENRICHMENT_RECOMMENDED,
+            summary="Next enrichment routes recommended for review.",
+            payload={
+                "route_count": len(recommended_enrichment_routes),
+                "route_types": [
+                    route.route_type.value for route in recommended_enrichment_routes
+                ],
+            },
+        )
+    return tuple(events)
+
+
+def _hermes_event(
+    *,
+    event_type: PiidHermesEventType,
+    profile_id: str,
+    normalized_piid: str,
+    source_capability_id: str,
+    occurred_at: str,
+    sequence: int,
+    summary: str,
+    payload: dict[str, object],
+) -> PiidHermesEvent:
+    return PiidHermesEvent(
+        id=(
+            f"piid_event_{_safe_identifier(profile_id)}_"
+            f"{sequence:03d}_{event_type.value}"
+        ),
+        event_type=event_type,
+        profile_id=profile_id,
+        normalized_piid=normalized_piid,
+        occurred_at=occurred_at,
+        summary=summary,
+        payload=payload,
+        source_capability_id=source_capability_id,
     )
 
 
@@ -548,7 +1399,11 @@ def _gaps_from_baseline(baseline: PiidAwardBaseline) -> tuple[PiidProfileGap, ..
 
 
 def _profile_id_for_piid(normalized_piid: str) -> str:
-    safe_piid = "".join(
-        character if character.isalnum() else "_" for character in normalized_piid
-    ).strip("_")
+    safe_piid = _safe_identifier(normalized_piid).upper()
     return f"piid_profile_{safe_piid}"
+
+
+def _safe_identifier(value: str) -> str:
+    return "".join(
+        character if character.isalnum() else "_" for character in value
+    ).strip("_")

@@ -23,6 +23,12 @@ class SamGovEntityLookupStatus(StrEnum):
     TOOL_ERROR = "tool_error"
 
 
+class SamGovOpportunityDiscoveryStatus(StrEnum):
+    SUCCESS = "success"
+    NOT_FOUND = "not_found"
+    TOOL_ERROR = "tool_error"
+
+
 class SamGovMcpToolResult(BaseModel):
     ok: bool
     payload: dict[str, Any] | None = None
@@ -37,6 +43,7 @@ class SamGovMcpToolRunner(Protocol):
 
 class SamGovReviewCandidateType(StrEnum):
     SOURCE_EVIDENCE = "source_evidence"
+    DERIVED_EVIDENCE = "derived_evidence"
     PACKET_FIELD_ANSWER = "packet_field_answer"
     ACTION_PLAN_ITEM = "action_plan_item"
     RISK_REGISTER_SIGNAL = "risk_register_signal"
@@ -54,6 +61,7 @@ class SamGovReviewState(StrEnum):
 class SamGovHermesEventType(StrEnum):
     PROFILE_STARTED = "profile_started"
     ENTITY_RECORD_RESOLVED = "entity_record_resolved"
+    OPPORTUNITY_DISCOVERY_RUN = "opportunity_discovery_run"
     SOURCE_LIMITATION_DETECTED = "source_limitation_detected"
     REVIEW_CANDIDATES_CREATED = "review_candidates_created"
     REVIEW_DECISION_RECORDED = "review_decision_recorded"
@@ -66,6 +74,57 @@ class SamGovEntityLookupProvenance(BaseModel):
     source_package_version: str
     checked_at: str
     source_mode: SamGovSourceMode
+
+
+class SamGovOpportunityDiscoveryQuery(BaseModel):
+    customer_agency: str | None = None
+    office: str | None = None
+    program_name: str | None = None
+    old_program_name: str | None = None
+    keywords: tuple[str, ...] = ()
+    notice_type: str | None = None
+    naics_code: str | None = None
+    psc_code: str | None = None
+    set_aside: str | None = None
+    posted_from: str
+    posted_to: str
+    response_deadline_from: str | None = None
+    response_deadline_to: str | None = None
+    state: str | None = None
+    zip_code: str | None = None
+    limit: int = Field(default=100, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class SamGovOpportunityRecord(BaseModel):
+    notice_id: str | None = None
+    solicitation_number: str | None = None
+    title: str | None = None
+    notice_type: str | None = None
+    organization_path: str | None = None
+    posted_date: str | None = None
+    response_deadline: str | None = None
+    set_aside: str | None = None
+    naics_code: str | None = None
+    psc_code: str | None = None
+    place_of_performance: str | None = None
+    description_url: str | None = None
+    ui_link: str | None = None
+    match_rationale: tuple[str, ...] = ()
+    match_confidence: float = Field(default=0.0, ge=0, le=1)
+    ambiguity_notes: tuple[str, ...] = ()
+    raw_record: dict[str, object] = Field(default_factory=dict)
+
+
+class SamGovOpportunityDiscoveryResult(BaseModel):
+    query: SamGovOpportunityDiscoveryQuery
+    normalized_query: str
+    status: SamGovOpportunityDiscoveryStatus
+    provenance: SamGovEntityLookupProvenance
+    records: tuple[SamGovOpportunityRecord, ...] = ()
+    total_records: int | None = None
+    source_limitations: tuple[str, ...] = ()
+    diagnostic_summary: str
 
 
 class SamGovEntityMatch(BaseModel):
@@ -100,6 +159,17 @@ class SamGovEntityLane(BaseModel):
     lookup_status: SamGovEntityLookupStatus
     provenance: SamGovEntityLookupProvenance
     matches: tuple[SamGovEntityMatch, ...] = ()
+    source_limitations: tuple[str, ...] = ()
+    diagnostic_summary: str
+
+
+class SamGovOpportunityDiscoveryLane(BaseModel):
+    query: SamGovOpportunityDiscoveryQuery
+    normalized_query: str
+    discovery_status: SamGovOpportunityDiscoveryStatus
+    provenance: SamGovEntityLookupProvenance
+    records: tuple[SamGovOpportunityRecord, ...] = ()
+    total_records: int | None = None
     source_limitations: tuple[str, ...] = ()
     diagnostic_summary: str
 
@@ -156,6 +226,7 @@ class SamGovEnrichmentProfile(BaseModel):
     input_pivot: str
     normalized_pivot: str
     entity_lane: SamGovEntityLane | None = None
+    opportunity_discovery_lane: SamGovOpportunityDiscoveryLane | None = None
     review_candidates: tuple[SamGovReviewCandidate, ...] = ()
     hermes_events: tuple[SamGovHermesEvent, ...] = ()
     created_at: str
@@ -203,7 +274,8 @@ def resolve_sam_gov_entity_lookup(
         )
 
     matches = tuple(
-        _entity_match_from_row(row) for row in _entity_rows_from_payload(tool_result.payload)
+        _entity_match_from_row(row)
+        for row in _entity_rows_from_payload(tool_result.payload)
     )
     if not matches:
         status = SamGovEntityLookupStatus.NOT_FOUND
@@ -222,6 +294,61 @@ def resolve_sam_gov_entity_lookup(
         provenance=provenance,
         matches=matches,
         source_limitations=_entity_source_limitations(matches, status),
+        diagnostic_summary=diagnostic_summary,
+    )
+
+
+def resolve_sam_gov_opportunity_discovery(
+    query: SamGovOpportunityDiscoveryQuery,
+    *,
+    runner: SamGovMcpToolRunner,
+    source_mode: SamGovSourceMode = SamGovSourceMode.LIVE_SAM_GOV,
+    checked_at: str | None = None,
+) -> SamGovOpportunityDiscoveryResult:
+    provenance = SamGovEntityLookupProvenance(
+        source_tool_name="search_opportunities",
+        source_package="sam-gov-mcp",
+        source_package_version="0.4.1",
+        checked_at=checked_at or datetime.now(UTC).isoformat(),
+        source_mode=source_mode,
+    )
+    tool_arguments = _opportunity_discovery_arguments(query)
+    tool_result = runner(provenance.source_tool_name, tool_arguments)
+    normalized_query = _normalized_discovery_query(query)
+    if not tool_result.ok:
+        return SamGovOpportunityDiscoveryResult(
+            query=query,
+            normalized_query=normalized_query,
+            status=SamGovOpportunityDiscoveryStatus.TOOL_ERROR,
+            provenance=provenance,
+            source_limitations=(
+                tool_result.error_message or "SAM.gov opportunity discovery failed.",
+            ),
+            diagnostic_summary=tool_result.error_message
+            or "SAM.gov opportunity discovery failed.",
+        )
+
+    rows = _opportunity_rows_from_payload(tool_result.payload)
+    records = tuple(_opportunity_record_from_row(row, query) for row in rows)
+    total_records = _total_records_from_payload(tool_result.payload, len(records))
+    if records:
+        status = SamGovOpportunityDiscoveryStatus.SUCCESS
+        diagnostic_summary = (
+            f"SAM.gov opportunity discovery returned {len(records)} records."
+        )
+    else:
+        status = SamGovOpportunityDiscoveryStatus.NOT_FOUND
+        diagnostic_summary = (
+            "SAM.gov opportunity discovery returned no official matches."
+        )
+    return SamGovOpportunityDiscoveryResult(
+        query=query,
+        normalized_query=normalized_query,
+        status=status,
+        provenance=provenance,
+        records=records,
+        total_records=total_records,
+        source_limitations=_opportunity_source_limitations(query, records, status),
         diagnostic_summary=diagnostic_summary,
     )
 
@@ -338,6 +465,51 @@ def create_sam_gov_enrichment_profile(
     )
 
 
+def create_sam_gov_opportunity_discovery_profile(
+    discovery: SamGovOpportunityDiscoveryResult,
+    *,
+    profile_id: str | None = None,
+    created_at: str | None = None,
+) -> SamGovEnrichmentProfile:
+    timestamp = created_at or datetime.now(UTC).isoformat()
+    resolved_profile_id = profile_id or _profile_id_for_pivot(
+        f"DISCOVERY_{discovery.normalized_query}"
+    )
+    lane = SamGovOpportunityDiscoveryLane(
+        query=discovery.query,
+        normalized_query=discovery.normalized_query,
+        discovery_status=discovery.status,
+        provenance=discovery.provenance,
+        records=discovery.records,
+        total_records=discovery.total_records,
+        source_limitations=discovery.source_limitations,
+        diagnostic_summary=discovery.diagnostic_summary,
+    )
+    review_candidates = _review_candidates_from_discovery_lane(
+        profile_id=resolved_profile_id,
+        normalized_pivot=discovery.normalized_query,
+        lane=lane,
+        created_at=timestamp,
+    )
+    hermes_events = _hermes_events_from_discovery_lane(
+        profile_id=resolved_profile_id,
+        normalized_pivot=discovery.normalized_query,
+        lane=lane,
+        review_candidates=review_candidates,
+        occurred_at=timestamp,
+    )
+    return SamGovEnrichmentProfile(
+        id=resolved_profile_id,
+        input_pivot=discovery.normalized_query,
+        normalized_pivot=discovery.normalized_query,
+        opportunity_discovery_lane=lane,
+        review_candidates=review_candidates,
+        hermes_events=hermes_events,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+
 def record_sam_gov_review_decision(
     profile: SamGovEnrichmentProfile,
     *,
@@ -426,7 +598,301 @@ def _entity_pivot_type(source_tool_name: str) -> str:
     return "legal_business_name"
 
 
-def _entity_rows_from_payload(payload: dict[str, Any] | None) -> tuple[dict[str, Any], ...]:
+def _opportunity_discovery_arguments(
+    query: SamGovOpportunityDiscoveryQuery,
+) -> dict[str, Any]:
+    arguments: dict[str, Any] = {
+        "posted_from": query.posted_from,
+        "posted_to": query.posted_to,
+        "limit": query.limit,
+        "offset": query.offset,
+    }
+    if notice_type := _sam_notice_type_code(query.notice_type):
+        arguments["notice_type"] = notice_type
+    if title := _opportunity_title_query(query):
+        arguments["title"] = title
+    if query.naics_code:
+        arguments["naics_code"] = query.naics_code
+    if query.psc_code:
+        arguments["psc_code"] = query.psc_code
+    if query.set_aside:
+        arguments["set_aside"] = query.set_aside
+    if query.response_deadline_from:
+        arguments["response_deadline_from"] = query.response_deadline_from
+    if query.response_deadline_to:
+        arguments["response_deadline_to"] = query.response_deadline_to
+    if query.state:
+        arguments["state"] = query.state
+    if query.zip_code:
+        arguments["zip_code"] = query.zip_code
+    if agency_keyword := _agency_keyword_query(query):
+        arguments["agency_keyword"] = agency_keyword
+    return arguments
+
+
+def _sam_notice_type_code(notice_type: str | None) -> str | None:
+    if not notice_type:
+        return None
+    normalized = notice_type.strip().lower().replace(" ", "_").replace("-", "_")
+    if len(normalized) == 1:
+        return normalized
+    return {
+        "presolicitation": "p",
+        "solicitation": "o",
+        "combined_synopsis_solicitation": "k",
+        "sources_sought": "r",
+        "source_sought": "r",
+        "rfi": "r",
+        "special_notice": "s",
+        "intent_to_bundle": "i",
+        "award_notice": "a",
+        "justification": "u",
+    }.get(normalized)
+
+
+def _opportunity_title_query(query: SamGovOpportunityDiscoveryQuery) -> str | None:
+    pieces = _populated_texts(
+        query.program_name, query.old_program_name, *query.keywords
+    )
+    return " ".join(pieces) if pieces else None
+
+
+def _agency_keyword_query(query: SamGovOpportunityDiscoveryQuery) -> str | None:
+    pieces = _populated_texts(query.customer_agency, query.office)
+    return " ".join(pieces) if pieces else None
+
+
+def _normalized_discovery_query(query: SamGovOpportunityDiscoveryQuery) -> str:
+    pieces = _populated_texts(
+        query.customer_agency,
+        query.office,
+        query.program_name,
+        query.old_program_name,
+        *query.keywords,
+        query.notice_type,
+        query.naics_code,
+        query.psc_code,
+        query.set_aside,
+    )
+    if not pieces:
+        pieces = (f"{query.posted_from}_{query.posted_to}",)
+    return " ".join(pieces).upper()
+
+
+def _opportunity_rows_from_payload(
+    payload: dict[str, Any] | None,
+) -> tuple[dict[str, Any], ...]:
+    if not payload:
+        return ()
+    for key in ("opportunitiesData", "results", "data", "opportunities"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            return tuple(row for row in rows if isinstance(row, dict))
+    if _string_from_keys(payload, "noticeId", "notice_id", "solicitationNumber"):
+        return (payload,)
+    return ()
+
+
+def _total_records_from_payload(
+    payload: dict[str, Any] | None,
+    fallback: int,
+) -> int | None:
+    if not payload:
+        return fallback
+    for key in ("totalRecords", "total_records", "total", "count"):
+        value = payload.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except TypeError, ValueError:
+            return fallback
+    return fallback
+
+
+def _opportunity_record_from_row(
+    row: dict[str, Any],
+    query: SamGovOpportunityDiscoveryQuery,
+) -> SamGovOpportunityRecord:
+    title = _string_from_keys(row, "title", "opportunityTitle")
+    organization_path = _string_from_keys(
+        row,
+        "fullParentPathName",
+        "organizationPath",
+        "agency",
+        "department",
+    )
+    notice_type = _string_from_keys(row, "type", "noticeType", "baseType")
+    fields = SamGovOpportunityRecord(
+        notice_id=_string_from_keys(row, "noticeId", "notice_id", "id"),
+        solicitation_number=_string_from_keys(
+            row,
+            "solicitationNumber",
+            "solicitation_number",
+        ),
+        title=title,
+        notice_type=notice_type,
+        organization_path=organization_path,
+        posted_date=_string_from_keys(row, "postedDate", "posted_date"),
+        response_deadline=_string_from_keys(
+            row,
+            "responseDeadLine",
+            "responseDeadline",
+            "response_deadline",
+        ),
+        set_aside=_string_from_keys(row, "setAside", "set_aside"),
+        naics_code=_string_from_keys(row, "naicsCode", "naics_code"),
+        psc_code=_string_from_keys(
+            row,
+            "classificationCode",
+            "pscCode",
+            "psc_code",
+        ),
+        place_of_performance=_place_of_performance_from_row(row),
+        description_url=_string_from_keys(row, "description", "descriptionUrl"),
+        ui_link=_string_from_keys(row, "uiLink", "samLink", "url"),
+        raw_record=row,
+    )
+    rationale = _opportunity_match_rationale(fields, query)
+    ambiguity_notes = _opportunity_ambiguity_notes(fields, query, rationale)
+    return fields.model_copy(
+        update={
+            "match_rationale": rationale,
+            "match_confidence": _opportunity_match_confidence(fields, query, rationale),
+            "ambiguity_notes": ambiguity_notes,
+        }
+    )
+
+
+def _place_of_performance_from_row(row: dict[str, Any]) -> str | None:
+    place = row.get("placeOfPerformance") or row.get("place_of_performance")
+    if isinstance(place, dict):
+        return ", ".join(_populated_texts(*[str(value) for value in place.values()]))
+    if place is None:
+        return None
+    text = str(place).strip()
+    return text or None
+
+
+def _opportunity_match_rationale(
+    record: SamGovOpportunityRecord,
+    query: SamGovOpportunityDiscoveryQuery,
+) -> tuple[str, ...]:
+    rationale = []
+    title = (record.title or "").lower()
+    organization_path = (record.organization_path or "").lower()
+    if query.program_name and query.program_name.lower() in title:
+        rationale.append("program_name matched title")
+    if query.old_program_name and query.old_program_name.lower() in title:
+        rationale.append("old_program_name matched title")
+    for keyword in query.keywords:
+        if keyword.lower() in title:
+            rationale.append(f"keyword matched title: {keyword}")
+    if query.customer_agency and query.customer_agency.lower() in organization_path:
+        rationale.append("customer_agency matched organization path")
+    if query.office and query.office.lower() in organization_path:
+        rationale.append("office matched organization path")
+    if query.notice_type and _notice_type_matches(
+        record.notice_type, query.notice_type
+    ):
+        rationale.append("notice_type matched requested phase")
+    if query.naics_code and query.naics_code == record.naics_code:
+        rationale.append("naics_code matched")
+    if query.psc_code and query.psc_code == record.psc_code:
+        rationale.append("psc_code matched")
+    if query.set_aside and query.set_aside == record.set_aside:
+        rationale.append("set_aside matched")
+    return tuple(
+        rationale or ("official SAM.gov result matched requested date window",)
+    )
+
+
+def _notice_type_matches(record_notice_type: str | None, requested: str) -> bool:
+    if record_notice_type is None:
+        return False
+    requested_code = _sam_notice_type_code(requested)
+    text = record_notice_type.lower().replace(" ", "_").replace("/", "_")
+    if requested_code == "r":
+        return "source" in text or "rfi" in text
+    if requested_code == "s":
+        return "special" in text
+    if requested_code == "o":
+        return "solicitation" in text and "combined" not in text
+    if requested_code == "k":
+        return "combined" in text
+    if requested_code == "p":
+        return "presolicitation" in text or "pre_solicitation" in text
+    return requested_code == text
+
+
+def _opportunity_ambiguity_notes(
+    record: SamGovOpportunityRecord,
+    query: SamGovOpportunityDiscoveryQuery,
+    rationale: tuple[str, ...],
+) -> tuple[str, ...]:
+    notes = []
+    if query.old_program_name and record.title:
+        title = record.title.lower()
+        if query.old_program_name.lower() in title:
+            notes.append("renamed-program clue")
+    if not any("program_name" in item for item in rationale) and query.program_name:
+        notes.append("requested program_name did not exactly match title")
+    if not record.response_deadline:
+        notes.append("response deadline not exposed in discovery result")
+    return tuple(notes)
+
+
+def _opportunity_match_confidence(
+    record: SamGovOpportunityRecord,
+    query: SamGovOpportunityDiscoveryQuery,
+    rationale: tuple[str, ...],
+) -> float:
+    confidence = 0.45
+    confidence += 0.15 * sum("program_name" in item for item in rationale)
+    confidence += 0.12 * sum("old_program_name" in item for item in rationale)
+    confidence += 0.1 * sum("customer_agency" in item for item in rationale)
+    confidence += 0.08 * sum("office" in item for item in rationale)
+    confidence += 0.08 * sum("notice_type" in item for item in rationale)
+    confidence += 0.05 * sum("naics_code" in item for item in rationale)
+    confidence += 0.05 * sum("psc_code" in item for item in rationale)
+    confidence += 0.04 * sum("set_aside" in item for item in rationale)
+    if record.notice_id:
+        confidence += 0.05
+    if query.keywords and any("keyword" in item for item in rationale):
+        confidence += 0.05
+    return round(min(confidence, 0.95), 2)
+
+
+def _opportunity_source_limitations(
+    query: SamGovOpportunityDiscoveryQuery,
+    records: tuple[SamGovOpportunityRecord, ...],
+    status: SamGovOpportunityDiscoveryStatus,
+) -> tuple[str, ...]:
+    limitations = [
+        "SAM.gov opportunity discovery is official-source search, not broad web research."
+    ]
+    if status is SamGovOpportunityDiscoveryStatus.NOT_FOUND:
+        limitations.append(
+            "SAM.gov opportunity discovery returned no official matches."
+        )
+    if query.keywords:
+        limitations.append(
+            "SAM.gov search_opportunities does not search full description text in this lane."
+        )
+    if records and any(record.match_confidence < 0.65 for record in records):
+        limitations.append(
+            "Some discovery matches are weak or ambiguous and need review."
+        )
+    return tuple(limitations)
+
+
+def _populated_texts(*values: str | None) -> tuple[str, ...]:
+    return tuple(value.strip() for value in values if value and value.strip())
+
+
+def _entity_rows_from_payload(
+    payload: dict[str, Any] | None,
+) -> tuple[dict[str, Any], ...]:
     if not payload:
         return ()
     for key in ("results", "entities", "entityData", "entityList", "data"):
@@ -705,6 +1171,145 @@ def _review_candidates_from_entity_lane(
     return tuple(candidates)
 
 
+def _review_candidates_from_discovery_lane(
+    *,
+    profile_id: str,
+    normalized_pivot: str,
+    lane: SamGovOpportunityDiscoveryLane,
+    created_at: str,
+) -> tuple[SamGovReviewCandidate, ...]:
+    candidates: list[SamGovReviewCandidate] = []
+    record = lane.records[0] if lane.records else None
+    if record is not None:
+        source_fields = _opportunity_source_fields(record)
+        if source_fields:
+            candidates.append(
+                _review_candidate(
+                    profile_id=profile_id,
+                    normalized_pivot=normalized_pivot,
+                    source_mode=lane.provenance.source_mode,
+                    candidate_type=SamGovReviewCandidateType.SOURCE_EVIDENCE,
+                    candidate_key="source_evidence_opportunity_discovery",
+                    title="Source Evidence: SAM.gov opportunity notice",
+                    content=_opportunity_source_content(source_fields),
+                    target_workflow="evidence_store",
+                    recommendation="Review before accepting official SAM.gov opportunity fields as Source Evidence.",
+                    rationale="SAM.gov supplied opportunity notice fields with retrieved-at provenance.",
+                    source_fields=tuple(field for field, value in source_fields),
+                    source_values=tuple(value for field, value in source_fields),
+                    confidence=record.match_confidence,
+                    created_at=created_at,
+                )
+            )
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_pivot=normalized_pivot,
+                source_mode=lane.provenance.source_mode,
+                candidate_type=SamGovReviewCandidateType.DERIVED_EVIDENCE,
+                candidate_key="derived_evidence_opportunity_match_rationale",
+                title="Derived Evidence: opportunity match rationale",
+                content="; ".join(record.match_rationale),
+                target_workflow="evidence_store",
+                recommendation="Review rationale before using it to support a capture decision.",
+                rationale="Match confidence is Ariadne interpretation layered on official SAM.gov fields.",
+                source_fields=(
+                    "opportunity_discovery_lane.records.match_rationale",
+                    "opportunity_discovery_lane.records.match_confidence",
+                ),
+                source_values=(
+                    "; ".join(record.match_rationale),
+                    str(record.match_confidence),
+                ),
+                confidence=record.match_confidence,
+                created_at=created_at,
+            )
+        )
+        if record.title or record.solicitation_number:
+            candidates.append(
+                _review_candidate(
+                    profile_id=profile_id,
+                    normalized_pivot=normalized_pivot,
+                    source_mode=lane.provenance.source_mode,
+                    candidate_type=SamGovReviewCandidateType.PACKET_FIELD_ANSWER,
+                    candidate_key="packet_field_opportunity_notice",
+                    title="Packet Field Answer: opportunity notice",
+                    content=_opportunity_packet_content(record),
+                    target_workflow="living_briefing_packet",
+                    recommendation="Review before updating packet opportunity fields.",
+                    rationale="Discovery results can seed opportunity identity and phase fields.",
+                    source_fields=_opportunity_packet_fields(record),
+                    source_values=_opportunity_packet_values(record),
+                    field_key="opportunity_notice",
+                    confidence=min(record.match_confidence, 0.8),
+                    created_at=created_at,
+                )
+            )
+        if record.notice_type or record.response_deadline:
+            candidates.append(
+                _review_candidate(
+                    profile_id=profile_id,
+                    normalized_pivot=normalized_pivot,
+                    source_mode=lane.provenance.source_mode,
+                    candidate_type=SamGovReviewCandidateType.CALL_PLAN_SIGNAL,
+                    candidate_key="call_plan_opportunity_timing",
+                    title="Call Plan signal: opportunity timing",
+                    content="Review notice phase and response timing before outreach.",
+                    target_workflow="call_plan",
+                    recommendation="Review before using discovery timing for customer or partner calls.",
+                    rationale="Notice type and deadline can shape outreach sequence.",
+                    source_fields=_opportunity_timing_fields(record),
+                    source_values=_opportunity_timing_values(record),
+                    confidence=min(record.match_confidence, 0.72),
+                    created_at=created_at,
+                )
+            )
+    candidates.append(
+        _review_candidate(
+            profile_id=profile_id,
+            normalized_pivot=normalized_pivot,
+            source_mode=lane.provenance.source_mode,
+            candidate_type=SamGovReviewCandidateType.ACTION_PLAN_ITEM,
+            candidate_key="action_plan_opportunity_discovery_follow_up",
+            title="Action Plan: review SAM.gov opportunity discovery",
+            content=lane.diagnostic_summary,
+            target_workflow="capture_action_plan",
+            recommendation="Review official notices, weak matches, and gaps before routing capture work.",
+            rationale="Opportunity discovery can identify next research and capture steps without writing trusted outputs.",
+            source_fields=("opportunity_discovery_lane.normalized_query",),
+            source_values=(lane.normalized_query,),
+            confidence=0.66 if lane.records else 0.45,
+            created_at=created_at,
+        )
+    )
+    if _needs_web_enrichment_support(lane):
+        candidates.append(
+            _review_candidate(
+                profile_id=profile_id,
+                normalized_pivot=normalized_pivot,
+                source_mode=lane.provenance.source_mode,
+                candidate_type=SamGovReviewCandidateType.FOLLOW_UP_ROUTE,
+                candidate_key="follow_up_web_enrichment_support",
+                title="Follow-up Route: Web Enrichment Support",
+                content="Route to deferred Web Enrichment Support when official SAM.gov discovery is insufficient.",
+                target_workflow="web_enrichment_support",
+                recommendation="Use only as a reviewed follow-up route; this slice does not invoke web crawling.",
+                rationale="No-result, weak, or ambiguous official results may need web enrichment later.",
+                source_fields=(
+                    "opportunity_discovery_lane.discovery_status",
+                    "opportunity_discovery_lane.source_limitations",
+                ),
+                source_values=(
+                    lane.discovery_status.value,
+                    "; ".join(lane.source_limitations),
+                ),
+                confidence=0.55,
+                created_at=created_at,
+            )
+        )
+    return tuple(candidates)
+
+
 def _review_candidate(
     *,
     profile_id: str,
@@ -740,6 +1345,76 @@ def _review_candidate(
         confidence=confidence,
         created_at=created_at,
     )
+
+
+def _hermes_events_from_discovery_lane(
+    *,
+    profile_id: str,
+    normalized_pivot: str,
+    lane: SamGovOpportunityDiscoveryLane,
+    review_candidates: tuple[SamGovReviewCandidate, ...],
+    occurred_at: str,
+) -> tuple[SamGovHermesEvent, ...]:
+    events: list[SamGovHermesEvent] = []
+
+    def append_event(
+        event_type: SamGovHermesEventType,
+        *,
+        summary: str,
+        payload: dict[str, object],
+    ) -> None:
+        events.append(
+            SamGovHermesEvent(
+                id=(
+                    f"sam_gov_event_{_safe_identifier(profile_id)}_"
+                    f"{len(events) + 1:03d}_{event_type.value}"
+                ),
+                event_type=event_type,
+                profile_id=profile_id,
+                normalized_pivot=normalized_pivot,
+                occurred_at=occurred_at,
+                summary=summary,
+                payload=payload,
+            )
+        )
+
+    append_event(
+        SamGovHermesEventType.PROFILE_STARTED,
+        summary="SAM.gov Enrichment Profile started.",
+        payload={
+            "profile_id": profile_id,
+            "normalized_pivot": normalized_pivot,
+            "source_mode": lane.provenance.source_mode.value,
+        },
+    )
+    append_event(
+        SamGovHermesEventType.OPPORTUNITY_DISCOVERY_RUN,
+        summary="SAM.gov Opportunity Discovery lane searched official notices.",
+        payload={
+            "record_count": len(lane.records),
+            "total_records": lane.total_records,
+            "discovery_status": lane.discovery_status.value,
+            "source_tool_name": lane.provenance.source_tool_name,
+        },
+    )
+    if lane.source_limitations:
+        append_event(
+            SamGovHermesEventType.SOURCE_LIMITATION_DETECTED,
+            summary="SAM.gov Opportunity Discovery lane source limitations detected.",
+            payload={"source_limitations": list(lane.source_limitations)},
+        )
+    if review_candidates:
+        append_event(
+            SamGovHermesEventType.REVIEW_CANDIDATES_CREATED,
+            summary="SAM.gov review candidates created.",
+            payload={
+                "candidate_count": len(review_candidates),
+                "candidate_types": [
+                    candidate.candidate_type.value for candidate in review_candidates
+                ],
+            },
+        )
+    return tuple(events)
 
 
 def _hermes_events_from_entity_lane(
@@ -832,6 +1507,75 @@ def _match_source_fields(match: SamGovEntityMatch) -> tuple[tuple[str, str], ...
     )
 
 
+def _opportunity_source_fields(
+    record: SamGovOpportunityRecord,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("opportunity_discovery_lane.records.notice_id", record.notice_id),
+        (
+            "opportunity_discovery_lane.records.solicitation_number",
+            record.solicitation_number,
+        ),
+        ("opportunity_discovery_lane.records.title", record.title),
+        ("opportunity_discovery_lane.records.notice_type", record.notice_type),
+        (
+            "opportunity_discovery_lane.records.organization_path",
+            record.organization_path,
+        ),
+        ("opportunity_discovery_lane.records.posted_date", record.posted_date),
+        (
+            "opportunity_discovery_lane.records.response_deadline",
+            record.response_deadline,
+        ),
+        ("opportunity_discovery_lane.records.naics_code", record.naics_code),
+        ("opportunity_discovery_lane.records.psc_code", record.psc_code),
+        ("opportunity_discovery_lane.records.set_aside", record.set_aside),
+    )
+
+
+def _opportunity_packet_fields(record: SamGovOpportunityRecord) -> tuple[str, ...]:
+    return tuple(field for field, value in _opportunity_packet_field_values(record))
+
+
+def _opportunity_packet_values(record: SamGovOpportunityRecord) -> tuple[str, ...]:
+    return tuple(value for field, value in _opportunity_packet_field_values(record))
+
+
+def _opportunity_packet_field_values(
+    record: SamGovOpportunityRecord,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("opportunity_discovery_lane.records.title", record.title),
+        (
+            "opportunity_discovery_lane.records.solicitation_number",
+            record.solicitation_number,
+        ),
+        ("opportunity_discovery_lane.records.notice_id", record.notice_id),
+        ("opportunity_discovery_lane.records.notice_type", record.notice_type),
+    )
+
+
+def _opportunity_timing_fields(record: SamGovOpportunityRecord) -> tuple[str, ...]:
+    return tuple(field for field, value in _opportunity_timing_field_values(record))
+
+
+def _opportunity_timing_values(record: SamGovOpportunityRecord) -> tuple[str, ...]:
+    return tuple(value for field, value in _opportunity_timing_field_values(record))
+
+
+def _opportunity_timing_field_values(
+    record: SamGovOpportunityRecord,
+) -> tuple[tuple[str, str], ...]:
+    return _populated_fields(
+        ("opportunity_discovery_lane.records.notice_type", record.notice_type),
+        (
+            "opportunity_discovery_lane.records.response_deadline",
+            record.response_deadline,
+        ),
+        ("opportunity_discovery_lane.records.posted_date", record.posted_date),
+    )
+
+
 def _entity_ecosystem_fields(match: SamGovEntityMatch) -> tuple[str, ...]:
     return tuple(field for field, value in _entity_ecosystem_field_values(match))
 
@@ -861,6 +1605,28 @@ def _entity_source_content(field_values: tuple[tuple[str, str], ...]) -> str:
     return "SAM.gov entity record: " + "; ".join(
         f"{field.removeprefix('entity_lane.matches.')}: {value}"
         for field, value in field_values
+    )
+
+
+def _opportunity_source_content(field_values: tuple[tuple[str, str], ...]) -> str:
+    return "SAM.gov opportunity notice: " + "; ".join(
+        f"{field.removeprefix('opportunity_discovery_lane.records.')}: {value}"
+        for field, value in field_values
+    )
+
+
+def _opportunity_packet_content(record: SamGovOpportunityRecord) -> str:
+    pieces = _populated_texts(
+        record.title, record.solicitation_number, record.notice_id
+    )
+    return "SAM.gov opportunity signal: " + "; ".join(pieces)
+
+
+def _needs_web_enrichment_support(lane: SamGovOpportunityDiscoveryLane) -> bool:
+    return (
+        lane.discovery_status is SamGovOpportunityDiscoveryStatus.NOT_FOUND
+        or any(record.match_confidence < 0.65 for record in lane.records)
+        or any(record.ambiguity_notes for record in lane.records)
     )
 
 

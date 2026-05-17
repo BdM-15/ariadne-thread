@@ -1,7 +1,7 @@
 # SAM.gov Enrichment Plan
 
 Date: 2026-05-17  
-Status: implementation started through issue #35
+Status: implementation started through issue #36
 
 ## Selected Epic
 
@@ -120,6 +120,12 @@ Only live-source SAM.gov outputs should be eligible for trusted Evidence promoti
 The first progression branch adds the SAM.gov Entity Record lane as a concrete product-integrated slice over the upstream `sam-gov-mcp` capability. It introduces a local SAM.gov Enrichment Profile module with source-mode provenance, fake/live runner separation, profile persistence, entity lookup by UEI or vendor name, review-gated candidates, review-decision events, FastAPI profile routes, a read-only Command Center panel, and public configuration for the SAM.gov profile store path.
 
 This slice intentionally does not implement known opportunity lookup, no-solicitation-ID discovery, attachment download/intake, Firecrawl, solicitation parsing, or trusted downstream promotion. Those remain in later SAM.gov issues.
+
+### Issue #36: Opportunity Discovery Lane
+
+The second progression branch adds user-triggered SAM.gov Opportunity Discovery for cases where Ariadne does not yet have a solicitation ID. It introduces discovery queries over customer, office, program name, renamed-program clues, notice type, NAICS, PSC, set-aside, and posted date windows, then calls the upstream `search_opportunities` tool through the same fake/live source-mode boundary used by the Entity Record lane.
+
+Discovery results persist inside the SAM.gov Enrichment Profile with retrieved-at provenance, source mode, mapped notice fields, match rationale, confidence, ambiguity notes, total-record metadata, and source limitations. The slice creates review-gated Source Evidence, Derived Evidence, Packet Field Answer, Action Plan, Call Plan, and deferred Web Enrichment Support route candidates, but still does not implement Firecrawl, attachment intake, known opportunity lookup, or trusted downstream writes.
 
 ## Accepted Four-Lane Demo
 

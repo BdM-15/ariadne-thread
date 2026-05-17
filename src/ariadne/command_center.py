@@ -37,9 +37,9 @@ from ariadne.quick_capture_demo import (
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence
 from ariadne.sam_gov_profiles import (
-  SamGovEnrichmentProfile,
-  SamGovProfileStore,
-  SamGovReviewCandidate,
+    SamGovEnrichmentProfile,
+    SamGovProfileStore,
+    SamGovReviewCandidate,
 )
 
 
@@ -86,7 +86,7 @@ def render_command_center_shell(
     )
     piid_profiles = piid_profile_store.list()
     sam_gov_profile_store = SamGovProfileStore(
-      _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
+        _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
     )
     sam_gov_profiles = sam_gov_profile_store.list()
     sam_gov_live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
@@ -645,8 +645,7 @@ def _render_federal_data_capabilities_panel(
     manifests: tuple[FederalDataCapabilityManifest, ...],
 ) -> str:
     product_integrated_count = sum(
-        manifest.product_status.value == "product_integrated"
-        for manifest in manifests
+        manifest.product_status.value == "product_integrated" for manifest in manifests
     )
     rows = "".join(
         _render_federal_data_capability_row(manifest) for manifest in manifests
@@ -665,11 +664,14 @@ def _render_federal_data_capability_row(
     manifest: FederalDataCapabilityManifest,
 ) -> str:
     status = manifest.product_status.value.replace("_", " ")
-    env_vars = ", ".join(
-        manifest.required_env_vars
-        + manifest.optional_env_vars
-        + manifest.upstream_env_vars
-    ) or "no env vars"
+    env_vars = (
+        ", ".join(
+            manifest.required_env_vars
+            + manifest.optional_env_vars
+            + manifest.upstream_env_vars
+        )
+        or "no env vars"
+    )
     return f"""<div class="row"><strong>{escape(manifest.name)}</strong><span>{escape(status)} - {escape(manifest.package)} {escape(manifest.version)}</span><span>{escape(manifest.description)}</span><span>Env names: {escape(env_vars)}</span></div>"""
 
 
@@ -701,10 +703,13 @@ def _render_piid_profile_row(profile: PiidContractIntelligenceProfile) -> str:
         _render_piid_review_candidate(candidate)
         for candidate in profile.review_candidates
     )
-    pivots = ", ".join(
-        f"{pivot.pivot_type.value}: {pivot.value}"
-        for pivot in profile.deterministic_pivots[:8]
-    ) or "none"
+    pivots = (
+        ", ".join(
+            f"{pivot.pivot_type.value}: {pivot.value}"
+            for pivot in profile.deterministic_pivots[:8]
+        )
+        or "none"
+    )
     gaps = ", ".join(gap.field_key for gap in profile.gaps[:8]) or "none"
     return f"""<div class="row"><strong>{escape(profile.normalized_piid)}</strong><span>Scenario: {escape(profile.scenario.value.replace("_", " ").title())} - Profile: {escape(profile.id)}</span><span>Award baseline: {escape(baseline.recipient_name or "recipient unknown")} - {escape(baseline.awarding_agency_name or "agency unknown")} - {escape(_money_label(baseline.award_amount))}</span><span>Burn posture: net obligations {escape(_money_label(burn.net_obligations))} - transactions {burn.transaction_count} - completeness {escape(burn.completeness)}</span><span>Vehicle context: {escape(vehicle.linkage_confidence)} - parent {escape(vehicle.parent_idv or vehicle.parent_generated_internal_id or "none")}</span><span>Deterministic pivots: {escape(pivots)}</span><span>Gaps: {escape(gaps)}</span><span>Provenance: {escape(profile.provenance.source_capability_id)} - {escape(profile.provenance.source_tool_name)} - {escape(profile.provenance.source_package)} {escape(profile.provenance.source_package_version)}</span><div class="row-list"><div class="row"><strong>Recommended enrichments</strong>{routes}</div><div class="row"><strong>PIID review candidates</strong>{candidates}</div><div class="row"><strong>Deferred artifact actions</strong><span>Draft report - Deferred until Artifact Renderer work exists.</span><span>Export XLSX - Deferred until Artifact Renderer work exists.</span><span>Export DOCX - Deferred until Artifact Renderer work exists.</span><span>Prepare visual briefing - Deferred until Artifact Renderer work exists.</span><div class="action-strip" aria-label="Deferred PIID artifact actions"><button class="action-button secondary" type="button" disabled>Draft report</button><button class="action-button secondary" type="button" disabled>Export XLSX</button><button class="action-button secondary" type="button" disabled>Export DOCX</button><button class="action-button secondary" type="button" disabled>Prepare visual briefing</button></div></div></div></div>"""
 
@@ -739,13 +744,12 @@ def _render_sam_gov_enrichment_profiles_panel(
         rows = """<div class="row"><strong>No SAM.gov profiles yet</strong><span>Create one through POST /api/federal-data/sam-gov/enrichment-profiles with an input_pivot.</span><span>Page render reads persisted profiles only and does not start upstream MCP processes.</span></div>"""
     else:
         rows = "".join(
-            _render_sam_gov_enrichment_profile_row(profile)
-            for profile in profiles[-3:]
+            _render_sam_gov_enrichment_profile_row(profile) for profile in profiles[-3:]
         )
     return f"""<section class="panel" id="sam-gov-enrichment-profiles" aria-labelledby="sam-gov-enrichment-profiles-heading">
       <div class="panel-heading"><h2 id="sam-gov-enrichment-profiles-heading">SAM.gov Enrichment Profiles</h2><span class="status-chip {readiness_class}">{len(profiles)} persisted</span></div>
       <div class="row-list">
-      <div class="row"><strong>Entity Record lane</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
+            <div class="row"><strong>Entity Record and Opportunity Discovery lanes</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
       {rows}
       </div>
     </section>"""
@@ -754,24 +758,49 @@ def _render_sam_gov_enrichment_profiles_panel(
 def _render_sam_gov_enrichment_profile_row(
     profile: SamGovEnrichmentProfile,
 ) -> str:
-    lane = profile.entity_lane
-    if lane is None:
-        return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Entity lane not started - Profile: {escape(profile.id)}</span></div>"""
-    match = lane.matches[0] if lane.matches else None
-    match_label = (
-        match.legal_business_name
-        or match.uei
-        or "no official entity match"
-        if match is not None
-        else "no official entity match"
-    )
-    source_mode = lane.provenance.source_mode.value.replace("_", " ")
-    limitations = "; ".join(lane.source_limitations) or "none"
+    lane_rows = []
+    if profile.entity_lane is not None:
+        lane = profile.entity_lane
+        match = lane.matches[0] if lane.matches else None
+        match_label = (
+            match.legal_business_name or match.uei or "no official entity match"
+            if match is not None
+            else "no official entity match"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Entity Record lane</strong><span>Entity status: {escape(lane.lookup_status.value.replace("_", " "))}</span><span>Entity match: {escape(match_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if profile.opportunity_discovery_lane is not None:
+        lane = profile.opportunity_discovery_lane
+        record = lane.records[0] if lane.records else None
+        record_label = (
+            record.title
+            or record.solicitation_number
+            or record.notice_id
+            or "no official opportunity match"
+            if record is not None
+            else "no official opportunity match"
+        )
+        notice_label = record.notice_type if record is not None else "none"
+        confidence = (
+            f"{record.match_confidence:.2f}" if record is not None else "unknown"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Opportunity Discovery lane</strong><span>Discovery status: {escape(lane.discovery_status.value.replace("_", " "))} - Records: {len(lane.records)}</span><span>Top notice: {escape(record_label)} - {escape(notice_label)} - confidence {escape(confidence)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if not lane_rows:
+        lane_rows.append(
+            """<div class="row"><strong>No SAM.gov lane started</strong><span>Create an entity or opportunity discovery profile through the API.</span></div>"""
+        )
     candidates = "".join(
         _render_sam_gov_review_candidate(candidate)
         for candidate in profile.review_candidates[:8]
     )
-    return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Profile: {escape(profile.id)} - Entity status: {escape(lane.lookup_status.value.replace("_", " "))}</span><span>Entity match: {escape(match_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span><div class="row-list"><div class="row"><strong>SAM.gov review candidates</strong>{candidates}</div></div></div>"""
+    return f"""<div class="row"><strong>{escape(profile.normalized_pivot)}</strong><span>Profile: {escape(profile.id)}</span><div class="row-list">{"".join(lane_rows)}<div class="row"><strong>SAM.gov review candidates</strong>{candidates}</div></div></div>"""
 
 
 def _render_sam_gov_review_candidate(candidate: SamGovReviewCandidate) -> str:

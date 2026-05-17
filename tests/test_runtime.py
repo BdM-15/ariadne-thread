@@ -745,6 +745,121 @@ def test_sam_gov_entity_profile_api_requires_key_for_live_action(tmp_path) -> No
     )
 
 
+def test_sam_gov_opportunity_discovery_api_creates_and_persists_profile(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "totalRecords": 1,
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-rfi-001",
+                        "solicitationNumber": "FA8650-26-RFI-PHOENIX",
+                        "title": "Project Phoenix Sources Sought",
+                        "type": "Sources Sought",
+                        "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                        "postedDate": "05/10/2026",
+                        "responseDeadLine": "06/10/2026",
+                        "naicsCode": "541715",
+                        "classificationCode": "AC13",
+                    },
+                ],
+            },
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_opportunity_runner=runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    response = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles/opportunity-discovery",
+        json={
+            "customer_agency": "Department of the Air Force",
+            "office": "AFLCMC/PZ",
+            "program_name": "Project Phoenix",
+            "notice_type": "sources_sought",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+            "naics_code": "541715",
+            "psc_code": "AC13",
+            "limit": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    lane = profile["opportunity_discovery_lane"]
+    assert lane["discovery_status"] == "success"
+    assert lane["provenance"]["source_mode"] == "fake_adapter_test"
+    assert lane["records"][0]["notice_id"] == "notice-rfi-001"
+    assert "program_name matched title" in lane["records"][0]["match_rationale"]
+    assert any(
+        candidate["candidate_type"] == "derived_evidence"
+        for candidate in profile["review_candidates"]
+    )
+    assert all(
+        candidate["trusted_output_written"] is False
+        for candidate in profile["review_candidates"]
+    )
+
+    list_response = client.get("/api/federal-data/sam-gov/enrichment-profiles")
+    assert list_response.status_code == 200
+    assert list_response.json()["profiles"] == [profile]
+    assert calls == [
+        (
+            "search_opportunities",
+            {
+                "posted_from": "05/01/2026",
+                "posted_to": "05/31/2026",
+                "notice_type": "r",
+                "title": "Project Phoenix",
+                "naics_code": "541715",
+                "psc_code": "AC13",
+                "agency_keyword": "Department of the Air Force AFLCMC/PZ",
+                "limit": 10,
+                "offset": 0,
+            },
+        )
+    ]
+
+
+def test_sam_gov_opportunity_discovery_api_requires_key_for_live_action(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+
+    response = TestClient(create_app(settings)).post(
+        "/api/federal-data/sam-gov/enrichment-profiles/opportunity-discovery",
+        json={
+            "program_name": "Project Phoenix",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "SAM.gov API key is required for live SAM.gov opportunity discovery"
+    )
+
+
 def test_sam_gov_entity_profile_review_decision_api_records_event(
     tmp_path,
 ) -> None:
@@ -803,8 +918,9 @@ def test_sam_gov_entity_profile_review_decision_api_records_event(
     assert updated_profile["hermes_events"][-1]["event_type"] == (
         "review_decision_recorded"
     )
-    assert updated_profile["hermes_events"][-1]["payload"]["candidate_id"] == (
-        source_candidate["id"]
+    assert (
+        updated_profile["hermes_events"][-1]["payload"]["candidate_id"]
+        == (source_candidate["id"])
     )
 
 
@@ -1186,8 +1302,9 @@ def test_usaspending_piid_profile_review_decision_api_records_event_without_prom
     assert updated_profile["hermes_events"][-1]["event_type"] == (
         "review_decision_recorded"
     )
-    assert updated_profile["hermes_events"][-1]["payload"]["candidate_id"] == (
-        source_candidate["id"]
+    assert (
+        updated_profile["hermes_events"][-1]["payload"]["candidate_id"]
+        == (source_candidate["id"])
     )
     assert LocalEvidenceStore(evidence_root).list() == []
 
@@ -1741,6 +1858,61 @@ def test_command_center_shell_shows_sam_gov_profiles_without_live_call(
     assert "ACME FEDERAL LLC" in response.text
     assert "fake adapter test" in response.text
     assert "Live readiness: missing SAM.gov API key" in response.text
+    assert len(calls) == 1
+
+
+def test_command_center_shell_shows_sam_gov_opportunity_discovery_without_live_call(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-rfi-001",
+                        "solicitationNumber": "FA8650-26-RFI-PHOENIX",
+                        "title": "Project Phoenix Sources Sought",
+                        "type": "Sources Sought",
+                        "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                        "postedDate": "05/10/2026",
+                    }
+                ]
+            },
+        )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_opportunity_runner=runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles/opportunity-discovery",
+        json={
+            "customer_agency": "Department of the Air Force",
+            "program_name": "Project Phoenix",
+            "notice_type": "sources_sought",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    )
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Opportunity Discovery lane" in response.text
+    assert "Project Phoenix Sources Sought" in response.text
+    assert "Sources Sought" in response.text
+    assert "Derived Evidence: opportunity match rationale" in response.text
     assert len(calls) == 1
 
 

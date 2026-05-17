@@ -90,13 +90,16 @@ from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 from ariadne.sam_gov_profiles import (
     SamGovEnrichmentProfile,
     SamGovMcpToolRunner,
+    SamGovOpportunityDiscoveryQuery,
     SamGovProfileStore,
     SamGovReviewState,
     SamGovSourceMode,
     create_sam_gov_enrichment_profile,
     create_sam_gov_lookup_runner,
+    create_sam_gov_opportunity_discovery_profile,
     record_sam_gov_review_decision,
     resolve_sam_gov_entity_lookup,
+    resolve_sam_gov_opportunity_discovery,
 )
 from ariadne.usaspending import (
     USAspendingAwardLookupResult,
@@ -236,6 +239,10 @@ class SamGovEnrichmentProfileCreateRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=10)
 
 
+class SamGovOpportunityDiscoveryRequest(SamGovOpportunityDiscoveryQuery):
+    pass
+
+
 class SamGovEnrichmentProfileResponse(BaseModel):
     profile: SamGovEnrichmentProfile
 
@@ -331,6 +338,7 @@ def create_app(
     federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
     usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
     sam_gov_entity_runner: SamGovMcpToolRunner | None = None,
+    sam_gov_opportunity_runner: SamGovMcpToolRunner | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
@@ -563,6 +571,7 @@ def create_app(
             runtime_settings,
             injected_runner=sam_gov_entity_runner,
             injected_source_mode=sam_gov_source_mode,
+            missing_key_detail="SAM.gov API key is required for live SAM.gov entity enrichment",
         )
         lookup = resolve_sam_gov_entity_lookup(
             request.input_pivot,
@@ -571,6 +580,29 @@ def create_app(
             lookup_limit=request.limit,
         )
         profile = create_sam_gov_enrichment_profile(lookup)
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        return SamGovEnrichmentProfileResponse(profile=store.write(profile))
+
+    @app.post("/api/federal-data/sam-gov/enrichment-profiles/opportunity-discovery")
+    def create_sam_gov_opportunity_discovery_profile_api(
+        request: SamGovOpportunityDiscoveryRequest,
+    ) -> SamGovEnrichmentProfileResponse:
+        runner, source_mode = _sam_gov_entity_runner_and_source_mode(
+            runtime_settings,
+            injected_runner=sam_gov_opportunity_runner or sam_gov_entity_runner,
+            injected_source_mode=sam_gov_source_mode,
+            missing_key_detail=(
+                "SAM.gov API key is required for live SAM.gov opportunity discovery"
+            ),
+        )
+        discovery = resolve_sam_gov_opportunity_discovery(
+            request,
+            runner=runner,
+            source_mode=source_mode,
+        )
+        profile = create_sam_gov_opportunity_discovery_profile(discovery)
         store = SamGovProfileStore(
             _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
         )
@@ -1060,6 +1092,7 @@ def _sam_gov_entity_runner_and_source_mode(
     *,
     injected_runner: SamGovMcpToolRunner | None,
     injected_source_mode: SamGovSourceMode | None,
+    missing_key_detail: str,
 ) -> tuple[SamGovMcpToolRunner, SamGovSourceMode]:
     if injected_runner is not None:
         return (
@@ -1076,9 +1109,7 @@ def _sam_gov_entity_runner_and_source_mode(
     if missing_env_vars:
         raise HTTPException(
             status_code=409,
-            detail=(
-                "SAM.gov API key is required for live SAM.gov entity enrichment"
-            ),
+            detail=missing_key_detail,
         )
     return (
         create_sam_gov_lookup_runner(

@@ -39,6 +39,15 @@ from ariadne.document_intake import (
     list_document_intake_adapter_declarations,
 )
 from ariadne.evidence import EvidenceItem, LocalEvidenceStore
+from ariadne.federal_data import (
+    FederalDataCapabilityManifest,
+    FederalDataInitializeRunner,
+    FederalDataProductStatus,
+    FederalDataSmokeCheckResult,
+    list_federal_data_capability_manifests,
+    run_federal_data_initialize_smoke_check,
+    run_mcp_initialize_command,
+)
 from ariadne.local_admin_model import request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
@@ -53,6 +62,13 @@ from ariadne.packet_review import (
 from ariadne.packets import (
     BriefingView,
     CoverageView,
+)
+from ariadne.piid_profiles import (
+    PiidContractIntelligenceProfile,
+    PiidProfileStore,
+    PiidReviewState,
+    create_piid_contract_intelligence_profile,
+    record_piid_review_decision,
 )
 from ariadne.quick_capture import (
     CaptureIntelligenceDraft,
@@ -71,6 +87,14 @@ from ariadne.quick_capture import (
     route_capture_follow_up_questions,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
+from ariadne.usaspending import (
+    USAspendingAwardLookupResult,
+    USAspendingAwardLookupStatus,
+    USAspendingMcpToolRunner,
+    create_usaspending_lookup_runner,
+    fetch_usaspending_award_history,
+    resolve_usaspending_piid,
+)
 
 
 class ReviewDecisionAction(StrEnum):
@@ -148,6 +172,54 @@ class DocumentIntakeCapabilitiesResponse(BaseModel):
     )
 
 
+class FederalDataCapabilitiesResponse(BaseModel):
+    capabilities: tuple[FederalDataCapabilityManifest, ...]
+    registered_count: int
+    smoke_tested_count: int
+    product_integrated_count: int
+    deferred_product_workflow_count: int
+    safe_smoke_check_method: str = "json_rpc_initialize_only"
+    smoke_check_endpoint_template: str = (
+        "/api/federal-data/capabilities/{capability_id}/smoke-check"
+    )
+
+
+class FederalDataSmokeCheckResponse(BaseModel):
+    result: FederalDataSmokeCheckResult
+    safe_smoke_check_method: str = "json_rpc_initialize_only"
+
+
+class USAspendingPiidLookupRequest(BaseModel):
+    contract_number: str
+    limit: int = Field(default=5, ge=1, le=100)
+
+
+class USAspendingPiidLookupResponse(BaseModel):
+    result: USAspendingAwardLookupResult
+
+
+class USAspendingPiidProfileCreateRequest(BaseModel):
+    contract_number: str
+    limit: int = Field(default=5, ge=1, le=100)
+    transaction_limit: int = Field(default=100, ge=1, le=5000)
+    funding_limit: int = Field(default=50, ge=1, le=100)
+    vehicle_child_limit: int = Field(default=50, ge=1, le=100)
+
+
+class USAspendingPiidProfileResponse(BaseModel):
+    profile: PiidContractIntelligenceProfile
+
+
+class USAspendingPiidProfileReviewDecisionRequest(BaseModel):
+    candidate_id: str
+    review_state: PiidReviewState
+    reviewer_rationale: str
+
+
+class USAspendingPiidProfilesResponse(BaseModel):
+    profiles: tuple[PiidContractIntelligenceProfile, ...]
+
+
 class DocumentIntakeKnowledgeNoteProjectionRequest(BaseModel):
     extraction_bundle_id: str
     projection_id: str | None = None
@@ -223,7 +295,12 @@ class CapturePromotionResponse(BaseModel):
     decision: DraftPartPromotionDecision | None = None
 
 
-def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
+def create_app(
+    settings: RuntimeSettings | None = None,
+    *,
+    federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
+    usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
+) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
 
@@ -283,6 +360,161 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
                 for capability in capabilities
             ),
         )
+
+    @app.get("/api/federal-data/capabilities")
+    def federal_data_capabilities() -> FederalDataCapabilitiesResponse:
+        registry = list_federal_data_capability_manifests()
+        capabilities = registry.capabilities
+        return FederalDataCapabilitiesResponse(
+            capabilities=capabilities,
+            registered_count=sum(
+                capability.product_status is FederalDataProductStatus.REGISTERED
+                for capability in capabilities
+            ),
+            smoke_tested_count=sum(
+                capability.product_status is FederalDataProductStatus.SMOKE_TESTED
+                for capability in capabilities
+            ),
+            product_integrated_count=sum(
+                capability.product_status is FederalDataProductStatus.PRODUCT_INTEGRATED
+                for capability in capabilities
+            ),
+            deferred_product_workflow_count=sum(
+                capability.product_status
+                is FederalDataProductStatus.DEFERRED_PRODUCT_WORKFLOW
+                for capability in capabilities
+            ),
+        )
+
+    @app.post("/api/federal-data/capabilities/{capability_id}/smoke-check")
+    def federal_data_capability_smoke_check(
+        capability_id: str,
+    ) -> FederalDataSmokeCheckResponse:
+        registry = list_federal_data_capability_manifests()
+        manifest = next(
+            (
+                capability
+                for capability in registry.capabilities
+                if capability.id == capability_id
+            ),
+            None,
+        )
+        if manifest is None:
+            raise HTTPException(
+                status_code=404, detail="Federal Data Capability not found"
+            )
+        return FederalDataSmokeCheckResponse(
+            result=run_federal_data_initialize_smoke_check(
+                manifest,
+                runner=federal_data_smoke_runner,
+                env=_federal_data_env_for_manifest(manifest, runtime_settings),
+                timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            )
+        )
+
+    @app.post("/api/federal-data/usaspending/piid-lookup")
+    def usaspending_piid_lookup(
+        request: USAspendingPiidLookupRequest,
+    ) -> USAspendingPiidLookupResponse:
+        manifest = _federal_data_manifest("usaspending")
+        runner = usaspending_lookup_runner or create_usaspending_lookup_runner(
+            command=manifest.command,
+            timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            env=_federal_data_env_for_manifest(manifest, runtime_settings),
+        )
+        return USAspendingPiidLookupResponse(
+            result=resolve_usaspending_piid(
+                request.contract_number,
+                runner=runner,
+                lookup_limit=request.limit,
+            )
+        )
+
+    @app.get("/api/federal-data/usaspending/piid-profiles")
+    def usaspending_piid_profiles() -> USAspendingPiidProfilesResponse:
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        return USAspendingPiidProfilesResponse(profiles=tuple(store.list()))
+
+    @app.post("/api/federal-data/usaspending/piid-profiles")
+    def create_usaspending_piid_profile(
+        request: USAspendingPiidProfileCreateRequest,
+    ) -> USAspendingPiidProfileResponse:
+        manifest = _federal_data_manifest("usaspending")
+        runner = usaspending_lookup_runner or create_usaspending_lookup_runner(
+            command=manifest.command,
+            timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+            env=_federal_data_env_for_manifest(manifest, runtime_settings),
+        )
+        lookup = resolve_usaspending_piid(
+            request.contract_number,
+            runner=runner,
+            lookup_limit=request.limit,
+        )
+        if lookup.status is not USAspendingAwardLookupStatus.SUCCESS:
+            raise HTTPException(
+                status_code=409,
+                detail="resolved USAspending award is required",
+            )
+        award_history = fetch_usaspending_award_history(
+            lookup,
+            runner=runner,
+            transaction_limit=request.transaction_limit,
+            funding_limit=request.funding_limit,
+            vehicle_child_limit=request.vehicle_child_limit,
+        )
+        profile = create_piid_contract_intelligence_profile(
+            lookup,
+            award_history=award_history,
+        )
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        return USAspendingPiidProfileResponse(profile=store.write(profile))
+
+    @app.get("/api/federal-data/usaspending/piid-profiles/{profile_id}")
+    def usaspending_piid_profile(
+        profile_id: str,
+    ) -> USAspendingPiidProfileResponse:
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="PIID profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return USAspendingPiidProfileResponse(profile=profile)
+
+    @app.post(
+        "/api/federal-data/usaspending/piid-profiles/{profile_id}/review-decisions"
+    )
+    def usaspending_piid_profile_review_decision(
+        profile_id: str,
+        request: USAspendingPiidProfileReviewDecisionRequest,
+    ) -> USAspendingPiidProfileResponse:
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+            updated_profile = record_piid_review_decision(
+                profile,
+                candidate_id=request.candidate_id,
+                review_state=request.review_state,
+                reviewer_rationale=request.reviewer_rationale,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="PIID profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return USAspendingPiidProfileResponse(profile=store.write(updated_profile))
 
     @app.get("/api/document-intake/queue")
     def document_intake_queue() -> DocumentIntakeQueueResponse:
@@ -679,6 +911,45 @@ def _resolve_runtime_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _federal_data_env_for_manifest(
+    manifest: FederalDataCapabilityManifest,
+    settings: RuntimeSettings,
+) -> dict[str, str]:
+    env = {
+        name: value
+        for name, value in settings.federal_data_env.items()
+        if name
+        in manifest.required_env_vars
+        + manifest.optional_env_vars
+        + manifest.upstream_env_vars
+    }
+    for ariadne_name, upstream_name in zip(
+        manifest.required_env_vars,
+        manifest.upstream_env_vars,
+        strict=False,
+    ):
+        if ariadne_name in env and upstream_name not in env:
+            env[upstream_name] = env[ariadne_name]
+    if manifest.id == "regulations_gov" and "API_DATA_GOV_KEY" in env:
+        env.setdefault("REGULATIONS_GOV_API_KEY", env["API_DATA_GOV_KEY"])
+    return env
+
+
+def _federal_data_manifest(capability_id: str) -> FederalDataCapabilityManifest:
+    registry = list_federal_data_capability_manifests()
+    manifest = next(
+        (
+            capability
+            for capability in registry.capabilities
+            if capability.id == capability_id
+        ),
+        None,
+    )
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="Federal Data Capability not found")
+    return manifest
 
 
 def _write_intake_record_and_generic_bundle(

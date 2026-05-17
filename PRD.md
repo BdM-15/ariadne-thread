@@ -1,16 +1,16 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.8**
+**Product Requirements Document (PRD) v1.10**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
-**Date:** May 16, 2026  
-**Status:** Document Intake Command Surface first vertical epic complete; ready for next grill-with-docs planning session
+**Date:** May 17, 2026
+**Status:** Federal Data MCP Foundation + USAspending Recompete Intelligence Intake complete; ready for next `grill-with-docs` selection
 
 ---
 
-## 0. Current State Snapshot (May 16, 2026)
+## 0. Current State Snapshot (May 17, 2026)
 
 **Completed**
 
@@ -31,19 +31,22 @@
 - A `grill-with-docs` planning session selected the **Document Intake Command Surface** as the next vertical product slice. `CONTEXT.md` now defines the Capture Knowledge Foundation, Extraction Bundle, Source Span, Entity Candidate, Relationship Candidate, Extraction Warning, Generic Source Material, Visual Source Material, Solicitation Document, Unsupported Document, Document Intake Queue, Document Intake Store, Knowledge Note Projection, Multimodal Extraction Capability, and Solicitation Parser Capability.
 - ADR 0006 records the Document Intake extraction boundary: parser, retrieval, OCR, multimodal, MinerU, RAGAnything, LightRAG, and Theseus-style tools produce reviewable Extraction Bundles, while Ariadne owns trusted entities, relationships, provenance, and review gates.
 - `docs/architecture/document-intake-command-surface-plan.md` records the completed Document Intake implementation trail and hand-off notes for future parser/retrieval integration work.
-- `docs/architecture/next-grill-with-docs-session.md` captures the next planning-session agenda, candidate epic directions, and decisions that must be made before new integration work begins.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass for the Document Intake Command Surface epic, with 116 tests passing at merge time.
+- A `grill-with-docs` planning session selected **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake** as a vertical product epic. ADR 0007 records that Ariadne should integrate upstream `1102tools/federal-contracting-mcps` as manifest-only Federal Data Capabilities instead of creating unique Ariadne MCP servers for the same public data sources.
+- `docs/architecture/federal-data-mcp-foundation-plan.md` records the completed Federal Data MCP Foundation epic plan and implementation trail: all eight 1102 MCPs are registered with honest status labels, USAspending is the first product-integrated source, and the PIID Contract Intelligence Profile workflow supports recompete capture research.
+- The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Federal Data MCP Foundation branch, with 160 tests passing.
 
 **Still Deferred**
 
-- Hermes runtime, durable knowledge/retrieval engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations, advanced skill installation, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
+- Hermes runtime, durable knowledge/retrieval engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond the selected federal data MCP foundation, advanced skill installation, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Run a `grill-with-docs` planning session before opening the next product or integration epic. Use `docs/architecture/next-grill-with-docs-session.md`, `CONTEXT.md`, ADR 0006, and the completed Document Intake behavior as the session packet.
-- Select exactly one next vertical epic before implementation. Candidate directions include Command Center UI polish or Next.js migration, Capability Studio progression, Knowledge Layer/retrieval architecture, Graph Sensemaking Mode, Theseus solicitation parser adapter integration, Artifact Renderer/huashu-design, Hermes operational learning, or deeper Call Plan/Risk Register promotion workflows.
-- For any integration slice involving Hermes, graph visualization, MinerU, huashu-design, RAG/retrieval, external APIs, advanced skills, artifact rendering, or third-party capability installation, record the load-bearing decision in `CONTEXT.md` or a new ADR before implementation.
+- Run a fresh `grill-with-docs` session before selecting the next vertical slice.
+- Use `PRD.md`, `CONTEXT.md`, ADRs, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as the session inputs.
+- Candidate directions include SAM.gov entity/opportunity enrichment, BLS/GSA pricing context, Firecrawl/web enrichment, focused competitor/customer/subaward/vehicle profiles, Artifact Renderer export from accepted PIID profile content, Hermes operational learning, Capability Studio progression, and Knowledge Graph sensemaking.
+- Keep SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov product workflows, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, artifact rendering, and Next.js migration explicitly deferred until chosen through a documented slice.
 - Keep the next epic a vertical product slice with real behavior and review gates, not a broad platform sweep.
 
 ---
@@ -153,6 +156,7 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 | Custom Renderer Skill                         | DOCX + XLSX generation for capture artifacts                                                                                                               | Internal (guided by ui-ux-pro-max)                      |
 | Custom HITL Chat Interface                    | Back-and-forth interaction for skills requiring human decision input                                                                                       | Internal (guided by ui-ux-pro-max)                      |
 | Obsidian Integration                          | Living PKM and capture plans                                                                                                                               | https://github.com/kepano/obsidian-skills               |
+| 1102tools/federal-contracting-mcps            | Hardened public federal data MCPs for USAspending, SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov                       | https://github.com/1102tools/federal-contracting-mcps   |
 | 1102tools/federal-contracting-skills          | Government contracting deliverables (IGCE, SOW/PWS, market research)                                                                                       | https://github.com/1102tools/federal-contracting-skills |
 | coreyhaines31/marketingskills                 | Value propositions, positioning, messaging, CRO                                                                                                            | https://github.com/coreyhaines31/marketingskills        |
 | Firecrawl                                     | Primary research/scraping engine                                                                                                                           | https://github.com/mendableai/firecrawl                 |
@@ -167,6 +171,7 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - **Backend**: Python-first, deep modular structure (enforced by Matt Pocock skills)
 - **Initial Python Package Shape**: Start with one `src/ariadne/` package and deep internal modules for the first slice rather than many small top-level packages. Initial module homes should include configuration, opportunities, evidence, packets, action plans, and capability catalog concerns.
 - **CLI-First Harnesses**: Use Python Click-style CLIs with `--json` output for repeatable, batchable, tool-facing, or agent-facing operations. These CLIs should sit behind the UI or agent runtime rather than replacing human-facing strategy workflows.
+- **Federal Data MCP Foundation**: Integrate upstream `1102tools/federal-contracting-mcps` through manifest-only Federal Data Capability declarations. Ariadne should pin upstream packages, record provenance and env-var names, smoke-test MCP initialize behavior, and deeply integrate one source at a time through product workflows rather than building unique federal data MCP servers.
 - **Evidence Store**: Store traceable Evidence Items local-first behind a Pydantic-validated interface. Start with structured local files as the first adapter, while keeping callers isolated from whether persistence later becomes SQLite, Postgres, or another storage engine.
 - **Document Intake Command Surface**: Turn uploaded source material into extraction provenance, Capture Intelligence Draft Parts, recommendations, skill-chain options, accepted Evidence Items, review-gated downstream candidates, Knowledge Note Projections, and Command Center actions. Build functionality first through domain models, a narrow Document Intake Store, and Extraction Bundle behavior before rendering UI.
 - **Extraction Boundary**: Use Extraction Bundles as the shared parser output contract for generic source material, visual source material, and solicitation-family documents. Parser, OCR, multimodal, retrieval, MinerU, RAGAnything, LightRAG, and Theseus-style tools must act as adapters that produce reviewable output; Ariadne keeps trusted entities, relationships, provenance, and review gates in the domain model.
@@ -278,7 +283,7 @@ Every Opportunity should have a first-class Capture Action Plan. Action plan ite
 
 Quick Capture should follow a low-friction idea-capture pattern: let the user dump rough thoughts, meeting fragments, stray ideas, pasted text, or uploaded files quickly, then let Ariadne classify, polish, connect, and route them through a Knowledge Processing Workflow. Ariadne should use Capture Reference Context, including the imported Project Ariadne public-source knowledge, to infer useful Capture Intelligence Drafts from rushed raw material while keeping promotion into trusted knowledge review-gated. Trusted evidence should save the polished Capture Intelligence Draft output, not the truly raw note; raw source text is retained only as trace/admin context for auditability. If a note is too low-signal for Ariadne to infer useful capture intel, it should create a clarification request back to the user instead of becoming evidence. The Capture Intelligence Draft review surface should become a command-and-action workspace: the user can accept, edit, discard, route follow-up questions, launch research, request a skill or skill chain, or prepare artifacts such as call plan recommendations when the draft implies customer engagement is needed. Review and routing should operate on individual draft parts, not only on whole-draft summaries, because some intelligence will be deterministic and low-risk while other pieces need careful curation. The surface should also support bulk selection for repeated low-risk or same-route actions, while preserving per-piece review, provenance, and override controls. Ariadne should suggest relevant skill chains or product workflows per draft part and flag opportunities for Hermes to create or improve a skill when no suitable capability exists. The first stage can use lightweight Reference Wiki retrieval over local Markdown/frontmatter/wikilink-style notes before a full vector database or RAG engine exists. Processing can create Evidence Items, Opportunity Knowledge, Action Plan Items, Reusable Capture Insight candidates, or follow-up questions. Pasted text and simple text or Markdown uploads should become Raw Capture Items with source metadata and follow the same Capture Intelligence Draft path as manual notes. Lightweight uploads can begin in Quick Capture, while heavier source material should move into the Document Intake Queue for classification, extraction status, parser requirements, source-span review, warnings, and document-derived action. The Command Center should keep an end-to-end demo thread for this workflow showing messy raw input, Reference Wiki influences, draft inferences, review controls, accepted evidence/action/packet outputs, discarded outputs, and trace links back to raw input and draft rationale.
 
-The next vertical epic is the Document Intake Command Surface. It should turn uploaded source material into extraction provenance, Capture Intelligence Draft Parts, recommendations, skill-chain options, and review-gated actions. The Command Center is not a passive data center: document-derived data should be shown with what Ariadne recommends next, which skill chains or product workflows are relevant, what source spans can become Evidence Items, and which Action Plan, Packet, Risk Register, Call Plan, and Knowledge Note Projection candidates need review. The first tracer bullet should support generic source material end to end: upload or register source material, classify it, persist a Document Intake Store record, create an Extraction Bundle, convert useful findings into Capture Intelligence Draft Parts, surface recommendations and skill-chain options, accept source spans into Evidence Items, create review-gated candidates for downstream capture work, generate a Knowledge Note Projection, and show the workflow in the Command Center.
+The completed Document Intake Command Surface turns uploaded source material into extraction provenance, Capture Intelligence Draft Parts, recommendations, skill-chain options, and review-gated actions. The Command Center is not a passive data center: document-derived data should be shown with what Ariadne recommends next, which skill chains or product workflows are relevant, what source spans can become Evidence Items, and which Action Plan, Packet, Risk Register, Call Plan, and Knowledge Note Projection candidates need review. The first tracer bullet supports generic source material end to end: upload or register source material, classify it, persist a Document Intake Store record, create an Extraction Bundle, convert useful findings into Capture Intelligence Draft Parts, surface recommendations and skill-chain options, accept source spans into Evidence Items, create review-gated candidates for downstream capture work, generate a Knowledge Note Projection, and show the workflow in the Command Center.
 
 Document Intake should use an Extraction Bundle as the shared parser output contract before any parser or retrieval engine becomes trusted knowledge. An Extraction Bundle should carry source material metadata, Source Spans, Entity Candidates, Relationship Candidates, Extraction Warnings, confidence, parser provenance, and review state. The first ontology core should stay intentionally small: Document, Source Span, Entity Candidate, Relationship Candidate, and Extraction Warning. Initial entity candidates should cover customer, organization, stakeholder, opportunity, requirement or need, date or milestone, risk, action or commitment, artifact or document, capability, and discriminator. Initial relationship candidates should cover mentions, supports, creates risk, addresses need, owned by, due on, related to opportunity, and evidence for. Extraction Bundles provide trace context; Capture Intelligence Draft Parts remain the primary user review, recommendation, skill-chain, and assisted-execution surface.
 
@@ -295,6 +300,8 @@ Quick Capture may optionally use a Local Admin Model such as an Ollama-hosted Qw
 The Knowledge Layer should include a Knowledge Graph View that visualizes Ariadne's primary structured knowledge: opportunities, evidence items, core capture workstreams, packet sections, action plan items, artifacts, and reusable capture insights. The first stage should be Graph Sensemaking Mode for exploration and understanding. A later stage can add Graph Action Mode so selected nodes can create actions, suggest Insight Promotion, generate briefing sections, or launch research workflows. Obsidian may mirror selected knowledge into readable notes for browsing and reflection, but graph visualization should be built from Ariadne's source knowledge model rather than relying on Obsidian vault conventions.
 
 If Obsidian or another Knowledge Mirror is edited directly, those edits should return to Ariadne as Mirror Update Proposals rather than directly overwriting structured knowledge. Ariadne should classify, validate, and route those proposals through the same Knowledge Processing Workflow used by Quick Capture so traceability and source-of-truth discipline are preserved.
+
+The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices until selected through a fresh `grill-with-docs` session.
 
 ## 6.2 Future Capability Integration Strategy
 
@@ -356,20 +363,31 @@ Each future slice should leave a short documentation trail before code: what is 
 - Added an end-to-end Command Center demo thread showing messy input, Reference Wiki influences, draft inferences, review controls, accepted evidence/action/packet outputs, discarded output, traceability, and parser-required future Document Intake.
 - Closed issues #9 through #15 on the epic branch after validation.
 
-**Document Intake Command Surface Epic** ← **PLANNED NEXT**
+**Document Intake Command Surface Epic** ← **COMPLETE**
 
-- Build functionality foundation first: domain models, Document Intake Store, Extraction Bundle creation, and review-ready Capture Intelligence Draft inputs before UI rendering.
-- First tracer bullet: upload or register generic source material, classify it, persist intake state, create an Extraction Bundle, convert useful findings into Capture Intelligence Draft Parts, surface recommendations and skill-chain options, accept source spans into Evidence Items, create review-gated Action Plan/Packet/Risk Register/Call Plan/Knowledge Note Projection candidates, and show the workflow in the Command Center.
-- Keep Ariadne's Capture Knowledge Foundation authoritative across capture and solicitation workflows. Parser, retrieval, OCR, multimodal, MinerU, RAGAnything, LightRAG, and Theseus-style tools are adapters that produce reviewable Extraction Bundles.
-- Classify source material as Generic Source Material, Visual Source Material, Solicitation Document, or Unsupported Document. Record visual material now while deferring OCR/multimodal extraction; queue solicitation-family material for a future Solicitation Parser Capability.
-- Persist a narrow local Document Intake Store for intake records, Extraction Bundles, review decisions, accepted evidence links, and Knowledge Note Projections without redesigning the full storage architecture.
-- Generate Knowledge Note Projections as one-way Markdown-style notes over accepted Ariadne knowledge; they support lightweight sensemaking and future retrieval without becoming source of truth.
-- Defer full MinerU, RAGAnything, LightRAG, Theseus, OCR, frontier multimodal extraction, Knowledge Graph storage, bidirectional Obsidian sync, complex skill-chain execution, and broad storage-platform work.
+- Built functionality foundation first: domain models, Document Intake Store, Extraction Bundle creation, review-ready Capture Intelligence Draft inputs, and Command Center demo behavior.
+- Completed the tracer bullet: upload or register generic source material, classify it, persist intake state, create an Extraction Bundle, convert useful findings into Capture Intelligence Draft Parts, surface recommendations and skill-chain options, accept source spans into Evidence Items, create review-gated Action Plan/Packet/Risk Register/Call Plan/Knowledge Note Projection candidates, and show the workflow in the Command Center.
+- Kept Ariadne's Capture Knowledge Foundation authoritative across capture and solicitation workflows. Parser, retrieval, OCR, multimodal, MinerU, RAGAnything, LightRAG, and Theseus-style tools remain adapters that produce reviewable Extraction Bundles.
+- Classified source material as Generic Source Material, Visual Source Material, Solicitation Document, or Unsupported Document. Visual and solicitation-family material are recorded while OCR/multimodal and Solicitation Parser Capability work remains deferred.
+- Persisted a narrow local Document Intake Store for intake records, Extraction Bundles, review decisions, accepted evidence links, and Knowledge Note Projections without redesigning the full storage architecture.
+- Generated Knowledge Note Projections as one-way Markdown-style notes over accepted Ariadne knowledge; they support lightweight sensemaking and future retrieval without becoming source of truth.
+- Deferred full MinerU, RAGAnything, LightRAG, Theseus, OCR, frontier multimodal extraction, Knowledge Graph storage, bidirectional Obsidian sync, complex skill-chain execution, and broad storage-platform work.
+
+**Federal Data MCP Foundation + USAspending Recompete Intelligence Intake Epic** ← **COMPLETE**
+
+- Registered all eight upstream `1102tools/federal-contracting-mcps` servers as manifest-only Federal Data Capabilities rather than creating unique Ariadne MCP servers or vendoring upstream MCP source.
+- Recorded pinned upstream versions, command shapes, provenance, license metadata, env-var names, richer operational descriptions, and product integration status labels so Ariadne can keep up with upstream updates through manifest bumps.
+- Deeply integrated USAspending first because recompete-heavy capture work depends on award history, incumbents, customer buying behavior, vehicles, obligations, spending patterns, and timing signals.
+- Built a PIID Contract Intelligence Profile workflow that starts from one contract number and produces structured award baseline, burn posture, vehicle context, deterministic pivots, PRIME gaps, recommended next enrichments, review-gated candidates, and Hermes-observable events.
+- Treated user-provided PIID intelligence templates as strategy input, not product specs; Ariadne behavior is built around the upstream USAspending MCP and Ariadne's evidence/review model.
+- Kept artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
+- Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI.
 
 **Next Implementation Gate**
 
-- Break the Document Intake Command Surface epic into issue-sized slices, starting with tests and the domain/store layer for intake records and Extraction Bundles.
+- Start the next conversation with a `grill-with-docs` session to select the next vertical epic after the completed Federal Data MCP Foundation.
 - Keep the Command Center command-first: pulse check, quick action, recommendations, skill-chain options, and AI support should take priority over passive data display.
+- Before implementation, document the selected slice, explicit deferrals, evidence/provenance/review rules, and any new domain terms in the PRD, `CONTEXT.md`, an architecture note, and ADRs only where needed.
 
 **Phase 1 – Core Infrastructure**
 
@@ -447,9 +465,9 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.7**
+**End of PRD v1.9**
 
-**Phase 0, first-slice domain/storage epic, and Quick Capture Knowledge Processing epic complete. Document Intake Command Surface is the next planned vertical slice.**
+**Phase 0, first-slice domain/storage epic, Quick Capture Knowledge Processing epic, and Document Intake Command Surface epic complete. Federal Data MCP Foundation + USAspending Recompete Intelligence Intake is the next planned vertical slice.**
 
 ---
 

@@ -16,9 +16,19 @@ from ariadne.document_intake import (
     create_capture_intelligence_draft_from_extraction_bundle,
     list_document_intake_adapter_declarations,
 )
+from ariadne.federal_data import (
+    FederalDataCapabilityManifest,
+    list_federal_data_capability_manifests,
+)
 from ariadne.packets import (
     CanonicalPacketSection,
     EvidenceStatus,
+)
+from ariadne.piid_profiles import (
+    PiidContractIntelligenceProfile,
+    PiidEnrichmentRoute,
+    PiidProfileStore,
+    PiidReviewCandidate,
 )
 from ariadne.quick_capture import CaptureIntelligenceDraft
 from ariadne.quick_capture_demo import (
@@ -65,6 +75,11 @@ def render_command_center_shell(
         document_intake_demo.projection
     ] + document_intake_store.list_knowledge_note_projections()
     document_intake_adapter_declarations = list_document_intake_adapter_declarations()
+    federal_data_registry = list_federal_data_capability_manifests()
+    piid_profile_store = PiidProfileStore(
+        _resolve_runtime_path(root, settings.ariadne_piid_profiles_dir)
+    )
+    piid_profiles = piid_profile_store.list()
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
     accepted_packet_answer = demo.accepted_packet_answer
@@ -339,6 +354,8 @@ def render_command_center_shell(
         <p class="advanced-label">Advanced / read-only</p>
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{len(catalog.entries)}</small></a>
+          <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
+          <a href="#piid-profile-command-surface">PIID Profiles <small>{len(piid_profiles)}</small></a>
         </nav>
       </div>
     </aside>
@@ -361,6 +378,8 @@ def render_command_center_shell(
         {_render_document_intake_demo_thread_panel(document_intake_demo)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
+        {_render_federal_data_capabilities_panel(federal_data_registry.capabilities)}
+        {_render_piid_profile_command_surface_panel(piid_profiles)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
         {_render_document_intake_capture_candidates_panel(document_intake_capture_candidates)}
         {_render_knowledge_note_projections_panel(document_intake_knowledge_note_projections)}
@@ -608,6 +627,96 @@ def _render_document_intake_capability_row(
     adapter_kind = declaration.adapter_kind.value.replace("_", " ").title()
     deferred_reason = declaration.deferred_reason or "available for current intake"
     return f"""<div class="row"><strong>{escape(declaration.name)}</strong><span>{escape(status)} - {escape(adapter_kind)} - {escape(material_types)}</span><span>Output contract: {escape(declaration.expected_output_contract)} with parser provenance fields.</span><span>{escape(declaration.capability_hint)}</span><span>{escape(deferred_reason)}</span></div>"""
+
+
+def _render_federal_data_capabilities_panel(
+    manifests: tuple[FederalDataCapabilityManifest, ...],
+) -> str:
+    product_integrated_count = sum(
+        manifest.product_status.value == "product_integrated"
+        for manifest in manifests
+    )
+    rows = "".join(
+        _render_federal_data_capability_row(manifest) for manifest in manifests
+    )
+    return f"""<section class="panel" id="federal-data-capabilities" aria-labelledby="federal-data-capabilities-heading">
+      <div class="panel-heading"><h2 id="federal-data-capabilities-heading">Federal Data Capabilities</h2><span class="status-chip cyan">{product_integrated_count} product integrated</span></div>
+      <div class="row-list">
+        <div class="row"><strong>1102tools MCP registry</strong><span>No upstream MCP source is vendored into Ariadne.</span><span>Manifests record pinned packages, command shapes, provenance, and env-var names only.</span><a class="action-button secondary" href="/api/federal-data/capabilities">Open federal data report</a></div>
+        <div class="row"><strong>Initialize smoke checks</strong><span>Initialize smoke checks use JSON-RPC initialize only.</span><span>POST /api/federal-data/capabilities/{{capability_id}}/smoke-check</span><span>Page render never starts upstream MCP processes.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_federal_data_capability_row(
+    manifest: FederalDataCapabilityManifest,
+) -> str:
+    status = manifest.product_status.value.replace("_", " ")
+    env_vars = ", ".join(
+        manifest.required_env_vars
+        + manifest.optional_env_vars
+        + manifest.upstream_env_vars
+    ) or "no env vars"
+    return f"""<div class="row"><strong>{escape(manifest.name)}</strong><span>{escape(status)} - {escape(manifest.package)} {escape(manifest.version)}</span><span>{escape(manifest.description)}</span><span>Env names: {escape(env_vars)}</span></div>"""
+
+
+def _render_piid_profile_command_surface_panel(
+    profiles: list[PiidContractIntelligenceProfile],
+) -> str:
+    if not profiles:
+        rows = """<div class="row"><strong>No PIID profiles yet</strong><span>Create one through POST /api/federal-data/usaspending/piid-profiles with a contract_number.</span><span>Page render reads persisted profiles only and does not start upstream MCP processes.</span></div>"""
+    else:
+        rows = "".join(_render_piid_profile_row(profile) for profile in profiles[-3:])
+    return f"""<section class="panel" id="piid-profile-command-surface" aria-labelledby="piid-profile-command-surface-heading">
+      <div class="panel-heading"><h2 id="piid-profile-command-surface-heading">PIID Profile Command Surface</h2><span class="status-chip cyan">{len(profiles)} persisted</span></div>
+      <div class="row-list">
+      <div class="row"><strong>USAspending-backed profile workflow</strong><span>Enter one contract number through POST /api/federal-data/usaspending/piid-profiles, then review persisted profile output here.</span><span>Review decisions use POST /api/federal-data/usaspending/piid-profiles/{{profile_id}}/review-decisions and do not bypass Evidence Store discipline.</span></div>
+      {rows}
+      </div>
+    </section>"""
+
+
+def _render_piid_profile_row(profile: PiidContractIntelligenceProfile) -> str:
+    baseline = profile.award_baseline
+    burn = profile.burn_posture
+    vehicle = profile.vehicle_context
+    routes = "".join(
+        _render_piid_enrichment_route(route)
+        for route in profile.recommended_enrichment_routes[:5]
+    )
+    candidates = "".join(
+        _render_piid_review_candidate(candidate)
+        for candidate in profile.review_candidates
+    )
+    pivots = ", ".join(
+        f"{pivot.pivot_type.value}: {pivot.value}"
+        for pivot in profile.deterministic_pivots[:8]
+    ) or "none"
+    gaps = ", ".join(gap.field_key for gap in profile.gaps[:8]) or "none"
+    return f"""<div class="row"><strong>{escape(profile.normalized_piid)}</strong><span>Scenario: {escape(profile.scenario.value.replace("_", " ").title())} - Profile: {escape(profile.id)}</span><span>Award baseline: {escape(baseline.recipient_name or "recipient unknown")} - {escape(baseline.awarding_agency_name or "agency unknown")} - {escape(_money_label(baseline.award_amount))}</span><span>Burn posture: net obligations {escape(_money_label(burn.net_obligations))} - transactions {burn.transaction_count} - completeness {escape(burn.completeness)}</span><span>Vehicle context: {escape(vehicle.linkage_confidence)} - parent {escape(vehicle.parent_idv or vehicle.parent_generated_internal_id or "none")}</span><span>Deterministic pivots: {escape(pivots)}</span><span>Gaps: {escape(gaps)}</span><span>Provenance: {escape(profile.provenance.source_capability_id)} - {escape(profile.provenance.source_tool_name)} - {escape(profile.provenance.source_package)} {escape(profile.provenance.source_package_version)}</span><div class="row-list"><div class="row"><strong>Recommended enrichments</strong>{routes}</div><div class="row"><strong>PIID review candidates</strong>{candidates}</div><div class="row"><strong>Deferred artifact actions</strong><span>Draft report - Deferred until Artifact Renderer work exists.</span><span>Export XLSX - Deferred until Artifact Renderer work exists.</span><span>Export DOCX - Deferred until Artifact Renderer work exists.</span><span>Prepare visual briefing - Deferred until Artifact Renderer work exists.</span><div class="action-strip" aria-label="Deferred PIID artifact actions"><button class="action-button secondary" type="button" disabled>Draft report</button><button class="action-button secondary" type="button" disabled>Export XLSX</button><button class="action-button secondary" type="button" disabled>Export DOCX</button><button class="action-button secondary" type="button" disabled>Prepare visual briefing</button></div></div></div></div>"""
+
+
+def _render_piid_enrichment_route(route: PiidEnrichmentRoute) -> str:
+    fields = ", ".join(route.source_fields)
+    return f"""<span>{escape(route.title)} - {escape(route.target_capability)} - {escape(fields)} - downstream review required</span>"""
+
+
+def _render_piid_review_candidate(candidate: PiidReviewCandidate) -> str:
+    state = candidate.review_state.value.replace("_", " ").title()
+    trusted_state = (
+        "trusted output written"
+        if candidate.trusted_output_written
+        else "trusted output not written"
+    )
+    workflow = candidate.target_workflow.replace("_", " ").title()
+    return f"""<span>{escape(candidate.title)} - {escape(workflow)} - Review State: {escape(state)} - {escape(trusted_state)}</span>"""
+
+
+def _money_label(amount: float | None) -> str:
+    if amount is None:
+        return "amount unavailable"
+    return f"${amount:,.2f}"
 
 
 def _render_document_intake_draft_parts_panel(

@@ -1,7 +1,7 @@
 # SAM.gov Enrichment Plan
 
 Date: 2026-05-17  
-Status: implementation started through issue #36
+Status: implementation started through issue #37
 
 ## Selected Epic
 
@@ -126,6 +126,12 @@ This slice intentionally does not implement known opportunity lookup, no-solicit
 The second progression branch adds user-triggered SAM.gov Opportunity Discovery for cases where Ariadne does not yet have a solicitation ID. It introduces discovery queries over customer, office, program name, renamed-program clues, notice type, NAICS, PSC, set-aside, and posted date windows, then calls the upstream `search_opportunities` tool through the same fake/live source-mode boundary used by the Entity Record lane.
 
 Discovery results persist inside the SAM.gov Enrichment Profile with retrieved-at provenance, source mode, mapped notice fields, match rationale, confidence, ambiguity notes, total-record metadata, and source limitations. The slice creates review-gated Source Evidence, Derived Evidence, Packet Field Answer, Action Plan, Call Plan, and deferred Web Enrichment Support route candidates, but still does not implement Firecrawl, attachment intake, known opportunity lookup, or trusted downstream writes.
+
+### Issue #37: Known Opportunity Record Lane
+
+The third progression branch adds the Known Opportunity lane to an existing SAM.gov Enrichment Profile. It resolves a clean solicitation number or notice ID through the upstream `search_opportunities` tool, preserves source-mode and retrieved-at provenance, records official opportunity fields, and surfaces no-match, ambiguous, archived, stale, or incomplete responses as source limitations rather than silent success.
+
+Known opportunity results persist beside the existing Entity Record and Opportunity Discovery lanes. The slice creates review-gated Source Evidence, Packet Field Answer, Action Plan, and Call Plan candidates while preserving the existing profile and avoiding trusted downstream writes, attachment intake, Firecrawl, broad discovery, and solicitation parsing.
 
 ## Accepted Four-Lane Demo
 

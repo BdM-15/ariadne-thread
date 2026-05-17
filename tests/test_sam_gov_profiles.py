@@ -4,6 +4,9 @@ from ariadne.sam_gov_profiles import (
     SamGovEntityLookupStatus,
     SamGovEntityMatch,
     SamGovHermesEventType,
+    SamGovKnownOpportunityPivotType,
+    SamGovKnownOpportunityQuery,
+    SamGovKnownOpportunityStatus,
     SamGovMcpToolResult,
     SamGovOpportunityDiscoveryQuery,
     SamGovOpportunityDiscoveryStatus,
@@ -11,10 +14,12 @@ from ariadne.sam_gov_profiles import (
     SamGovReviewCandidateType,
     SamGovReviewState,
     SamGovSourceMode,
+    add_sam_gov_known_opportunity_lane,
     create_sam_gov_enrichment_profile,
     create_sam_gov_opportunity_discovery_profile,
     record_sam_gov_review_decision,
     resolve_sam_gov_entity_lookup,
+    resolve_sam_gov_known_opportunity,
     resolve_sam_gov_opportunity_discovery,
 )
 
@@ -550,4 +555,207 @@ def test_sam_gov_opportunity_discovery_routes_ambiguous_results_for_web_support(
         candidate.candidate_type is SamGovReviewCandidateType.FOLLOW_UP_ROUTE
         and candidate.target_workflow == "web_enrichment_support"
         for candidate in profile.review_candidates
+    )
+
+
+def test_adds_known_opportunity_lane_to_existing_profile_from_solicitation_number() -> (
+    None
+):
+    profile = create_sam_gov_enrichment_profile(
+        SamGovEntityLookupResult(
+            input_pivot="UEIACME12345",
+            normalized_pivot="UEIACME12345",
+            pivot_type="uei",
+            status=SamGovEntityLookupStatus.SUCCESS,
+            provenance=SamGovEntityLookupProvenance(
+                source_package="sam-gov-mcp",
+                source_package_version="0.4.1",
+                checked_at="2026-05-17T17:00:00Z",
+                source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+            ),
+            matches=(SamGovEntityMatch(legal_business_name="ACME FEDERAL LLC"),),
+            diagnostic_summary="Fake adapter resolved one SAM.gov entity record.",
+        ),
+        profile_id="sam_profile_UEIACME12345",
+        created_at="2026-05-17T17:01:00Z",
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "totalRecords": 1,
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-known-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix final RFP",
+                        "type": "Solicitation",
+                        "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                        "postedDate": "05/15/2026",
+                        "responseDeadLine": "06/20/2026",
+                        "naicsCode": "541715",
+                        "classificationCode": "AC13",
+                        "setAside": "SBA",
+                        "active": "Yes",
+                        "pointOfContact": [
+                            {
+                                "fullName": "Jordan Smith",
+                                "email": "jordan.smith@example.mil",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+
+    lookup = resolve_sam_gov_known_opportunity(
+        SamGovKnownOpportunityQuery(
+            input_pivot=" fa8650-26-r-0001 ",
+            pivot_type=SamGovKnownOpportunityPivotType.SOLICITATION_NUMBER,
+            posted_from="05/01/2026",
+            posted_to="05/31/2026",
+            limit=5,
+        ),
+        runner=runner,
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T17:05:00Z",
+    )
+    updated_profile = add_sam_gov_known_opportunity_lane(
+        profile,
+        lookup,
+        updated_at="2026-05-17T17:06:00Z",
+    )
+
+    assert lookup.status is SamGovKnownOpportunityStatus.SUCCESS
+    assert lookup.normalized_pivot == "FA8650-26-R-0001"
+    assert lookup.provenance.source_tool_name == "search_opportunities"
+    assert lookup.provenance.source_mode is SamGovSourceMode.FAKE_ADAPTER_TEST
+    assert lookup.records[0].notice_id == "notice-known-001"
+    assert lookup.records[0].solicitation_number == "FA8650-26-R-0001"
+    assert lookup.records[0].point_of_contact == (
+        "Jordan Smith <jordan.smith@example.mil>",
+    )
+    assert updated_profile.entity_lane is profile.entity_lane
+    assert updated_profile.known_opportunity_lane is not None
+    assert updated_profile.known_opportunity_lane.lookup_status is (
+        SamGovKnownOpportunityStatus.SUCCESS
+    )
+    candidate_types = {
+        candidate.candidate_type for candidate in updated_profile.review_candidates
+    }
+    assert {
+        SamGovReviewCandidateType.SOURCE_EVIDENCE,
+        SamGovReviewCandidateType.PACKET_FIELD_ANSWER,
+        SamGovReviewCandidateType.ACTION_PLAN_ITEM,
+        SamGovReviewCandidateType.CALL_PLAN_SIGNAL,
+    } <= candidate_types
+    assert all(
+        candidate.trusted_output_written is False
+        for candidate in updated_profile.review_candidates
+    )
+    assert updated_profile.hermes_events[-1].event_type is (
+        SamGovHermesEventType.REVIEW_CANDIDATES_CREATED
+    )
+    assert calls == [
+        (
+            "search_opportunities",
+            {
+                "posted_from": "05/01/2026",
+                "posted_to": "05/31/2026",
+                "solicitation_number": "FA8650-26-R-0001",
+                "limit": 5,
+                "offset": 0,
+            },
+        )
+    ]
+
+
+def test_known_opportunity_lookup_handles_notice_id_no_match() -> None:
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(ok=True, payload={"results": []})
+
+    lookup = resolve_sam_gov_known_opportunity(
+        SamGovKnownOpportunityQuery(
+            input_pivot="notice-known-404",
+            pivot_type=SamGovKnownOpportunityPivotType.NOTICE_ID,
+            posted_from="05/01/2026",
+            posted_to="05/31/2026",
+        ),
+        runner=runner,
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T17:10:00Z",
+    )
+
+    assert lookup.status is SamGovKnownOpportunityStatus.NOT_FOUND
+    assert lookup.normalized_pivot == "notice-known-404"
+    assert (
+        "SAM.gov known opportunity lookup returned no official matches."
+        in lookup.source_limitations
+    )
+    assert calls == [
+        (
+            "search_opportunities",
+            {
+                "posted_from": "05/01/2026",
+                "posted_to": "05/31/2026",
+                "notice_id": "notice-known-404",
+                "limit": 10,
+                "offset": 0,
+            },
+        )
+    ]
+
+
+def test_known_opportunity_lookup_marks_ambiguous_archived_records() -> None:
+    lookup = resolve_sam_gov_known_opportunity(
+        SamGovKnownOpportunityQuery(
+            input_pivot="FA8650-26-R-0001",
+            pivot_type=SamGovKnownOpportunityPivotType.SOLICITATION_NUMBER,
+            posted_from="01/01/2025",
+            posted_to="12/31/2025",
+        ),
+        runner=lambda tool_name, arguments: SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "results": [
+                    {
+                        "noticeId": "notice-old-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix draft RFP",
+                        "type": "Presolicitation",
+                        "archiveType": "autocustom",
+                        "archiveDate": "12/31/2025",
+                        "active": "No",
+                    },
+                    {
+                        "noticeId": "notice-old-002",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix amendment",
+                        "type": "Solicitation",
+                    },
+                ]
+            },
+        ),
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T17:15:00Z",
+    )
+
+    assert lookup.status is SamGovKnownOpportunityStatus.AMBIGUOUS
+    assert lookup.records[0].active is False
+    assert "official record appears archived or inactive" in (
+        lookup.records[0].ambiguity_notes
+    )
+    assert (
+        "Multiple SAM.gov opportunity records matched the clean pivot and require review."
+        in lookup.source_limitations
+    )
+    assert (
+        "SAM.gov opportunity record appears inactive, archived, or stale; verify current status before capture action."
+        in lookup.source_limitations
     )

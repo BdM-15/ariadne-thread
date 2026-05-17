@@ -89,16 +89,19 @@ from ariadne.quick_capture import (
 from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 from ariadne.sam_gov_profiles import (
     SamGovEnrichmentProfile,
+    SamGovKnownOpportunityQuery,
     SamGovMcpToolRunner,
     SamGovOpportunityDiscoveryQuery,
     SamGovProfileStore,
     SamGovReviewState,
     SamGovSourceMode,
+    add_sam_gov_known_opportunity_lane,
     create_sam_gov_enrichment_profile,
     create_sam_gov_lookup_runner,
     create_sam_gov_opportunity_discovery_profile,
     record_sam_gov_review_decision,
     resolve_sam_gov_entity_lookup,
+    resolve_sam_gov_known_opportunity,
     resolve_sam_gov_opportunity_discovery,
 )
 from ariadne.usaspending import (
@@ -240,6 +243,10 @@ class SamGovEnrichmentProfileCreateRequest(BaseModel):
 
 
 class SamGovOpportunityDiscoveryRequest(SamGovOpportunityDiscoveryQuery):
+    pass
+
+
+class SamGovKnownOpportunityRequest(SamGovKnownOpportunityQuery):
     pass
 
 
@@ -607,6 +614,40 @@ def create_app(
             _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
         )
         return SamGovEnrichmentProfileResponse(profile=store.write(profile))
+
+    @app.post(
+        "/api/federal-data/sam-gov/enrichment-profiles/{profile_id}/known-opportunity"
+    )
+    def add_sam_gov_known_opportunity_lane_api(
+        profile_id: str,
+        request: SamGovKnownOpportunityRequest,
+    ) -> SamGovEnrichmentProfileResponse:
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        runner, source_mode = _sam_gov_entity_runner_and_source_mode(
+            runtime_settings,
+            injected_runner=sam_gov_opportunity_runner or sam_gov_entity_runner,
+            injected_source_mode=sam_gov_source_mode,
+            missing_key_detail=(
+                "SAM.gov API key is required for live SAM.gov known opportunity enrichment"
+            ),
+        )
+        lookup = resolve_sam_gov_known_opportunity(
+            request,
+            runner=runner,
+            source_mode=source_mode,
+        )
+        updated_profile = add_sam_gov_known_opportunity_lane(profile, lookup)
+        return SamGovEnrichmentProfileResponse(profile=store.write(updated_profile))
 
     @app.get("/api/federal-data/sam-gov/enrichment-profiles/{profile_id}")
     def sam_gov_enrichment_profile(

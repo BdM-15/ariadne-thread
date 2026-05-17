@@ -435,3 +435,119 @@ def test_creates_sam_gov_profile_from_opportunity_discovery_result() -> None:
     )
     assert follow_up.target_workflow == "web_enrichment_support"
     assert follow_up.trusted_output_written is False
+
+
+def test_sam_gov_opportunity_discovery_maps_pagination_and_notice_types() -> None:
+    calls = []
+    payloads = [
+        {
+            "results": [
+                {
+                    "noticeId": "notice-rfi-003",
+                    "title": "Project Phoenix Request for Information",
+                    "type": "Sources Sought",
+                    "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                }
+            ]
+        },
+        {
+            "results": [
+                {
+                    "noticeId": "notice-special-004",
+                    "title": "Project Phoenix Special Notice",
+                    "type": "Special Notice",
+                    "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                }
+            ]
+        },
+        {
+            "results": [
+                {
+                    "noticeId": "notice-solicitation-005",
+                    "title": "Project Phoenix ordinary solicitation",
+                    "type": "Solicitation",
+                    "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                }
+            ]
+        },
+    ]
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(ok=True, payload=payloads[len(calls) - 1])
+
+    for notice_type in ("rfi", "special_notice", "solicitation"):
+        discovery = resolve_sam_gov_opportunity_discovery(
+            SamGovOpportunityDiscoveryQuery(
+                customer_agency="Department of the Air Force",
+                program_name="Project Phoenix",
+                notice_type=notice_type,
+                posted_from="05/01/2026",
+                posted_to="05/31/2026",
+                limit=2,
+                offset=50,
+            ),
+            runner=runner,
+            source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+            checked_at="2026-05-17T16:20:00Z",
+        )
+
+        assert discovery.status is SamGovOpportunityDiscoveryStatus.SUCCESS
+        assert "notice_type matched requested phase" in (
+            discovery.records[0].match_rationale
+        )
+
+    assert [arguments["notice_type"] for tool_name, arguments in calls] == [
+        "r",
+        "s",
+        "o",
+    ]
+    assert all(arguments["limit"] == 2 for tool_name, arguments in calls)
+    assert all(arguments["offset"] == 50 for tool_name, arguments in calls)
+
+
+def test_sam_gov_opportunity_discovery_routes_ambiguous_results_for_web_support() -> (
+    None
+):
+    discovery = resolve_sam_gov_opportunity_discovery(
+        SamGovOpportunityDiscoveryQuery(
+            customer_agency="Department of the Air Force",
+            program_name="Project Phoenix",
+            notice_type="sources_sought",
+            posted_from="05/01/2026",
+            posted_to="05/31/2026",
+        ),
+        runner=lambda tool_name, arguments: SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "results": [
+                    {
+                        "noticeId": "notice-ambiguous-006",
+                        "title": "General digital services market research",
+                        "type": "Sources Sought",
+                        "fullParentPathName": "Department of the Air Force",
+                    }
+                ]
+            },
+        ),
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T16:25:00Z",
+    )
+    profile = create_sam_gov_opportunity_discovery_profile(
+        discovery,
+        profile_id="sam_profile_DISCOVERY_AMBIGUOUS",
+        created_at="2026-05-17T16:30:00Z",
+    )
+
+    assert discovery.records[0].match_confidence < 0.65
+    assert "requested program_name did not exactly match title" in (
+        discovery.records[0].ambiguity_notes
+    )
+    assert "Some discovery matches are weak or ambiguous and need review." in (
+        discovery.source_limitations
+    )
+    assert any(
+        candidate.candidate_type is SamGovReviewCandidateType.FOLLOW_UP_ROUTE
+        and candidate.target_workflow == "web_enrichment_support"
+        for candidate in profile.review_candidates
+    )

@@ -5,13 +5,17 @@ from ariadne.sam_gov_profiles import (
     SamGovEntityMatch,
     SamGovHermesEventType,
     SamGovMcpToolResult,
+    SamGovOpportunityDiscoveryQuery,
+    SamGovOpportunityDiscoveryStatus,
     SamGovProfileStore,
     SamGovReviewCandidateType,
     SamGovReviewState,
     SamGovSourceMode,
     create_sam_gov_enrichment_profile,
+    create_sam_gov_opportunity_discovery_profile,
     record_sam_gov_review_decision,
     resolve_sam_gov_entity_lookup,
+    resolve_sam_gov_opportunity_discovery,
 )
 
 
@@ -57,12 +61,16 @@ def test_creates_sam_gov_profile_from_fake_entity_lookup_result() -> None:
     assert profile.input_pivot == " UEIACME12345 "
     assert profile.normalized_pivot == "UEIACME12345"
     assert profile.entity_lane is not None
-    assert profile.entity_lane.provenance.source_mode is SamGovSourceMode.FAKE_ADAPTER_TEST
+    assert (
+        profile.entity_lane.provenance.source_mode is SamGovSourceMode.FAKE_ADAPTER_TEST
+    )
     assert profile.entity_lane.matches[0].legal_business_name == "ACME FEDERAL LLC"
     assert profile.entity_lane.matches[0].parent_uei == "UEIPARENT9999"
     assert profile.entity_lane.source_limitations == lookup.source_limitations
 
-    candidate_types = {candidate.candidate_type for candidate in profile.review_candidates}
+    candidate_types = {
+        candidate.candidate_type for candidate in profile.review_candidates
+    }
     assert {
         SamGovReviewCandidateType.SOURCE_EVIDENCE,
         SamGovReviewCandidateType.PACKET_FIELD_ANSWER,
@@ -281,7 +289,9 @@ def test_resolves_sam_gov_entity_lookup_by_vendor_name_with_multiple_matches() -
         "UEIACME12345",
         "UEIACMESUB9",
     ]
-    assert "Multiple SAM.gov entity matches require review." in lookup.source_limitations
+    assert (
+        "Multiple SAM.gov entity matches require review." in lookup.source_limitations
+    )
     assert calls == [
         (
             "search_entities",
@@ -293,3 +303,135 @@ def test_resolves_sam_gov_entity_lookup_by_vendor_name_with_multiple_matches() -
             },
         )
     ]
+
+
+def test_resolves_sam_gov_opportunity_discovery_with_match_rationale() -> None:
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "totalRecords": 2,
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-rfi-001",
+                        "solicitationNumber": "FA8650-26-RFI-PHOENIX",
+                        "title": "Project Phoenix Sources Sought",
+                        "type": "Sources Sought",
+                        "fullParentPathName": "Department of the Air Force.Air Force Materiel Command.AFLCMC/PZ",
+                        "postedDate": "05/10/2026",
+                        "responseDeadLine": "06/10/2026",
+                        "naicsCode": "541715",
+                        "classificationCode": "AC13",
+                        "setAside": "SBA",
+                        "description": "https://sam.gov/opp/notice-rfi-001/description",
+                    },
+                    {
+                        "noticeId": "notice-special-002",
+                        "solicitationNumber": "FA8650-26-SNOTE-LEGACY",
+                        "title": "Legacy Phoenix transition notice",
+                        "type": "Special Notice",
+                        "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                        "postedDate": "05/11/2026",
+                    },
+                ],
+            },
+        )
+
+    discovery = resolve_sam_gov_opportunity_discovery(
+        SamGovOpportunityDiscoveryQuery(
+            customer_agency="Department of the Air Force",
+            office="AFLCMC/PZ",
+            program_name="Project Phoenix",
+            old_program_name="Legacy Phoenix",
+            keywords=("transition",),
+            notice_type="sources_sought",
+            naics_code="541715",
+            psc_code="AC13",
+            set_aside="SBA",
+            posted_from="05/01/2026",
+            posted_to="05/31/2026",
+            limit=25,
+        ),
+        runner=runner,
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T16:00:00Z",
+    )
+
+    assert discovery.status is SamGovOpportunityDiscoveryStatus.SUCCESS
+    assert discovery.provenance.source_tool_name == "search_opportunities"
+    assert discovery.provenance.source_mode is SamGovSourceMode.FAKE_ADAPTER_TEST
+    assert discovery.records[0].notice_id == "notice-rfi-001"
+    assert discovery.records[0].notice_type == "Sources Sought"
+    assert discovery.records[0].match_confidence >= 0.8
+    assert "program_name matched title" in discovery.records[0].match_rationale
+    assert (
+        "customer_agency matched organization path"
+        in discovery.records[0].match_rationale
+    )
+    assert "renamed-program clue" in discovery.records[1].ambiguity_notes
+    assert calls == [
+        (
+            "search_opportunities",
+            {
+                "posted_from": "05/01/2026",
+                "posted_to": "05/31/2026",
+                "notice_type": "r",
+                "title": "Project Phoenix Legacy Phoenix transition",
+                "naics_code": "541715",
+                "psc_code": "AC13",
+                "set_aside": "SBA",
+                "agency_keyword": "Department of the Air Force AFLCMC/PZ",
+                "limit": 25,
+                "offset": 0,
+            },
+        )
+    ]
+
+
+def test_creates_sam_gov_profile_from_opportunity_discovery_result() -> None:
+    discovery = resolve_sam_gov_opportunity_discovery(
+        SamGovOpportunityDiscoveryQuery(
+            customer_agency="Department of the Air Force",
+            program_name="Project Phoenix",
+            notice_type="special_notice",
+            posted_from="05/01/2026",
+            posted_to="05/31/2026",
+        ),
+        runner=lambda tool_name, arguments: SamGovMcpToolResult(
+            ok=True,
+            payload={"results": []},
+        ),
+        source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        checked_at="2026-05-17T16:10:00Z",
+    )
+
+    profile = create_sam_gov_opportunity_discovery_profile(
+        discovery,
+        profile_id="sam_profile_DISCOVERY_PROJECT_PHOENIX",
+        created_at="2026-05-17T16:15:00Z",
+    )
+
+    assert profile.id == "sam_profile_DISCOVERY_PROJECT_PHOENIX"
+    assert profile.opportunity_discovery_lane is not None
+    assert profile.opportunity_discovery_lane.provenance.source_mode is (
+        SamGovSourceMode.FAKE_ADAPTER_TEST
+    )
+    assert (
+        "SAM.gov opportunity discovery returned no official matches."
+        in profile.opportunity_discovery_lane.source_limitations
+    )
+    candidate_types = {
+        candidate.candidate_type for candidate in profile.review_candidates
+    }
+    assert SamGovReviewCandidateType.ACTION_PLAN_ITEM in candidate_types
+    assert SamGovReviewCandidateType.FOLLOW_UP_ROUTE in candidate_types
+    follow_up = next(
+        candidate
+        for candidate in profile.review_candidates
+        if candidate.candidate_type is SamGovReviewCandidateType.FOLLOW_UP_ROUTE
+    )
+    assert follow_up.target_workflow == "web_enrichment_support"
+    assert follow_up.trusted_output_written is False

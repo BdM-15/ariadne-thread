@@ -864,6 +864,100 @@ def test_sam_gov_opportunity_discovery_api_requires_key_for_live_action(
     )
 
 
+def test_sam_gov_opportunity_discovery_api_adds_lane_to_existing_profile(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+    opportunity_calls = []
+
+    def entity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "entityRegistration": {
+                    "uei": "UEIACME12345",
+                    "legalBusinessName": "ACME FEDERAL LLC",
+                }
+            },
+        )
+
+    def opportunity_runner(tool_name, arguments):
+        opportunity_calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-discovery-001",
+                        "solicitationNumber": "FA8650-26-RFI-PHOENIX",
+                        "title": "Project Phoenix Sources Sought",
+                        "type": "Sources Sought",
+                        "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                    }
+                ]
+            },
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=entity_runner,
+            sam_gov_opportunity_runner=opportunity_runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+
+    response = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/opportunity-discovery",
+        json={
+            "customer_agency": "Department of the Air Force",
+            "office": "AFLCMC/PZ",
+            "program_name": "Project Phoenix",
+            "notice_type": "sources_sought",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    )
+
+    assert response.status_code == 200
+    updated_profile = response.json()["profile"]
+    assert updated_profile["entity_lane"]["matches"][0]["legal_business_name"] == (
+        "ACME FEDERAL LLC"
+    )
+    assert updated_profile["opportunity_discovery_lane"]["discovery_status"] == (
+        "success"
+    )
+    assert updated_profile["opportunity_discovery_lane"]["records"][0]["title"] == (
+        "Project Phoenix Sources Sought"
+    )
+    assert any(
+        candidate["target_workflow"] == "capture_action_plan"
+        for candidate in updated_profile["review_candidates"]
+    )
+    assert opportunity_calls == [
+        (
+            "search_opportunities",
+            {
+                "posted_from": "05/01/2026",
+                "posted_to": "05/31/2026",
+                "notice_type": "r",
+                "title": "Project Phoenix",
+                "agency_keyword": "Department of the Air Force AFLCMC/PZ",
+                "limit": 100,
+                "offset": 0,
+            },
+        )
+    ]
+
+
 def test_sam_gov_known_opportunity_api_adds_lane_to_existing_profile(
     tmp_path,
 ) -> None:
@@ -2490,6 +2584,89 @@ def test_command_center_shell_shows_sam_gov_attachment_intake_without_download(
     assert len(calls) == 2
 
 
+def test_sam_gov_command_surface_api_summarizes_four_lane_profile(tmp_path) -> None:
+    client, calls = _four_lane_sam_gov_client(tmp_path)
+    profile = _create_four_lane_sam_gov_profile(client)
+    call_count = len(calls)
+
+    response = client.get(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/command-surface"
+    )
+
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary["profile_id"] == profile["id"]
+    assert summary["live_ready"] is False
+    assert summary["source_mode_labels"] == ["fake adapter test"]
+    assert {lane["lane_name"] for lane in summary["lane_states"]} == {
+        "Entity Record lane",
+        "Known Opportunity lane",
+        "Opportunity Discovery lane",
+        "Attachment Intake lane",
+    }
+    assert summary["review_summary"]["trusted_output_written_count"] == 0
+    assert set(summary["review_summary"]["target_workflows"]) >= {
+        "evidence_store",
+        "living_briefing_packet",
+        "capture_action_plan",
+        "risk_register",
+        "call_plan",
+        "document_intake",
+        "web_enrichment_support",
+    }
+    assert summary["linked_document_intake_record_ids"] == [
+        profile["attachment_intake_lane"]["attachments"][0]["intake_record_id"]
+    ]
+    assert (
+        "Firecrawl/Web Enrichment Support implementation deferred."
+        in (summary["explicit_deferrals"])
+    )
+    assert len(calls) == call_count
+
+
+def test_sam_gov_profile_command_surface_page_shows_four_lane_workflow(
+    tmp_path,
+) -> None:
+    client, calls = _four_lane_sam_gov_client(tmp_path)
+    profile = _create_four_lane_sam_gov_profile(client)
+    call_count = len(calls)
+
+    home_response = client.get("/")
+    response = client.get(f"/federal-data/sam-gov/enrichment-profiles/{profile['id']}")
+
+    assert home_response.status_code == 200
+    assert f"/federal-data/sam-gov/enrichment-profiles/{profile['id']}" in (
+        home_response.text
+    )
+    assert response.status_code == 200
+    assert "SAM.gov Enrichment Profile Command Surface" in response.text
+    assert "Entity Record lane" in response.text
+    assert "Known Opportunity lane" in response.text
+    assert "Opportunity Discovery lane" in response.text
+    assert "Attachment Intake lane" in response.text
+    assert "ACME FEDERAL LLC" in response.text
+    assert "Project Phoenix final RFP" in response.text
+    assert "Project Phoenix Sources Sought" in response.text
+    assert "Project Phoenix notes" in response.text
+    assert "Document Intake record" in response.text
+    assert "fake adapter test" in response.text
+    assert "Fake adapter test data is not live SAM.gov source success." in response.text
+    assert "Evidence Store" in response.text
+    assert "Living Briefing Packet" in response.text
+    assert "Capture Action Plan" in response.text
+    assert "Risk Register" in response.text
+    assert "Call Plan" in response.text
+    assert "Follow-up Route" in response.text
+    assert "Trusted writes: none" in response.text
+    assert "Firecrawl/Web Enrichment Support deferred" in response.text
+    assert "Specialized Solicitation Parser deferred" in response.text
+    assert "Project Theseus parser integration deferred" in response.text
+    assert "Artifact export deferred" in response.text
+    assert "Hermes/LangGraph deferred" in response.text
+    assert "Additional federal data sources deferred" in response.text
+    assert len(calls) == call_count
+
+
 def test_command_center_shell_shows_extraction_bundle_queue_status(tmp_path) -> None:
     settings = RuntimeSettings.from_mapping(
         {"ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake")}
@@ -3006,3 +3183,136 @@ def test_app_py_builds_runtime_app_from_env_file(tmp_path) -> None:
 def _write_reference_note(path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _four_lane_sam_gov_client(tmp_path):
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles"),
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+        }
+    )
+    calls = []
+
+    def entity_runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "entityRegistration": {
+                    "uei": "UEIACME12345",
+                    "legalBusinessName": "ACME FEDERAL LLC",
+                    "physicalAddress": {
+                        "city": "Dayton",
+                        "stateOrProvinceCode": "OH",
+                    },
+                },
+                "entityHierarchy": {
+                    "immediateParent": {
+                        "parentUei": "PARENTUEI1234",
+                        "parentLegalBusinessName": "ACME HOLDINGS LLC",
+                    }
+                },
+                "coreData": {
+                    "businessTypes": [{"businessTypeDesc": "Veteran Owned Business"}]
+                },
+            },
+        )
+
+    def opportunity_runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        if arguments.get("solicitation_number"):
+            return SamGovMcpToolResult(
+                ok=True,
+                payload={
+                    "opportunitiesData": [
+                        {
+                            "noticeId": "notice-known-001",
+                            "solicitationNumber": "FA8650-26-R-0001",
+                            "title": "Project Phoenix final RFP",
+                            "type": "Solicitation",
+                            "fullParentPathName": (
+                                "Department of the Air Force.AFLCMC/PZ"
+                            ),
+                            "resourceLinks": [
+                                {
+                                    "title": "Project Phoenix notes",
+                                    "filename": "project-phoenix-notes.txt",
+                                    "url": "https://sam.gov/api/prod/opps/v3/opportunities/resources/files/project-phoenix-notes.txt?api_key=null&token=",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            )
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-discovery-001",
+                        "solicitationNumber": "FA8650-26-RFI-PHOENIX",
+                        "title": "Project Phoenix Sources Sought",
+                        "type": "Sources Sought",
+                        "fullParentPathName": "Department of the Air Force.AFLCMC/PZ",
+                    }
+                ]
+            },
+        )
+
+    def attachment_fetcher(url):
+        calls.append(("fetch_attachment", {"url": url}))
+        return SamGovAttachmentFetchResult(
+            ok=True,
+            filename="project-phoenix-notes.txt",
+            mime_type="text/plain",
+            content=b"Project Phoenix notes for capture review.",
+        )
+
+    return (
+        TestClient(
+            create_app(
+                settings,
+                sam_gov_entity_runner=entity_runner,
+                sam_gov_opportunity_runner=opportunity_runner,
+                sam_gov_attachment_fetcher=attachment_fetcher,
+                sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+            )
+        ),
+        calls,
+    )
+
+
+def _create_four_lane_sam_gov_profile(client):
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+    profile = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/known-opportunity",
+        json={
+            "input_pivot": "FA8650-26-R-0001",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    ).json()["profile"]
+    profile = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/opportunity-discovery",
+        json={
+            "customer_agency": "Department of the Air Force",
+            "office": "AFLCMC/PZ",
+            "program_name": "Project Phoenix",
+            "notice_type": "sources_sought",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    ).json()["profile"]
+    attachment_id = profile["attachment_intake_lane"]["attachments"][0]["id"]
+    return client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/attachments/{attachment_id}/approve-download",
+        json={
+            "reviewer_rationale": "Official SAM.gov attachment is approved for review."
+        },
+    ).json()["profile"]

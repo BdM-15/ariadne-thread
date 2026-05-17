@@ -11,7 +11,10 @@ from pydantic import BaseModel, Field
 
 from ariadne.action_plans import ActionPlanItem
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
-from ariadne.command_center import render_command_center_shell
+from ariadne.command_center import (
+    render_command_center_shell,
+    render_sam_gov_enrichment_profile_shell,
+)
 from ariadne.config import RuntimeSettings
 from ariadne.draft_promotion import (
     DraftPartPromotionDecision,
@@ -92,6 +95,7 @@ from ariadne.reference_wiki import ReferenceWikiInfluence, load_reference_wiki
 from ariadne.sam_gov_profiles import (
     SamGovAttachmentFetchResult,
     SamGovAttachmentFetcher,
+    SamGovCommandSurfaceSummary,
     SamGovEnrichmentProfile,
     SamGovKnownOpportunityQuery,
     SamGovMcpToolRunner,
@@ -100,6 +104,8 @@ from ariadne.sam_gov_profiles import (
     SamGovReviewState,
     SamGovSourceMode,
     add_sam_gov_known_opportunity_lane,
+    add_sam_gov_opportunity_discovery_lane,
+    build_sam_gov_command_surface_summary,
     create_sam_gov_enrichment_profile,
     create_sam_gov_lookup_runner,
     create_sam_gov_opportunity_discovery_profile,
@@ -266,6 +272,10 @@ class SamGovEnrichmentProfilesResponse(BaseModel):
     profiles: tuple[SamGovEnrichmentProfile, ...]
 
 
+class SamGovCommandSurfaceResponse(BaseModel):
+    summary: SamGovCommandSurfaceSummary
+
+
 class SamGovEnrichmentProfileReviewDecisionRequest(BaseModel):
     candidate_id: str
     review_state: SamGovReviewState
@@ -390,6 +400,23 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:
         return render_command_center_shell(runtime_settings)
+
+    @app.get(
+        "/federal-data/sam-gov/enrichment-profiles/{profile_id}",
+        response_class=HTMLResponse,
+    )
+    def sam_gov_enrichment_profile_command_surface(profile_id: str) -> str:
+        try:
+            return render_sam_gov_enrichment_profile_shell(
+                runtime_settings,
+                profile_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/packets/review", response_class=HTMLResponse)
     def packet_review(stage: str = "MS2", slide: int = 4) -> str:
@@ -634,6 +661,40 @@ def create_app(
         return SamGovEnrichmentProfileResponse(profile=store.write(profile))
 
     @app.post(
+        "/api/federal-data/sam-gov/enrichment-profiles/{profile_id}/opportunity-discovery"
+    )
+    def add_sam_gov_opportunity_discovery_lane_api(
+        profile_id: str,
+        request: SamGovOpportunityDiscoveryRequest,
+    ) -> SamGovEnrichmentProfileResponse:
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        runner, source_mode = _sam_gov_entity_runner_and_source_mode(
+            runtime_settings,
+            injected_runner=sam_gov_opportunity_runner or sam_gov_entity_runner,
+            injected_source_mode=sam_gov_source_mode,
+            missing_key_detail=(
+                "SAM.gov API key is required for live SAM.gov opportunity discovery"
+            ),
+        )
+        discovery = resolve_sam_gov_opportunity_discovery(
+            request,
+            runner=runner,
+            source_mode=source_mode,
+        )
+        updated_profile = add_sam_gov_opportunity_discovery_lane(profile, discovery)
+        return SamGovEnrichmentProfileResponse(profile=store.write(updated_profile))
+
+    @app.post(
         "/api/federal-data/sam-gov/enrichment-profiles/{profile_id}/known-opportunity"
     )
     def add_sam_gov_known_opportunity_lane_api(
@@ -752,6 +813,30 @@ def create_app(
         return SamGovAttachmentDownloadResponse(
             profile=profile_store.write(updated_profile),
             intake_record=intake_record,
+        )
+
+    @app.get(
+        "/api/federal-data/sam-gov/enrichment-profiles/{profile_id}/command-surface"
+    )
+    def sam_gov_enrichment_profile_command_surface_api(
+        profile_id: str,
+    ) -> SamGovCommandSurfaceResponse:
+        store = SamGovProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_sam_gov_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="SAM.gov enrichment profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return SamGovCommandSurfaceResponse(
+            summary=build_sam_gov_command_surface_summary(
+                profile,
+                live_ready="SAM_GOV_API_KEY" in runtime_settings.federal_data_env,
+            )
         )
 
     @app.get("/api/federal-data/sam-gov/enrichment-profiles/{profile_id}")

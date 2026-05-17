@@ -1,6 +1,7 @@
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import DocumentIntakeStore
 from ariadne.evidence import LocalEvidenceStore
+from ariadne.federal_data import FederalDataInitializeRunnerResult
 from ariadne.local_admin_model import (
     LocalAdminDraftAssist,
     LocalAdminDraftSuggestion,
@@ -501,6 +502,10 @@ def test_federal_data_runtime_reports_registered_mcp_capabilities() -> None:
     assert body["product_integrated_count"] == 1
     assert body["smoke_tested_count"] == 0
     assert body["deferred_product_workflow_count"] == 0
+    assert body["safe_smoke_check_method"] == "json_rpc_initialize_only"
+    assert body["smoke_check_endpoint_template"] == (
+        "/api/federal-data/capabilities/{capability_id}/smoke-check"
+    )
     assert by_id["usaspending"]["product_status"] == "product_integrated"
     assert by_id["usaspending"]["package"] == "usaspending-gov-mcp"
     assert by_id["sam_gov"]["required_env_vars"] == ["SAM_GOV_API_KEY"]
@@ -510,6 +515,74 @@ def test_federal_data_runtime_reports_registered_mcp_capabilities() -> None:
         + capability["optional_env_vars"]
         + capability["upstream_env_vars"]
     ))
+
+
+def test_federal_data_smoke_check_api_reports_missing_env_without_runner_call() -> None:
+    from fastapi.testclient import TestClient
+
+    calls = []
+
+    def runner(command, request, timeout_seconds, env):
+        calls.append((command, request, timeout_seconds, env))
+        return FederalDataInitializeRunnerResult(
+            return_code=0,
+            initialized=True,
+            diagnostic_summary="should not run",
+        )
+
+    response = TestClient(
+        create_app(
+            RuntimeSettings.from_mapping({}),
+            federal_data_smoke_runner=runner,
+        )
+    ).post("/api/federal-data/capabilities/sam_gov/smoke-check")
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["capability_id"] == "sam_gov"
+    assert result["status"] == "missing_env"
+    assert result["missing_env_vars"] == ["SAM_GOV_API_KEY"]
+    assert result["diagnostic_summary"] == "Missing required env vars: SAM_GOV_API_KEY"
+    assert calls == []
+
+
+def test_federal_data_smoke_check_api_uses_safe_initialize_runner() -> None:
+    from fastapi.testclient import TestClient
+
+    calls = []
+
+    def runner(command, request, timeout_seconds, env):
+        calls.append((command, request, timeout_seconds, env))
+        return FederalDataInitializeRunnerResult(
+            return_code=0,
+            initialized=True,
+            diagnostic_summary="initialize accepted with live-sam-secret-value",
+        )
+
+    response = TestClient(
+        create_app(
+            RuntimeSettings.from_mapping(
+                {
+                    "SAM_GOV_API_KEY": "live-sam-secret-value",
+                    "MCP_TOOL_TIMEOUT_SECONDS": "7",
+                }
+            ),
+            federal_data_smoke_runner=runner,
+        )
+    ).post("/api/federal-data/capabilities/sam_gov/smoke-check")
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["status"] == "success"
+    assert result["data_tool_calls_invoked"] == []
+    assert result["diagnostic_summary"] == "initialize accepted with <redacted>"
+    assert "live-sam-secret-value" not in response.text
+    command, request, timeout_seconds, env = calls[0]
+    assert "sam-gov-mcp==0.4.1" in command
+    assert request["method"] == "initialize"
+    assert timeout_seconds == 7
+    assert env["SAM_GOV_API_KEY"] == "live-sam-secret-value"
+    assert env["SAM_API_KEY"] == "live-sam-secret-value"
 
 
 def test_document_intake_runtime_lists_review_gated_capture_candidates(
@@ -1202,6 +1275,8 @@ def test_command_center_shell_shows_federal_data_capability_registry() -> None:
     assert "product integrated" in response.text
     assert "registered" in response.text
     assert "No upstream MCP source is vendored into Ariadne" in response.text
+    assert "Initialize smoke checks use JSON-RPC initialize only" in response.text
+    assert "/api/federal-data/capabilities/{capability_id}/smoke-check" in response.text
     assert "/api/federal-data/capabilities" in response.text
 
 

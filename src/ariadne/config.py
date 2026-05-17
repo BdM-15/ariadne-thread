@@ -24,6 +24,8 @@ class RuntimeSettings(BaseModel):
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
+    mcp_tool_timeout_seconds: int = 60
+    federal_data_env: dict[str, str] = Field(default_factory=dict, exclude=True)
     local_admin_model: LocalAdminModelSettings = Field(
         default_factory=LocalAdminModelSettings
     )
@@ -70,6 +72,13 @@ class RuntimeSettings(BaseModel):
                     str(cls.model_fields["ariadne_reference_wiki_dir"].default),
                 )
             ),
+            mcp_tool_timeout_seconds=int(
+                values.get(
+                    "MCP_TOOL_TIMEOUT_SECONDS",
+                    cls.model_fields["mcp_tool_timeout_seconds"].default,
+                )
+            ),
+            federal_data_env=_federal_data_env_from_mapping(values),
             local_admin_model=LocalAdminModelSettings(
                 enabled=_parse_bool(values.get("LOCAL_ADMIN_MODEL_ENABLED", "false")),
                 ollama_base_url=values.get(
@@ -106,3 +115,19 @@ def _read_env_file(path: Path) -> dict[str, str]:
 
 def _parse_bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _federal_data_env_from_mapping(values: dict[str, str]) -> dict[str, str]:
+    env_var_names = (
+        "SAM_GOV_API_KEY",
+        "SAM_API_KEY",
+        "BLS_API_KEY",
+        "API_DATA_GOV_KEY",
+        "PERDIEM_API_KEY",
+        "REGULATIONS_GOV_API_KEY",
+    )
+    return {
+        env_var_name: value
+        for env_var_name in env_var_names
+        if (value := values.get(env_var_name, ""))
+    }

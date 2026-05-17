@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -41,9 +42,25 @@ class SamGovKnownOpportunityPivotType(StrEnum):
     NOTICE_ID = "notice_id"
 
 
+class SamGovAttachmentDownloadStatus(StrEnum):
+    PENDING_APPROVAL = "pending_approval"
+    DOWNLOADED = "downloaded"
+    INACCESSIBLE = "inaccessible"
+    UNSUPPORTED = "unsupported"
+    OVERSIZED = "oversized"
+
+
 class SamGovMcpToolResult(BaseModel):
     ok: bool
     payload: dict[str, Any] | None = None
+    error_message: str | None = None
+
+
+class SamGovAttachmentFetchResult(BaseModel):
+    ok: bool
+    content: bytes | None = None
+    filename: str | None = None
+    mime_type: str | None = None
     error_message: str | None = None
 
 
@@ -51,6 +68,10 @@ class SamGovMcpToolRunner(Protocol):
     def __call__(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> SamGovMcpToolResult: ...
+
+
+class SamGovAttachmentFetcher(Protocol):
+    def __call__(self, url: str) -> SamGovAttachmentFetchResult: ...
 
 
 class SamGovReviewCandidateType(StrEnum):
@@ -75,6 +96,8 @@ class SamGovHermesEventType(StrEnum):
     ENTITY_RECORD_RESOLVED = "entity_record_resolved"
     KNOWN_OPPORTUNITY_RESOLVED = "known_opportunity_resolved"
     OPPORTUNITY_DISCOVERY_RUN = "opportunity_discovery_run"
+    ATTACHMENT_METADATA_SURFACED = "attachment_metadata_surfaced"
+    ATTACHMENT_DOWNLOAD_RECORDED = "attachment_download_recorded"
     SOURCE_LIMITATION_DETECTED = "source_limitation_detected"
     REVIEW_CANDIDATES_CREATED = "review_candidates_created"
     REVIEW_DECISION_RECORDED = "review_decision_recorded"
@@ -138,6 +161,8 @@ class SamGovOpportunityRecord(BaseModel):
     archive_type: str | None = None
     archive_date: str | None = None
     point_of_contact: tuple[str, ...] = ()
+    attachments: tuple[SamGovOpportunityAttachment, ...] = ()
+    attachment_source_limitations: tuple[str, ...] = ()
     match_rationale: tuple[str, ...] = ()
     match_confidence: float = Field(default=0.0, ge=0, le=1)
     ambiguity_notes: tuple[str, ...] = ()
@@ -165,6 +190,28 @@ class SamGovKnownOpportunityResult(BaseModel):
     total_records: int | None = None
     source_limitations: tuple[str, ...] = ()
     diagnostic_summary: str
+
+
+class SamGovOpportunityAttachment(BaseModel):
+    id: str
+    source_notice_id: str | None = None
+    source_solicitation_number: str | None = None
+    source_title: str | None = None
+    title: str
+    url: str
+    link_type: str
+    filename: str | None = None
+    mime_type: str | None = None
+    byte_size: int | None = None
+    download_status: SamGovAttachmentDownloadStatus = (
+        SamGovAttachmentDownloadStatus.PENDING_APPROVAL
+    )
+    approved_at: str | None = None
+    intake_record_id: str | None = None
+    intake_record_source_ref: str | None = None
+    intake_material_type: str | None = None
+    intake_status: str | None = None
+    source_limitations: tuple[str, ...] = ()
 
 
 class SamGovEntityMatch(BaseModel):
@@ -226,6 +273,13 @@ class SamGovKnownOpportunityLane(BaseModel):
     diagnostic_summary: str
 
 
+class SamGovAttachmentIntakeLane(BaseModel):
+    provenance: SamGovEntityLookupProvenance
+    attachments: tuple[SamGovOpportunityAttachment, ...] = ()
+    source_limitations: tuple[str, ...] = ()
+    diagnostic_summary: str
+
+
 class SamGovReviewCandidate(BaseModel):
     id: str
     candidate_type: SamGovReviewCandidateType
@@ -280,6 +334,7 @@ class SamGovEnrichmentProfile(BaseModel):
     entity_lane: SamGovEntityLane | None = None
     known_opportunity_lane: SamGovKnownOpportunityLane | None = None
     opportunity_discovery_lane: SamGovOpportunityDiscoveryLane | None = None
+    attachment_intake_lane: SamGovAttachmentIntakeLane | None = None
     review_candidates: tuple[SamGovReviewCandidate, ...] = ()
     hermes_events: tuple[SamGovHermesEvent, ...] = ()
     created_at: str
@@ -615,7 +670,7 @@ def create_sam_gov_opportunity_discovery_profile(
         review_candidates=review_candidates,
         occurred_at=timestamp,
     )
-    return SamGovEnrichmentProfile(
+    profile = SamGovEnrichmentProfile(
         id=resolved_profile_id,
         input_pivot=discovery.normalized_query,
         normalized_pivot=discovery.normalized_query,
@@ -623,6 +678,11 @@ def create_sam_gov_opportunity_discovery_profile(
         review_candidates=review_candidates,
         hermes_events=hermes_events,
         created_at=timestamp,
+        updated_at=timestamp,
+    )
+    return _profile_with_refreshed_attachment_intake_lane(
+        profile,
+        provenance=lane.provenance,
         updated_at=timestamp,
     )
 
@@ -659,13 +719,18 @@ def add_sam_gov_known_opportunity_lane(
         occurred_at=timestamp,
         starting_event_count=len(profile.hermes_events),
     )
-    return profile.model_copy(
+    updated_profile = profile.model_copy(
         update={
             "known_opportunity_lane": lane,
             "review_candidates": (*profile.review_candidates, *review_candidates),
             "hermes_events": (*profile.hermes_events, *hermes_events),
             "updated_at": timestamp,
         }
+    )
+    return _profile_with_refreshed_attachment_intake_lane(
+        updated_profile,
+        provenance=lane.provenance,
+        updated_at=timestamp,
     )
 
 
@@ -724,6 +789,262 @@ def record_sam_gov_review_decision(
             "updated_at": timestamp,
         }
     )
+
+
+def find_sam_gov_attachment(
+    profile: SamGovEnrichmentProfile,
+    attachment_id: str,
+) -> SamGovOpportunityAttachment | None:
+    if profile.attachment_intake_lane is None:
+        return None
+    return next(
+        (
+            attachment
+            for attachment in profile.attachment_intake_lane.attachments
+            if attachment.id == attachment_id
+        ),
+        None,
+    )
+
+
+def is_official_sam_gov_attachment_url(url: str) -> bool:
+    return _is_official_sam_gov_url(url)
+
+
+def record_sam_gov_attachment_download(
+    profile: SamGovEnrichmentProfile,
+    *,
+    attachment_id: str,
+    intake_record_id: str,
+    intake_record_source_ref: str,
+    intake_material_type: str,
+    intake_status: str,
+    approved_at: str | None = None,
+) -> SamGovEnrichmentProfile:
+    if profile.attachment_intake_lane is None:
+        raise ValueError("SAM.gov attachment intake lane not found")
+    timestamp = approved_at or datetime.now(UTC).isoformat()
+    updated_attachments = []
+    matched = False
+    for attachment in profile.attachment_intake_lane.attachments:
+        if attachment.id != attachment_id:
+            updated_attachments.append(attachment)
+            continue
+        matched = True
+        updated_attachments.append(
+            attachment.model_copy(
+                update={
+                    "download_status": SamGovAttachmentDownloadStatus.DOWNLOADED,
+                    "approved_at": timestamp,
+                    "intake_record_id": intake_record_id,
+                    "intake_record_source_ref": intake_record_source_ref,
+                    "intake_material_type": intake_material_type,
+                    "intake_status": intake_status,
+                }
+            )
+        )
+    if not matched:
+        raise ValueError("SAM.gov attachment not found")
+    lane = profile.attachment_intake_lane.model_copy(
+        update={
+            "attachments": tuple(updated_attachments),
+            "diagnostic_summary": "SAM.gov attachment download approval recorded and routed to Document Intake.",
+        }
+    )
+    event = SamGovHermesEvent(
+        id=(
+            f"sam_gov_event_{_safe_identifier(profile.id)}_"
+            f"{len(profile.hermes_events) + 1:03d}_"
+            f"{SamGovHermesEventType.ATTACHMENT_DOWNLOAD_RECORDED.value}"
+        ),
+        event_type=SamGovHermesEventType.ATTACHMENT_DOWNLOAD_RECORDED,
+        profile_id=profile.id,
+        normalized_pivot=profile.normalized_pivot,
+        occurred_at=timestamp,
+        summary="SAM.gov attachment download approval routed a file to Document Intake.",
+        payload={
+            "attachment_id": attachment_id,
+            "intake_record_id": intake_record_id,
+            "intake_material_type": intake_material_type,
+            "intake_status": intake_status,
+        },
+    )
+    return profile.model_copy(
+        update={
+            "attachment_intake_lane": lane,
+            "hermes_events": (*profile.hermes_events, event),
+            "updated_at": timestamp,
+        }
+    )
+
+
+def record_sam_gov_attachment_download_failure(
+    profile: SamGovEnrichmentProfile,
+    *,
+    attachment_id: str,
+    source_limitation: str,
+    download_status: SamGovAttachmentDownloadStatus = (
+        SamGovAttachmentDownloadStatus.INACCESSIBLE
+    ),
+    approved_at: str | None = None,
+) -> SamGovEnrichmentProfile:
+    if profile.attachment_intake_lane is None:
+        raise ValueError("SAM.gov attachment intake lane not found")
+    timestamp = approved_at or datetime.now(UTC).isoformat()
+    updated_attachments = []
+    matched = False
+    for attachment in profile.attachment_intake_lane.attachments:
+        if attachment.id != attachment_id:
+            updated_attachments.append(attachment)
+            continue
+        matched = True
+        updated_attachments.append(
+            attachment.model_copy(
+                update={
+                    "download_status": download_status,
+                    "approved_at": timestamp,
+                    "source_limitations": tuple(
+                        dict.fromkeys(
+                            (*attachment.source_limitations, source_limitation)
+                        )
+                    ),
+                }
+            )
+        )
+    if not matched:
+        raise ValueError("SAM.gov attachment not found")
+    lane = profile.attachment_intake_lane.model_copy(
+        update={
+            "attachments": tuple(updated_attachments),
+            "source_limitations": tuple(
+                dict.fromkeys(
+                    (
+                        *profile.attachment_intake_lane.source_limitations,
+                        source_limitation,
+                    )
+                )
+            ),
+            "diagnostic_summary": "SAM.gov attachment download approval found a source limitation.",
+        }
+    )
+    event = SamGovHermesEvent(
+        id=(
+            f"sam_gov_event_{_safe_identifier(profile.id)}_"
+            f"{len(profile.hermes_events) + 1:03d}_"
+            f"{SamGovHermesEventType.ATTACHMENT_DOWNLOAD_RECORDED.value}"
+        ),
+        event_type=SamGovHermesEventType.ATTACHMENT_DOWNLOAD_RECORDED,
+        profile_id=profile.id,
+        normalized_pivot=profile.normalized_pivot,
+        occurred_at=timestamp,
+        summary="SAM.gov attachment download approval recorded a source limitation.",
+        payload={
+            "attachment_id": attachment_id,
+            "download_status": download_status.value,
+            "source_limitation": source_limitation,
+        },
+    )
+    return profile.model_copy(
+        update={
+            "attachment_intake_lane": lane,
+            "hermes_events": (*profile.hermes_events, event),
+            "updated_at": timestamp,
+        }
+    )
+
+
+def _profile_with_refreshed_attachment_intake_lane(
+    profile: SamGovEnrichmentProfile,
+    *,
+    provenance: SamGovEntityLookupProvenance,
+    updated_at: str,
+) -> SamGovEnrichmentProfile:
+    lane = _attachment_intake_lane_from_profile(profile, provenance=provenance)
+    if lane is None:
+        return profile
+    review_candidates = _review_candidates_from_attachment_intake_lane(
+        profile_id=profile.id,
+        normalized_pivot=profile.normalized_pivot,
+        lane=lane,
+        created_at=updated_at,
+    )
+    existing_candidate_ids = {candidate.id for candidate in profile.review_candidates}
+    new_review_candidates = tuple(
+        candidate
+        for candidate in review_candidates
+        if candidate.id not in existing_candidate_ids
+    )
+    hermes_events = _hermes_events_from_attachment_intake_lane(
+        profile_id=profile.id,
+        normalized_pivot=profile.normalized_pivot,
+        lane=lane,
+        review_candidates=new_review_candidates,
+        occurred_at=updated_at,
+        starting_event_count=len(profile.hermes_events),
+    )
+    return profile.model_copy(
+        update={
+            "attachment_intake_lane": lane,
+            "review_candidates": (
+                *profile.review_candidates,
+                *new_review_candidates,
+            ),
+            "hermes_events": (*profile.hermes_events, *hermes_events),
+            "updated_at": updated_at,
+        }
+    )
+
+
+def _attachment_intake_lane_from_profile(
+    profile: SamGovEnrichmentProfile,
+    *,
+    provenance: SamGovEntityLookupProvenance,
+) -> SamGovAttachmentIntakeLane | None:
+    records = _profile_opportunity_records(profile)
+    if not records:
+        return None
+    attachments: list[SamGovOpportunityAttachment] = []
+    source_limitations: list[str] = []
+    existing_downloads = {
+        attachment.id: attachment
+        for attachment in (
+            profile.attachment_intake_lane.attachments
+            if profile.attachment_intake_lane
+            else ()
+        )
+        if attachment.download_status
+        is not SamGovAttachmentDownloadStatus.PENDING_APPROVAL
+    }
+    for record in records:
+        for attachment in record.attachments:
+            attachments.append(existing_downloads.get(attachment.id, attachment))
+        source_limitations.extend(record.attachment_source_limitations)
+    if not attachments:
+        source_limitations.append(
+            "SAM.gov opportunity records did not expose official attachment/resource links."
+        )
+    diagnostic_summary = (
+        f"SAM.gov opportunity records exposed {len(attachments)} official attachment/resource links."
+        if attachments
+        else "SAM.gov opportunity records exposed no official attachment/resource links."
+    )
+    return SamGovAttachmentIntakeLane(
+        provenance=provenance,
+        attachments=tuple(attachments),
+        source_limitations=tuple(dict.fromkeys(source_limitations)),
+        diagnostic_summary=diagnostic_summary,
+    )
+
+
+def _profile_opportunity_records(
+    profile: SamGovEnrichmentProfile,
+) -> tuple[SamGovOpportunityRecord, ...]:
+    records: list[SamGovOpportunityRecord] = []
+    if profile.known_opportunity_lane is not None:
+        records.extend(profile.known_opportunity_lane.records)
+    if profile.opportunity_discovery_lane is not None:
+        records.extend(profile.opportunity_discovery_lane.records)
+    return tuple(records)
 
 
 def _looks_like_uei(value: str) -> bool:
@@ -934,13 +1255,21 @@ def _base_opportunity_record_from_row(row: dict[str, Any]) -> SamGovOpportunityR
         "department",
     )
     notice_type = _string_from_keys(row, "type", "noticeType", "baseType")
+    notice_id = _string_from_keys(row, "noticeId", "notice_id", "id")
+    solicitation_number = _string_from_keys(
+        row,
+        "solicitationNumber",
+        "solicitation_number",
+    )
+    attachments, attachment_source_limitations = _opportunity_attachments_from_row(
+        row,
+        notice_id=notice_id,
+        solicitation_number=solicitation_number,
+        title=title,
+    )
     return SamGovOpportunityRecord(
-        notice_id=_string_from_keys(row, "noticeId", "notice_id", "id"),
-        solicitation_number=_string_from_keys(
-            row,
-            "solicitationNumber",
-            "solicitation_number",
-        ),
+        notice_id=notice_id,
+        solicitation_number=solicitation_number,
         title=title,
         notice_type=notice_type,
         organization_path=organization_path,
@@ -966,6 +1295,8 @@ def _base_opportunity_record_from_row(row: dict[str, Any]) -> SamGovOpportunityR
         archive_type=_string_from_keys(row, "archiveType", "archive_type"),
         archive_date=_string_from_keys(row, "archiveDate", "archive_date"),
         point_of_contact=_point_of_contact_from_row(row),
+        attachments=attachments,
+        attachment_source_limitations=attachment_source_limitations,
         raw_record=row,
     )
 
@@ -978,6 +1309,174 @@ def _place_of_performance_from_row(row: dict[str, Any]) -> str | None:
         return None
     text = str(place).strip()
     return text or None
+
+
+def _opportunity_attachments_from_row(
+    row: dict[str, Any],
+    *,
+    notice_id: str | None,
+    solicitation_number: str | None,
+    title: str | None,
+) -> tuple[tuple[SamGovOpportunityAttachment, ...], tuple[str, ...]]:
+    attachments: list[SamGovOpportunityAttachment] = []
+    limitations: list[str] = []
+    description_url = _string_from_keys(row, "description", "descriptionUrl")
+    if description_url:
+        if _is_official_sam_gov_url(description_url):
+            attachments.append(
+                _opportunity_attachment(
+                    notice_id=notice_id,
+                    solicitation_number=solicitation_number,
+                    source_title=title,
+                    title="SAM.gov opportunity description",
+                    url=description_url,
+                    link_type="description",
+                    sequence=len(attachments) + 1,
+                )
+            )
+        else:
+            limitations.append(
+                "SAM.gov opportunity record exposed non-SAM.gov description link; download blocked."
+            )
+
+    for resource in _resource_link_items_from_row(row):
+        resource_url = _resource_url(resource)
+        if resource_url is None:
+            limitations.append(
+                "SAM.gov opportunity record exposed a resource without a download URL."
+            )
+            continue
+        if not _is_official_sam_gov_url(resource_url):
+            limitations.append(
+                "SAM.gov opportunity record exposed non-SAM.gov resource link; download blocked."
+            )
+            continue
+        attachments.append(
+            _opportunity_attachment(
+                notice_id=notice_id,
+                solicitation_number=solicitation_number,
+                source_title=title,
+                title=_resource_title(resource) or "SAM.gov opportunity resource",
+                url=resource_url,
+                link_type="resource",
+                sequence=len(attachments) + 1,
+                filename=_resource_filename(resource, resource_url),
+                mime_type=_resource_mime_type(resource),
+                byte_size=_resource_byte_size(resource),
+            )
+        )
+    return tuple(attachments), tuple(dict.fromkeys(limitations))
+
+
+def _opportunity_attachment(
+    *,
+    notice_id: str | None,
+    solicitation_number: str | None,
+    source_title: str | None,
+    title: str,
+    url: str,
+    link_type: str,
+    sequence: int,
+    filename: str | None = None,
+    mime_type: str | None = None,
+    byte_size: int | None = None,
+) -> SamGovOpportunityAttachment:
+    source_key = notice_id or solicitation_number or source_title or url
+    return SamGovOpportunityAttachment(
+        id=(
+            f"sam_gov_attachment_{_safe_identifier(source_key)}_"
+            f"{_safe_identifier(link_type)}_{sequence:02d}"
+        ),
+        source_notice_id=notice_id,
+        source_solicitation_number=solicitation_number,
+        source_title=source_title,
+        title=title,
+        url=url,
+        link_type=link_type,
+        filename=filename,
+        mime_type=mime_type,
+        byte_size=byte_size,
+    )
+
+
+def _resource_link_items_from_row(row: dict[str, Any]) -> tuple[object, ...]:
+    resources: list[object] = []
+    for key in (
+        "resourceLinks",
+        "resource_links",
+        "resourceLink",
+        "links",
+        "attachments",
+        "documents",
+    ):
+        value = row.get(key)
+        if isinstance(value, list):
+            resources.extend(value)
+        elif isinstance(value, dict):
+            resources.append(value)
+        elif isinstance(value, str) and value.strip():
+            resources.append(value)
+    return tuple(resources)
+
+
+def _resource_url(resource: object) -> str | None:
+    if isinstance(resource, str):
+        return resource.strip() or None
+    if not isinstance(resource, dict):
+        return None
+    return _string_from_keys(
+        resource,
+        "url",
+        "href",
+        "resourceUrl",
+        "resourceURL",
+        "downloadUrl",
+        "downloadURL",
+        "link",
+    )
+
+
+def _resource_title(resource: object) -> str | None:
+    if not isinstance(resource, dict):
+        return None
+    return _string_from_keys(resource, "title", "name", "description", "filename")
+
+
+def _resource_filename(resource: object, url: str) -> str | None:
+    if isinstance(resource, dict):
+        filename = _string_from_keys(resource, "filename", "fileName", "name")
+        if filename:
+            return Path(filename).name
+    parsed_name = Path(urlparse(url).path).name
+    return parsed_name or None
+
+
+def _resource_mime_type(resource: object) -> str | None:
+    if not isinstance(resource, dict):
+        return None
+    return _string_from_keys(resource, "mimeType", "mime_type", "contentType")
+
+
+def _resource_byte_size(resource: object) -> int | None:
+    if not isinstance(resource, dict):
+        return None
+    for key in ("size", "byteSize", "fileSize", "contentLength"):
+        value = resource.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except TypeError, ValueError:
+            return None
+    return None
+
+
+def _is_official_sam_gov_url(url: str) -> bool:
+    parsed = urlparse(url.strip())
+    host = parsed.hostname or ""
+    return parsed.scheme in {"http", "https"} and (
+        host == "sam.gov" or host.endswith(".sam.gov")
+    )
 
 
 def _point_of_contact_from_row(row: dict[str, Any]) -> tuple[str, ...]:
@@ -1713,6 +2212,55 @@ def _review_candidates_from_known_opportunity_lane(
     return tuple(candidates)
 
 
+def _review_candidates_from_attachment_intake_lane(
+    *,
+    profile_id: str,
+    normalized_pivot: str,
+    lane: SamGovAttachmentIntakeLane,
+    created_at: str,
+) -> tuple[SamGovReviewCandidate, ...]:
+    attachment_fields = _attachment_intake_source_fields(lane)
+    if not attachment_fields:
+        attachment_fields = (
+            ("attachment_intake_lane.diagnostic_summary", lane.diagnostic_summary),
+        )
+    return (
+        _review_candidate(
+            profile_id=profile_id,
+            normalized_pivot=normalized_pivot,
+            source_mode=lane.provenance.source_mode,
+            candidate_type=SamGovReviewCandidateType.ACTION_PLAN_ITEM,
+            candidate_key="action_plan_attachment_intake_review",
+            title="Action Plan: review SAM.gov opportunity attachments",
+            content=lane.diagnostic_summary,
+            target_workflow="document_intake",
+            recommendation="Approve official SAM.gov attachment downloads only after reviewing metadata and source limitations.",
+            rationale="Attachment metadata is surfaced from official SAM.gov opportunity records; downloading remains an explicit approval action.",
+            source_fields=tuple(field for field, value in attachment_fields),
+            source_values=tuple(value for field, value in attachment_fields),
+            confidence=0.7 if lane.attachments else 0.4,
+            created_at=created_at,
+        ),
+    )
+
+
+def _attachment_intake_source_fields(
+    lane: SamGovAttachmentIntakeLane,
+) -> tuple[tuple[str, str], ...]:
+    fields = []
+    for attachment in lane.attachments:
+        fields.extend(
+            _populated_fields(
+                ("attachment_intake_lane.attachments.id", attachment.id),
+                ("attachment_intake_lane.attachments.title", attachment.title),
+                ("attachment_intake_lane.attachments.url", attachment.url),
+                ("attachment_intake_lane.attachments.link_type", attachment.link_type),
+                ("attachment_intake_lane.attachments.filename", attachment.filename),
+            )
+        )
+    return tuple(fields)
+
+
 def _review_candidate(
     *,
     profile_id: str,
@@ -1873,6 +2421,66 @@ def _hermes_events_from_known_opportunity_lane(
         append_event(
             SamGovHermesEventType.REVIEW_CANDIDATES_CREATED,
             summary="SAM.gov review candidates created.",
+            payload={
+                "candidate_count": len(review_candidates),
+                "candidate_types": [
+                    candidate.candidate_type.value for candidate in review_candidates
+                ],
+            },
+        )
+    return tuple(events)
+
+
+def _hermes_events_from_attachment_intake_lane(
+    *,
+    profile_id: str,
+    normalized_pivot: str,
+    lane: SamGovAttachmentIntakeLane,
+    review_candidates: tuple[SamGovReviewCandidate, ...],
+    occurred_at: str,
+    starting_event_count: int,
+) -> tuple[SamGovHermesEvent, ...]:
+    events: list[SamGovHermesEvent] = []
+
+    def append_event(
+        event_type: SamGovHermesEventType,
+        *,
+        summary: str,
+        payload: dict[str, object],
+    ) -> None:
+        events.append(
+            SamGovHermesEvent(
+                id=(
+                    f"sam_gov_event_{_safe_identifier(profile_id)}_"
+                    f"{starting_event_count + len(events) + 1:03d}_{event_type.value}"
+                ),
+                event_type=event_type,
+                profile_id=profile_id,
+                normalized_pivot=normalized_pivot,
+                occurred_at=occurred_at,
+                summary=summary,
+                payload=payload,
+            )
+        )
+
+    append_event(
+        SamGovHermesEventType.ATTACHMENT_METADATA_SURFACED,
+        summary="SAM.gov Attachment Intake lane surfaced official attachment metadata.",
+        payload={
+            "attachment_count": len(lane.attachments),
+            "source_tool_name": lane.provenance.source_tool_name,
+        },
+    )
+    if lane.source_limitations:
+        append_event(
+            SamGovHermesEventType.SOURCE_LIMITATION_DETECTED,
+            summary="SAM.gov Attachment Intake lane source limitations detected.",
+            payload={"source_limitations": list(lane.source_limitations)},
+        )
+    if review_candidates:
+        append_event(
+            SamGovHermesEventType.REVIEW_CANDIDATES_CREATED,
+            summary="SAM.gov attachment review candidates created.",
             payload={
                 "candidate_count": len(review_candidates),
                 "candidate_types": [

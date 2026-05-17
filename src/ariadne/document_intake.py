@@ -164,6 +164,7 @@ class DocumentIntakeRecord(BaseModel):
     status: DocumentIntakeStatus
     queue_state: DocumentIntakeQueueState | None = None
     opportunity_id: str | None = None
+    source_provenance: dict[str, str] = Field(default_factory=dict)
     warnings: tuple[str, ...] = ()
     capability_hint: str = "Document is recorded for intake."
     extraction_bundle_id: str | None = None
@@ -692,6 +693,7 @@ def create_document_intake_record(
     *,
     opportunity_id: str | None = None,
     record_id: str | None = None,
+    source_provenance: dict[str, str] | None = None,
 ) -> DocumentIntakeRecord:
     return DocumentIntakeRecord(
         id=record_id or source_material.source_ref.replace(":", "_"),
@@ -703,6 +705,7 @@ def create_document_intake_record(
         content_type=source_material.content_type,
         status=source_material.status,
         opportunity_id=opportunity_id,
+        source_provenance=source_provenance or {},
         warnings=source_material.warnings,
         capability_hint=source_material.capability_hint
         or "Document is recorded for intake.",

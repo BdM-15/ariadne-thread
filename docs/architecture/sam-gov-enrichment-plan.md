@@ -1,7 +1,7 @@
 # SAM.gov Enrichment Plan
 
 Date: 2026-05-17  
-Status: implementation started through issue #37
+Status: implementation started through issue #38
 
 ## Selected Epic
 
@@ -132,6 +132,12 @@ Discovery results persist inside the SAM.gov Enrichment Profile with retrieved-a
 The third progression branch adds the Known Opportunity lane to an existing SAM.gov Enrichment Profile. It resolves a clean solicitation number or notice ID through the upstream `search_opportunities` tool, preserves source-mode and retrieved-at provenance, records official opportunity fields, and surfaces no-match, ambiguous, archived, stale, or incomplete responses as source limitations rather than silent success.
 
 Known opportunity results persist beside the existing Entity Record and Opportunity Discovery lanes. The slice creates review-gated Source Evidence, Packet Field Answer, Action Plan, and Call Plan candidates while preserving the existing profile and avoiding trusted downstream writes, attachment intake, Firecrawl, broad discovery, and solicitation parsing.
+
+### Issue #38: SAM.gov Attachment Intake Lane
+
+The fourth progression branch adds the Attachment Intake lane for official SAM.gov description and resource links surfaced by Known Opportunity and Opportunity Discovery records. It preserves pending-approval state during enrichment and page render, filters download eligibility to official SAM.gov surfaced links, and records non-SAM.gov or missing resource links as source limitations.
+
+Approved downloads use an explicit API action before fetching any file. Downloaded material creates Document Intake records with provenance back to the SAM.gov profile, attachment metadata, opportunity identifiers, and source mode. Generic readable material can continue through the existing generic extraction path; solicitation-family material is queued as parser-required Document Intake work for a future Solicitation Parser Capability. Inaccessible or expired official links become Attachment Intake source limitations rather than silent success.
 
 ## Accepted Four-Lane Demo
 

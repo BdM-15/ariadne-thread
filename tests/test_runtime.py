@@ -7,7 +7,11 @@ from ariadne.local_admin_model import (
     LocalAdminDraftSuggestion,
     LocalAdminModelAssistStatus,
 )
-from ariadne.sam_gov_profiles import SamGovMcpToolResult, SamGovSourceMode
+from ariadne.sam_gov_profiles import (
+    SamGovAttachmentFetchResult,
+    SamGovMcpToolResult,
+    SamGovSourceMode,
+)
 from ariadne.server import create_app
 from ariadne.usaspending import USAspendingMcpToolResult
 
@@ -999,6 +1003,298 @@ def test_sam_gov_known_opportunity_api_requires_key_for_live_action(tmp_path) ->
     assert response.json()["detail"] == (
         "SAM.gov API key is required for live SAM.gov known opportunity enrichment"
     )
+
+
+def test_sam_gov_attachment_download_api_requires_approval_and_routes_to_document_intake(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles"),
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+        }
+    )
+    fetch_calls = []
+
+    def entity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={"entityRegistration": {"uei": "UEIACME12345"}},
+        )
+
+    def opportunity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-known-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix final RFP",
+                        "type": "Solicitation",
+                        "resourceLinks": [
+                            {
+                                "title": "Project Phoenix notes",
+                                "url": "https://sam.gov/api/prod/opps/v3/resources/files/notice-known-001/project-phoenix-notes.txt",
+                                "filename": "project-phoenix-notes.txt",
+                                "mimeType": "text/plain",
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    def attachment_fetcher(url):
+        fetch_calls.append(url)
+        return SamGovAttachmentFetchResult(
+            ok=True,
+            content=b"Customer needs transition proof. Response deadline drives capture actions.",
+            filename="project-phoenix-notes.txt",
+            mime_type="text/plain",
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=entity_runner,
+            sam_gov_opportunity_runner=opportunity_runner,
+            sam_gov_attachment_fetcher=attachment_fetcher,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+    enriched_profile = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/known-opportunity",
+        json={
+            "input_pivot": "FA8650-26-R-0001",
+            "pivot_type": "solicitation_number",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    ).json()["profile"]
+    attachment = enriched_profile["attachment_intake_lane"]["attachments"][0]
+    assert attachment["download_status"] == "pending_approval"
+    assert fetch_calls == []
+
+    response = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/attachments/{attachment['id']}/approve-download",
+        json={
+            "reviewer_rationale": "Official SAM.gov attachment is approved for Document Intake."
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    intake_record = body["intake_record"]
+    updated_attachment = body["profile"]["attachment_intake_lane"]["attachments"][0]
+    assert fetch_calls == [attachment["url"]]
+    assert updated_attachment["download_status"] == "downloaded"
+    assert updated_attachment["intake_record_id"] == intake_record["id"]
+    assert intake_record["filename"] == "project-phoenix-notes.txt"
+    assert intake_record["status"] == "ready_for_quick_capture"
+    assert intake_record["material_type"] == "generic_source_material"
+    assert intake_record["source_provenance"] == {
+        "source_system": "sam.gov",
+        "sam_gov_profile_id": profile["id"],
+        "sam_gov_attachment_id": attachment["id"],
+        "sam_gov_attachment_url": attachment["url"],
+        "sam_gov_source_mode": "fake_adapter_test",
+        "sam_gov_source_notice_id": "notice-known-001",
+        "sam_gov_source_solicitation_number": "FA8650-26-R-0001",
+    }
+    store = DocumentIntakeStore(tmp_path / "document-intake")
+    assert (
+        store.read(intake_record["id"]).source_provenance
+        == (intake_record["source_provenance"])
+    )
+    assert store.list_extraction_bundles(document_id=intake_record["id"])
+
+
+def test_sam_gov_attachment_download_api_records_inaccessible_source_limitation(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles"),
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+        }
+    )
+
+    def entity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={"entityRegistration": {"uei": "UEIACME12345"}},
+        )
+
+    def opportunity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-known-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix final RFP",
+                        "resourceLinks": [
+                            "https://sam.gov/api/prod/opps/v3/resources/files/notice-known-001/missing.pdf"
+                        ],
+                    }
+                ]
+            },
+        )
+
+    def attachment_fetcher(url):
+        return SamGovAttachmentFetchResult(
+            ok=False,
+            error_message="SAM.gov fixture returned 404 for archived attachment.",
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=entity_runner,
+            sam_gov_opportunity_runner=opportunity_runner,
+            sam_gov_attachment_fetcher=attachment_fetcher,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+    enriched_profile = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/known-opportunity",
+        json={
+            "input_pivot": "FA8650-26-R-0001",
+            "pivot_type": "solicitation_number",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    ).json()["profile"]
+    attachment = enriched_profile["attachment_intake_lane"]["attachments"][0]
+
+    response = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/attachments/{attachment['id']}/approve-download",
+        json={"reviewer_rationale": "Approved archive retrieval attempt."},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    failed_attachment = body["profile"]["attachment_intake_lane"]["attachments"][0]
+    assert body["intake_record"] is None
+    assert failed_attachment["download_status"] == "inaccessible"
+    assert (
+        "SAM.gov fixture returned 404 for archived attachment."
+        in (failed_attachment["source_limitations"])
+    )
+    assert (
+        "SAM.gov fixture returned 404 for archived attachment."
+        in (body["profile"]["attachment_intake_lane"]["source_limitations"])
+    )
+    assert DocumentIntakeStore(tmp_path / "document-intake").list() == []
+
+
+def test_sam_gov_attachment_download_routes_solicitation_family_to_parser_required_intake(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles"),
+            "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
+        }
+    )
+
+    def entity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={"entityRegistration": {"uei": "UEIACME12345"}},
+        )
+
+    def opportunity_runner(tool_name, arguments):
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-known-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix final RFP",
+                        "resourceLinks": [
+                            {
+                                "title": "Final RFP package",
+                                "url": "https://sam.gov/api/prod/opps/v3/resources/files/notice-known-001/final-rfp.pdf",
+                                "filename": "final-rfp.pdf",
+                                "mimeType": "application/pdf",
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    def attachment_fetcher(url):
+        return SamGovAttachmentFetchResult(
+            ok=True,
+            content=b"%PDF-1.4\n...",
+            filename="final-rfp.pdf",
+            mime_type="application/pdf",
+        )
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=entity_runner,
+            sam_gov_opportunity_runner=opportunity_runner,
+            sam_gov_attachment_fetcher=attachment_fetcher,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+    enriched_profile = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/known-opportunity",
+        json={
+            "input_pivot": "FA8650-26-R-0001",
+            "pivot_type": "solicitation_number",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    ).json()["profile"]
+    attachment = enriched_profile["attachment_intake_lane"]["attachments"][0]
+
+    response = client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/attachments/{attachment['id']}/approve-download",
+        json={
+            "reviewer_rationale": "Official solicitation package approved for queueing."
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    intake_record = body["intake_record"]
+    updated_attachment = body["profile"]["attachment_intake_lane"]["attachments"][0]
+    assert intake_record["status"] == "parser_required"
+    assert intake_record["material_type"] == "solicitation_document"
+    assert "Solicitation Parser Capability" in intake_record["capability_hint"]
+    assert updated_attachment["download_status"] == "downloaded"
+    assert updated_attachment["intake_status"] == "parser_required"
+    store = DocumentIntakeStore(tmp_path / "document-intake")
+    assert (
+        store.read(intake_record["id"]).material_type.value == "solicitation_document"
+    )
+    assert store.list_extraction_bundles(document_id=intake_record["id"]) == []
 
 
 def test_sam_gov_entity_profile_review_decision_api_records_event(
@@ -2123,6 +2419,74 @@ def test_command_center_shell_shows_sam_gov_known_opportunity_without_live_call(
     assert "Project Phoenix final RFP" in response.text
     assert "Solicitation" in response.text
     assert "Source Evidence: SAM.gov known opportunity record" in response.text
+    assert len(calls) == 2
+
+
+def test_command_center_shell_shows_sam_gov_attachment_intake_without_download(
+    tmp_path,
+) -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_SAM_GOV_PROFILES_DIR": str(tmp_path / "sam-gov-profiles")}
+    )
+    calls = []
+
+    def runner(tool_name, arguments):
+        calls.append((tool_name, arguments))
+        if tool_name == "lookup_entity_by_uei":
+            return SamGovMcpToolResult(
+                ok=True,
+                payload={"entityRegistration": {"uei": "UEIACME12345"}},
+            )
+        return SamGovMcpToolResult(
+            ok=True,
+            payload={
+                "opportunitiesData": [
+                    {
+                        "noticeId": "notice-known-001",
+                        "solicitationNumber": "FA8650-26-R-0001",
+                        "title": "Project Phoenix final RFP",
+                        "resourceLinks": [
+                            {
+                                "title": "Project Phoenix RFP package",
+                                "url": "https://sam.gov/api/prod/opps/v3/resources/files/notice-known-001/rfp-package.pdf",
+                                "filename": "project-phoenix-rfp.pdf",
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(
+            settings,
+            sam_gov_entity_runner=runner,
+            sam_gov_opportunity_runner=runner,
+            sam_gov_source_mode=SamGovSourceMode.FAKE_ADAPTER_TEST,
+        )
+    )
+    profile = client.post(
+        "/api/federal-data/sam-gov/enrichment-profiles",
+        json={"input_pivot": "UEIACME12345"},
+    ).json()["profile"]
+    client.post(
+        f"/api/federal-data/sam-gov/enrichment-profiles/{profile['id']}/known-opportunity",
+        json={
+            "input_pivot": "FA8650-26-R-0001",
+            "pivot_type": "solicitation_number",
+            "posted_from": "05/01/2026",
+            "posted_to": "05/31/2026",
+        },
+    )
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Attachment Intake lane" in response.text
+    assert "Project Phoenix RFP package" in response.text
+    assert "pending approval" in response.text
+    assert "Document Intake" in response.text
     assert len(calls) == 2
 
 

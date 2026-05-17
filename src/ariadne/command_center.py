@@ -749,7 +749,7 @@ def _render_sam_gov_enrichment_profiles_panel(
     return f"""<section class="panel" id="sam-gov-enrichment-profiles" aria-labelledby="sam-gov-enrichment-profiles-heading">
       <div class="panel-heading"><h2 id="sam-gov-enrichment-profiles-heading">SAM.gov Enrichment Profiles</h2><span class="status-chip {readiness_class}">{len(profiles)} persisted</span></div>
     <div class="row-list">
-        <div class="row"><strong>Entity Record, Known Opportunity, and Opportunity Discovery lanes</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
+        <div class="row"><strong>Entity Record, Known Opportunity, Opportunity Discovery, and Attachment Intake lanes</strong><span>{escape(readiness)}</span><span>User-triggered POST actions use live SAM.gov when configured; this panel reads saved profiles only.</span></div>
       {rows}
       </div>
     </section>"""
@@ -783,7 +783,9 @@ def _render_sam_gov_enrichment_profile_row(
             if record is not None
             else "no official opportunity match"
         )
-        notice_label = record.notice_type if record is not None else "none"
+        notice_label = (
+            record.notice_type if record is not None and record.notice_type else "none"
+        )
         source_mode = lane.provenance.source_mode.value.replace("_", " ")
         limitations = "; ".join(lane.source_limitations) or "none"
         lane_rows.append(
@@ -800,7 +802,9 @@ def _render_sam_gov_enrichment_profile_row(
             if record is not None
             else "no official opportunity match"
         )
-        notice_label = record.notice_type if record is not None else "none"
+        notice_label = (
+            record.notice_type if record is not None and record.notice_type else "none"
+        )
         confidence = (
             f"{record.match_confidence:.2f}" if record is not None else "unknown"
         )
@@ -808,6 +812,27 @@ def _render_sam_gov_enrichment_profile_row(
         limitations = "; ".join(lane.source_limitations) or "none"
         lane_rows.append(
             f"""<div class="row"><strong>Opportunity Discovery lane</strong><span>Discovery status: {escape(lane.discovery_status.value.replace("_", " "))} - Records: {len(lane.records)}</span><span>Top notice: {escape(record_label)} - {escape(notice_label)} - confidence {escape(confidence)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
+        )
+    if profile.attachment_intake_lane is not None:
+        lane = profile.attachment_intake_lane
+        attachment = lane.attachments[0] if lane.attachments else None
+        attachment_label = (
+            attachment.title if attachment is not None else "no official attachments"
+        )
+        attachment_status = (
+            attachment.download_status.value.replace("_", " ")
+            if attachment is not None
+            else "none"
+        )
+        intake_label = (
+            attachment.intake_record_id
+            if attachment is not None and attachment.intake_record_id
+            else "not routed to Document Intake"
+        )
+        source_mode = lane.provenance.source_mode.value.replace("_", " ")
+        limitations = "; ".join(lane.source_limitations) or "none"
+        lane_rows.append(
+            f"""<div class="row"><strong>Attachment Intake lane</strong><span>Attachments: {len(lane.attachments)} - First: {escape(attachment_label)}</span><span>Download state: {escape(attachment_status)} - Document Intake: {escape(intake_label)}</span><span>Source mode: {escape(source_mode)} - Tool: {escape(lane.provenance.source_tool_name)}</span><span>Source limitations: {escape(limitations)}</span></div>"""
         )
     if not lane_rows:
         lane_rows.append(

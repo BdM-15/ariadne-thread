@@ -34,7 +34,7 @@
 - A `grill-with-docs` planning session selected **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake** as a vertical product epic. ADR 0007 records that Ariadne should integrate upstream `1102tools/federal-contracting-mcps` as manifest-only Federal Data Capabilities instead of creating unique Ariadne MCP servers for the same public data sources.
 - `docs/architecture/federal-data-mcp-foundation-plan.md` records the completed Federal Data MCP Foundation epic plan and implementation trail: all eight 1102 MCPs are registered with honest status labels, USAspending is the first product-integrated source, and the PIID Contract Intelligence Profile workflow supports recompete capture research.
 - The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Federal Data MCP Foundation branch, with 160 tests passing.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on `main` after the Federal Data MCP Foundation merge, with 160 tests passing.
 
 **Still Deferred**
 

@@ -78,6 +78,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Local Admin Model: a model role for lower-risk tasks such as tagging, summarizing, date extraction, deduplication, formatting, and evidence preparation.
 - Recompete: a new competition for work that has been awarded before.
 - Incumbent Recompete: a recompete for work currently held by the user or their organization.
+- Recompete Intelligence Intake: a review-gated workflow that turns public award, customer, incumbent, vehicle, spending, and timing signals into capture intelligence for a recompete.
+- PIID Contract Intelligence Profile: a repeatable capture research profile that starts from one contract number and develops award baseline, burn posture, vehicle context, incumbent signals, gaps, pivots, and next actions.
 - Knowledge Layer: the local-first retrieval and graph context behind opportunity-specific reasoning.
 - Knowledge Mirror: an optional human-readable export or integration, such as Obsidian, that reflects Ariadne knowledge without becoming the primary source of truth.
 - Knowledge Note Projection: a one-way Markdown-style note generated from accepted Ariadne knowledge so humans and lightweight retrieval can browse connected context without making the note the source of truth.
@@ -92,6 +94,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Intelligence Workflow: a structured workflow that gathers, aggregates, and synthesizes capture data into insights, recommendations, and actions.
 - Product Workflow: a user-facing outcome workflow in Ariadne, such as building a briefing packet, creating a call plan, or researching competitors.
 - Capability Module: an underlying skill, skill chain, CLI harness, MCP tool, parser, renderer, model workflow, or adapter that a product workflow can use.
+- Federal Data Capability: a read-only capability module that gathers public federal contracting, spending, wage, rate, policy, or regulatory data for capture analysis.
 - Capability Studio: an advanced workspace for adding, testing, refining, and validating capability modules without making capability management the main capture experience.
 - Capability Run: one execution of a capability module with its inputs, outputs, rationale, evidence links, artifacts, and audit trail.
 - Capability Run Output: an output from a capability run that must be reviewed, refined, promoted, or discarded before becoming trusted knowledge or a final artifact.
@@ -151,6 +154,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
 - The **Capture Command Center** should turn data into decisions and actions rather than behaving like a passive data display.
+- **Federal Data Capabilities** can support capture analysis with public data, but their outputs remain reviewable signals until Ariadne promotes them through evidence and workflow review gates.
 - The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.
 - The first **Capability Studio** stage focuses on a local **Capability Catalog**, testing, refinement, validation, run history, artifacts, and provenance before third-party plugin installation.
 - The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.
@@ -173,6 +177,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Risk Response Plans** can create or update **Action Plan Items** and can support **Packet Field Answers** for risks, mitigation approach, pricing exposure, schedule exposure, and gate recommendations.
 - A **Follow-Up Question Route** can launch customer engagement preparation, a **Call Plan**, research, or a **Capability Module** without treating the routed question as trusted evidence.
 - A **Skill Chain Recommendation** can point to existing **Capability Modules**, recommend a **Product Workflow**, or become a **Capability Gap** or **Improvement Proposal** when Hermes detects that no suitable skill exists.
+- A **Recompete Intelligence Intake** can use **Federal Data Capabilities** to prepare incumbent, customer, vehicle, obligation, and timing signals before those signals become trusted **Evidence Items**, **Packet Field Answers**, **Risk Register Items**, or **Action Plan Items**.
+- A **PIID Contract Intelligence Profile** should begin with deterministic federal data before later enrichment, skill chaining, or Hermes-supported research expands the profile.
+- A **PIID Contract Intelligence Profile** can later feed **Artifact Renderer** capabilities such as DOCX, XLSX, presentation, or visual exports without making those rendered artifacts the source of truth.
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
 - A **Reference Wiki** can organize **Capture Reference Context** for lightweight retrieval without becoming the primary **Knowledge Layer** or a **Knowledge Mirror**.
 - A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.

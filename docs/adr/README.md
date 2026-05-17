@@ -17,3 +17,4 @@ Use concise records with this shape:
 - `0004-evidence-first-ai-recommendations.md`: AI recommendations must remain traceable to sources, assumptions, confidence, gaps, and rationale.
 - `0005-project-ariadne-reference-knowledge.md`: Project Ariadne public-source knowledge, including company-specific bid-qualification intel, is imported as Capture Reference Context.
 - `0006-document-intake-extraction-boundary.md`: Document Intake uses a shared Extraction Bundle before parser or retrieval engines become trusted knowledge.
+- `0007-upstream-federal-data-mcps.md`: Ariadne integrates upstream 1102tools federal data MCPs instead of creating unique Ariadne MCP servers for the same public data sources.

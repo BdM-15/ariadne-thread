@@ -1,7 +1,13 @@
 # Next Grill-With-Docs Session Prep
 
 Date: 2026-05-16  
-Purpose: choose the next vertical epic after the completed Document Intake Command Surface.
+Purpose: record the completed planning outcome for the next vertical epic after the completed Document Intake Command Surface.
+
+## Session Outcome
+
+The next selected vertical epic is **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake**. See `docs/architecture/federal-data-mcp-foundation-plan.md` and ADR 0007.
+
+The selected approach registers all eight upstream `1102tools/federal-contracting-mcps` servers as manifest-only Federal Data Capabilities, while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile workflow.
 
 ## Current Baseline
 
@@ -18,15 +24,15 @@ Purpose: choose the next vertical epic after the completed Document Intake Comma
 - `docs/architecture/document-intake-command-surface-plan.md` for the completed implementation trail.
 - The running Command Center demo thread at `http://127.0.0.1:9622` when the local runtime is active.
 
-## Decisions To Force
+## Decisions Forced
 
-- Which one vertical epic should come next?
-- Is the next epic primarily Command Center UI/product workflow, CLI-first harness work, Capability Studio, or external integration?
-- Does the next epic require a new ADR before code?
-- What existing behavior should become the tracer bullet and acceptance demo?
-- What remains explicitly deferred so the next epic does not become a platform sweep?
+- Next epic: Federal Data MCP Foundation + USAspending Recompete Intelligence Intake.
+- Slice type: external integration foundation plus a product workflow command surface.
+- ADR: ADR 0007 records the upstream 1102tools MCP integration decision.
+- Tracer bullet: one PIID becomes a structured USAspending-backed PIID Contract Intelligence Profile with review-gated candidates.
+- Explicit deferrals: full workflows for the other seven MCPs, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, artifact rendering, and Next.js migration.
 
-## Candidate Directions
+## Candidate Directions Considered
 
 - Command Center UI polish or Next.js shell migration over the existing FastAPI-proven behavior.
 - Capability Studio progression from read-only catalog toward tested capability runs and provenance.

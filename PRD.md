@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.10**
+**Product Requirements Document (PRD) v1.11**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 17, 2026
-**Status:** Federal Data MCP Foundation + USAspending Recompete Intelligence Intake complete; ready for next `grill-with-docs` selection
+**Status:** SAM.gov Enrichment Profile selected through `grill-with-docs`; ready for implementation on `05-build/sam-gov-enrichment-profile`
 
 ---
 
@@ -34,20 +34,23 @@
 - A `grill-with-docs` planning session selected **Federal Data MCP Foundation + USAspending Recompete Intelligence Intake** as a vertical product epic. ADR 0007 records that Ariadne should integrate upstream `1102tools/federal-contracting-mcps` as manifest-only Federal Data Capabilities instead of creating unique Ariadne MCP servers for the same public data sources.
 - `docs/architecture/federal-data-mcp-foundation-plan.md` records the completed Federal Data MCP Foundation epic plan and implementation trail: all eight 1102 MCPs are registered with honest status labels, USAspending is the first product-integrated source, and the PIID Contract Intelligence Profile workflow supports recompete capture research.
 - The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
+- A fresh `grill-with-docs` planning session selected the **SAM.gov Enrichment Profile** as the next vertical product epic. `CONTEXT.md` now defines SAM.gov Enrichment Profile, SAM.gov Entity Record, SAM.gov Opportunity Record, SAM.gov Opportunity Discovery, SAM.gov Opportunity Attachment Intake, and Web Enrichment Support.
+- `docs/architecture/sam-gov-enrichment-plan.md` records the selected SAM.gov epic plan: one combined profile with entity, known opportunity, discovery, and attachment-intake lanes; live SAM.gov product behavior when `SAM_GOV_API_KEY` is configured; fake-adapter tests that never masquerade as live source success; source-mode provenance; approved official-link attachment downloads into Document Intake; and review-gated downstream candidates.
 - Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on `main` after the Federal Data MCP Foundation merge, with 160 tests passing.
 
 **Still Deferred**
 
-- Hermes runtime, durable knowledge/retrieval engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond the selected federal data MCP foundation, advanced skill installation, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
+- Hermes runtime, durable knowledge/retrieval engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond the selected SAM.gov enrichment slice, advanced skill installation, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Run a fresh `grill-with-docs` session before selecting the next vertical slice.
-- Use `PRD.md`, `CONTEXT.md`, ADRs, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as the session inputs.
-- Candidate directions include SAM.gov entity/opportunity enrichment, BLS/GSA pricing context, Firecrawl/web enrichment, focused competitor/customer/subaward/vehicle profiles, Artifact Renderer export from accepted PIID profile content, Hermes operational learning, Capability Studio progression, and Knowledge Graph sensemaking.
-- Keep SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov product workflows, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, artifact rendering, and Next.js migration explicitly deferred until chosen through a documented slice.
-- Keep the next epic a vertical product slice with real behavior and review gates, not a broad platform sweep.
+- Implement the **SAM.gov Enrichment Profile** on epic branch `05-build/sam-gov-enrichment-profile`.
+- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/sam-gov-enrichment-plan.md` as implementation inputs.
+- Preserve the Federal Data Capability boundary: SAM.gov search, entity, and opportunity data should flow through the upstream `sam-gov-mcp` capability rather than a duplicate Ariadne MCP.
+- Preserve the Document Intake boundary: downloaded SAM.gov attachments enter Document Intake, then material classification determines generic extraction versus future Solicitation Parser Capability routing.
+- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration deferred until selected through their own documented slices.
+- Keep the SAM.gov epic vertical and review-gated across entity records, known opportunity records, opportunity discovery, attachment intake, review candidates, and Command Center behavior.
 
 ---
 
@@ -303,7 +306,108 @@ If Obsidian or another Knowledge Mirror is edited directly, those edits should r
 
 The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices until selected through a fresh `grill-with-docs` session.
 
-## 6.2 Future Capability Integration Strategy
+## 6.2 Selected Next Epic PRD: SAM.gov Enrichment Profile
+
+### Problem Statement
+
+Ariadne can now turn one PIID or contract number into a structured USAspending-backed recompete intelligence spine, but the capture professional still needs official acquisition-facing context from SAM.gov. Many real opportunities do not start with a clean solicitation ID. The user may only know a customer office, program name, legacy program name, vague description, NAICS/PSC signal, incumbent, or vendor ecosystem clue. Current and prior SAM.gov postings may also include documents that should enter Document Intake, but Ariadne does not yet discover, download, classify, or route those official attachments.
+
+The problem is not simply “look up a solicitation.” The user needs a command-first SAM.gov workflow that can enrich a recompete or opportunity with entity records, known notices, discovery searches, official attachment intake, source limitations, and review-gated next actions without blurring official SAM.gov data with web research, fake tests, or trusted downstream knowledge.
+
+### Solution
+
+Build the **SAM.gov Enrichment Profile** as the next vertical product epic. The profile should combine four lanes in one reviewable command surface:
+
+1. **Entity Record lane** for official SAM.gov entity registration or responsibility records used in incumbent, parent-company, vendor ecosystem, competitor, subcontractor, and teaming research.
+2. **Known Opportunity lane** for official SAM.gov opportunity records found from a solicitation number, notice ID, or other clean pivot.
+3. **Opportunity Discovery lane** for finding RFIs, Sources Sought notices, Special Notices, solicitations, and related notices when no solicitation ID exists yet, using customer, office, program-name, description, keyword, renamed-program, NAICS/PSC, set-aside, and date-window signals.
+4. **Opportunity Attachment Intake lane** for discovering official SAM.gov description links and resource links, asking before download, downloading approved official links, and routing those files into Document Intake.
+
+The product should call live SAM.gov by default for user-triggered workflows when `SAM_GOV_API_KEY` is configured. Automated tests should use fake adapters for deterministic coverage, but fixture output must be clearly labeled and must never be treated as proof of live source success. Every profile/result should carry provenance source mode such as `live_sam_gov`, `fake_adapter_test`, or `demo_fixture`.
+
+The SAM.gov profile is a structured, reviewable source profile. It may create candidates for Evidence, Packet Field Answers, Action Plan Items, Risk Register signals, Call Plan signals, and follow-up enrichment routes, but trusted downstream records require user review.
+
+### User Stories
+
+1. As a capture professional, I want to enrich a PIID profile with official SAM.gov data, so that my recompete research includes current acquisition-facing signals.
+2. As a capture professional, I want a single SAM.gov Enrichment Profile, so that entity, opportunity, discovery, and attachment signals stay connected in one command surface.
+3. As a capture professional, I want to search SAM.gov by UEI, so that I can validate an incumbent or vendor against official entity records.
+4. As a capture professional, I want to search SAM.gov by vendor name, so that I can find possible matches even when I do not know the UEI.
+5. As a capture professional, I want SAM.gov Entity Records to show registration and responsibility signals, so that I can assess vendor suitability and follow-up needs.
+6. As a capture professional, I want parent-company or hierarchy clues when available, so that I can understand a vendor ecosystem more deeply.
+7. As a capture professional, I want NAICS, PSC, business-type, and socioeconomic signals from entity records, so that I can compare company positioning against opportunity needs.
+8. As a capture professional, I want entity records to suggest subcontractor, competitor, and teaming leads, so that I can plan outreach and partner strategy.
+9. As a capture professional, I want Ariadne to preserve source limitations on SAM.gov entity data, so that I do not over-trust incomplete public records.
+10. As a capture professional, I want to look up a known solicitation number or notice ID, so that I can connect a clean opportunity pivot to official SAM.gov records.
+11. As a capture professional, I want official opportunity records to show notice type, title, customer, office, posted date, response deadline, set-aside, NAICS, PSC, and contact signals, so that I can understand timing and qualification quickly.
+12. As a capture professional, I want to discover opportunities without a solicitation ID, so that early or renamed programs can still be researched.
+13. As a capture professional, I want to search by customer agency and office, so that I can find notices from the buying organization I care about.
+14. As a capture professional, I want to search by program name, old program name, description, and keywords, so that I can handle renamed or ambiguous programs.
+15. As a capture professional, I want to filter discovery by notice type such as RFI, Sources Sought, Special Notice, solicitation, and combined synopsis/solicitation, so that I can focus on the right acquisition phase.
+16. As a capture professional, I want discovery to use NAICS, PSC, set-aside, posted date, response date, and place-of-performance clues when available, so that search results are relevant.
+17. As a capture professional, I want discovery results to include match rationale and confidence, so that I can judge whether a notice is actually relevant.
+18. As a capture professional, I want weak or ambiguous SAM.gov results to create a deferred Web Enrichment Support route, so that Firecrawl-style research can be launched later without polluting official SAM.gov records.
+19. As a capture professional, I want Ariadne to discover documents attached to new SAM.gov postings, so that official solicitation material does not stay outside the capture workflow.
+20. As a capture professional, I want Ariadne to discover documents from prior or archived solicitations when official links are available, so that recompete research can use historical acquisition material.
+21. As a capture professional, I want Ariadne to ask before downloading SAM.gov attachments, so that I control document intake and avoid surprise external activity.
+22. As a capture professional, I want downloaded SAM.gov documents to enter the Document Intake Queue, so that they follow Ariadne's existing extraction, review, and parser-boundary rules.
+23. As a capture professional, I want downloaded RFIs, Sources Sought notices, draft RFPs, final RFPs, amendments, and requirements attachments to be classified as Solicitation Documents, so that they can route to a future Solicitation Parser Capability.
+24. As a capture professional, I want generic SAM.gov attachments to use generic Document Intake when appropriate, so that non-solicitation material can still produce useful source spans and draft intelligence.
+25. As a capture professional, I want inaccessible or missing historical documents to become source limitations, so that the profile remains honest about what it could not retrieve.
+26. As a capture professional, I want every SAM.gov result to show whether it came from live SAM.gov, a fake adapter test, or a demo fixture, so that I know what can be trusted.
+27. As a capture professional, I want live user-triggered workflows to use real SAM.gov connections by default, so that Ariadne gets current source data when I ask for it.
+28. As a developer, I want automated tests to use fake adapter data that is clearly marked, so that tests are deterministic without pretending live SAM.gov succeeded.
+29. As a developer, I want fake tests to cover broad and messy scenarios, so that Ariadne handles multiple matches, pagination, attachments, auth/rate failures, inaccessible documents, and no-result cases.
+30. As a capture professional, I want SAM.gov profile outputs to become review-gated candidates, so that I can accept, route, discard, or defer them before they affect trusted capture records.
+31. As a capture professional, I want SAM.gov enrichment to suggest Packet Field Answer candidates, so that official data can help fill customer, office, incumbent, timing, competition, set-aside, requirement, and risk fields.
+32. As a capture professional, I want SAM.gov enrichment to suggest Action Plan Items, so that follow-up research, customer engagement, attachment review, and parser-required work become managed capture tasks.
+33. As a capture professional, I want SAM.gov enrichment to suggest Risk Register signals, so that timing, competition, set-aside fit, source gaps, and vendor ecosystem concerns are visible before gate decisions.
+34. As a capture professional, I want SAM.gov enrichment to suggest Call Plan signals, so that customer office validation, POC follow-up, pre-solicitation engagement, and teaming outreach can be prepared.
+35. As a capture professional, I want the Command Center to show SAM.gov enrichment as active capture work, so that the data turns into recommendations, decisions, routes, and actions.
+
+### Implementation Decisions
+
+- Build a deep SAM.gov profile module with a small interface for creating, persisting, listing, and reviewing SAM.gov Enrichment Profiles.
+- Keep the profile model structured around the four accepted lanes: Entity Record, Known Opportunity, Opportunity Discovery, and Opportunity Attachment Intake.
+- Keep SAM.gov search, entity, and opportunity data behind the upstream `sam-gov-mcp` Federal Data Capability adapter; do not build a duplicate Ariadne SAM.gov MCP.
+- Allow direct official-link fetching only for user-approved attachment downloads surfaced by SAM.gov results.
+- Route approved downloaded attachments into Document Intake with provenance back to the SAM.gov profile, opportunity record, source URL, and source mode.
+- Let Document Intake classification determine whether downloaded material follows generic extraction or waits for a future Solicitation Parser Capability such as Project Theseus.
+- Persist profile source limitations when SAM.gov fields, historical versions, archived documents, attachments, or hierarchy details are missing or inaccessible.
+- Keep Firecrawl/web enrichment as a deferred Web Enrichment Support route, not part of the first SAM.gov implementation.
+- Add provenance source mode values for live SAM.gov, fake adapter tests, and demo fixtures. Fake and demo output must not be eligible for normal trusted Evidence promotion.
+- User-triggered product workflows should call live SAM.gov by default when the private key is configured. Page render should not trigger live calls.
+- The Command Center should show saved SAM.gov profiles, live-readiness status, profile lanes, source limitations, review candidates, attachment download state, and Document Intake links.
+- The first implementation should use epic branch `05-build/sam-gov-enrichment-profile`, with progression branches for domain/store, adapter, attachment intake, and command surface work.
+
+### Testing Decisions
+
+- Test external behavior: profile creation, source-mode provenance, candidate projection, review gating, persistence, attachment intake behavior, Document Intake routing, and API/Command Center responses.
+- Do not write tests that only verify private helper structure or implementation details.
+- Normal automated tests should use fake SAM.gov adapter responses so the suite is deterministic and does not require private secrets or live network access.
+- Fake test fixtures should be broad rather than tiny: cover multiple entity matches, hierarchy clues, known opportunity matches, discovery searches, active and archived notices, pagination, attachments, inaccessible documents, no-result cases, auth failures, rate failures, and source limitations.
+- Fake-adapter tests must assert that fixture output is labeled as fake or demo data and is not reported as proof of live SAM.gov success.
+- Live SAM.gov behavior can have separate local validation, but normal CI/unit tests must not depend on live SAM.gov availability.
+- Prior test patterns include PIID Contract Intelligence Profile tests for structured profile creation, Federal Data Capability tests for MCP registry and secret-safe behavior, Document Intake tests for queueing/classification/extraction boundaries, and runtime tests for FastAPI route behavior.
+
+### Out of Scope
+
+- Firecrawl or broad web enrichment.
+- Direct non-SAM web crawling or guessing hidden attachment URLs.
+- Solicitation parsing with Project Theseus or another parser.
+- MinerU, RAGAnything, LightRAG, OCR, or multimodal extraction.
+- Artifact Renderer, DOCX, XLSX, presentation, or huashu-design export.
+- Hermes runtime, autonomous tool choice, operational learning, or workflow mutation.
+- Skill chaining or LangGraph orchestration.
+- Product workflows for BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov.
+- Full Next.js UI migration.
+- Automatic trusted downstream promotion from SAM.gov results or downloaded documents.
+
+### Further Notes
+
+This epic extends ADR 0007 and ADR 0006 rather than requiring a new ADR. ADR 0007 keeps federal data access behind upstream 1102tools Federal Data Capabilities. ADR 0006 keeps parser and retrieval outputs behind Document Intake's Extraction Bundle and review boundaries. The SAM.gov plan is recorded in `docs/architecture/sam-gov-enrichment-plan.md`.
+
+## 6.3 Future Capability Integration Strategy
 
 The first build slice is intentionally narrow, but it must create stable attachment points for the later systems named in the North Star. Hermes, graph visualization, MinerU, huashu-design, RAG, external APIs, and advanced skills should not be forgotten or bolted on as unrelated tools. They should plug into Ariadne's core product concepts: Opportunity, Evidence Item, Living Briefing Packet, Capture Action Plan, Capability Module, Artifact Renderer, and Knowledge Layer.
 
@@ -383,11 +487,23 @@ Each future slice should leave a short documentation trail before code: what is 
 - Kept artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
 - Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI.
 
+**SAM.gov Enrichment Profile Epic** ← **SELECTED / READY FOR IMPLEMENTATION**
+
+- Selected through a fresh `grill-with-docs` session after the Federal Data MCP Foundation merge.
+- Plan recorded in `docs/architecture/sam-gov-enrichment-plan.md`; no new ADR is needed because the slice extends ADR 0007's upstream Federal Data Capability boundary and ADR 0006's Document Intake extraction boundary.
+- Epic branch: `05-build/sam-gov-enrichment-profile`.
+- Build one SAM.gov Enrichment Profile with four lanes: Entity Record, Known Opportunity, Opportunity Discovery, and Opportunity Attachment Intake.
+- Use live SAM.gov by default for user-triggered workflows when `SAM_GOV_API_KEY` is configured; keep automated tests deterministic with fake adapters that are clearly labeled and never presented as live source success.
+- Route approved official SAM.gov attachment downloads into Document Intake; classify documents before choosing generic extraction versus future Solicitation Parser Capability routing.
+- Keep all downstream Evidence, Packet, Action Plan, Risk Register, Call Plan, Opportunity Knowledge, and follow-up route outputs review-gated.
+- Defer Firecrawl/web enrichment, Theseus solicitation parsing, BLS/GSA pricing, subaward/competitor/customer profile workflows, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration.
+
 **Next Implementation Gate**
 
-- Start the next conversation with a `grill-with-docs` session to select the next vertical epic after the completed Federal Data MCP Foundation.
-- Keep the Command Center command-first: pulse check, quick action, recommendations, skill-chain options, and AI support should take priority over passive data display.
-- Before implementation, document the selected slice, explicit deferrals, evidence/provenance/review rules, and any new domain terms in the PRD, `CONTEXT.md`, an architecture note, and ADRs only where needed.
+- Start implementation on `05-build/sam-gov-enrichment-profile`, with progression branches such as `05-build/01-sam-gov-domain-store`, `05-build/02-sam-gov-adapter`, `05-build/03-sam-gov-attachments-document-intake`, and `05-build/04-sam-gov-command-surface`.
+- Keep the Command Center command-first: SAM.gov data should appear with recommendations, review candidates, source limitations, attachment actions, Document Intake links, and follow-up routes rather than as passive API output.
+- Run `improve-codebase-architecture` before substantive application code or refactors in the SAM.gov epic.
+- Before selecting the next external integration after SAM.gov, run another `grill-with-docs` session and update PRD/CONTEXT/architecture docs inline.
 
 **Phase 1 – Core Infrastructure**
 
@@ -465,9 +581,9 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.9**
+**End of PRD v1.11**
 
-**Phase 0, first-slice domain/storage epic, Quick Capture Knowledge Processing epic, and Document Intake Command Surface epic complete. Federal Data MCP Foundation + USAspending Recompete Intelligence Intake is the next planned vertical slice.**
+**Phase 0, first-slice domain/storage epic, Quick Capture Knowledge Processing epic, Document Intake Command Surface epic, and Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic are complete. SAM.gov Enrichment Profile is the selected next vertical slice.**
 
 ---
 

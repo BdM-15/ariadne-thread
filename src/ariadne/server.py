@@ -66,7 +66,9 @@ from ariadne.packets import (
 from ariadne.piid_profiles import (
     PiidContractIntelligenceProfile,
     PiidProfileStore,
+    PiidReviewState,
     create_piid_contract_intelligence_profile,
+    record_piid_review_decision,
 )
 from ariadne.quick_capture import (
     CaptureIntelligenceDraft,
@@ -206,6 +208,12 @@ class USAspendingPiidProfileCreateRequest(BaseModel):
 
 class USAspendingPiidProfileResponse(BaseModel):
     profile: PiidContractIntelligenceProfile
+
+
+class USAspendingPiidProfileReviewDecisionRequest(BaseModel):
+    candidate_id: str
+    review_state: PiidReviewState
+    reviewer_rationale: str
 
 
 class USAspendingPiidProfilesResponse(BaseModel):
@@ -481,6 +489,32 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return USAspendingPiidProfileResponse(profile=profile)
+
+    @app.post(
+        "/api/federal-data/usaspending/piid-profiles/{profile_id}/review-decisions"
+    )
+    def usaspending_piid_profile_review_decision(
+        profile_id: str,
+        request: USAspendingPiidProfileReviewDecisionRequest,
+    ) -> USAspendingPiidProfileResponse:
+        store = PiidProfileStore(
+            _resolve_runtime_path(runtime_settings.ariadne_piid_profiles_dir)
+        )
+        try:
+            profile = store.read(profile_id)
+            updated_profile = record_piid_review_decision(
+                profile,
+                candidate_id=request.candidate_id,
+                review_state=request.review_state,
+                reviewer_rationale=request.reviewer_rationale,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="PIID profile not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return USAspendingPiidProfileResponse(profile=store.write(updated_profile))
 
     @app.get("/api/document-intake/queue")
     def document_intake_queue() -> DocumentIntakeQueueResponse:

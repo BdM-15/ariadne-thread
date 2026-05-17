@@ -1,9 +1,14 @@
 from ariadne.piid_profiles import (
+    PiidEnrichmentRouteType,
     PiidGapCategory,
+    PiidHermesEventType,
     PiidProfileStore,
     PiidPivotType,
+    PiidReviewCandidateType,
+    PiidReviewState,
     PiidScenarioClassification,
     create_piid_contract_intelligence_profile,
+    record_piid_review_decision,
 )
 from ariadne.usaspending import (
     USAspendingAwardHistoryResult,
@@ -429,6 +434,229 @@ def test_profile_marks_partial_vehicle_linkage_when_parent_id_is_incomplete() ->
     assert profile.vehicle_context.parent_idv == "FA8650-20-D-0001"
     assert profile.vehicle_context.parent_generated_internal_id is None
     assert profile.vehicle_context.linkage_confidence == "partial"
+
+
+def test_profile_recommends_enrichment_routes_from_populated_pivots_only() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-F-0001",
+        normalized_piid="FA8650-23-F-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-F-0001",
+        generated_internal_id="CONT_AWD_FA865023F0001_9700",
+        recipient_name="ACME FEDERAL LLC",
+        recipient_uei="UEIACME12345",
+        awarding_agency_name="Department of the Air Force",
+        awarding_sub_agency_name="Air Force Materiel Command",
+        award_amount=1250000.0,
+        start_date="2023-05-01",
+        end_date="2026-04-30",
+        naics_code="541715",
+        psc_code="AC13",
+        solicitation_id="FA8650-22-R-0001",
+        permalink="https://www.usaspending.gov/award/CONT_AWD_FA865023F0001_9700",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+
+    profile = create_piid_contract_intelligence_profile(lookup)
+
+    routes_by_type = {
+        route.route_type: route for route in profile.recommended_enrichment_routes
+    }
+    assert set(routes_by_type) >= {
+        PiidEnrichmentRouteType.SAM_GOV_ENTITY,
+        PiidEnrichmentRouteType.SAM_GOV_OPPORTUNITY,
+        PiidEnrichmentRouteType.BLS_GSA_PRICING_CONTEXT,
+        PiidEnrichmentRouteType.FIRECRAWL_WEB_ENRICHMENT,
+        PiidEnrichmentRouteType.SUBAWARD_PROFILE,
+        PiidEnrichmentRouteType.COMPETITOR_PROFILE,
+        PiidEnrichmentRouteType.CUSTOMER_PROFILE,
+        PiidEnrichmentRouteType.ARTIFACT_PREPARATION,
+    }
+    assert routes_by_type[PiidEnrichmentRouteType.SAM_GOV_ENTITY].source_fields == (
+        "recipient_uei",
+    )
+    assert routes_by_type[PiidEnrichmentRouteType.SAM_GOV_ENTITY].source_values == (
+        "UEIACME12345",
+    )
+    assert routes_by_type[
+        PiidEnrichmentRouteType.BLS_GSA_PRICING_CONTEXT
+    ].source_fields == ("naics_code", "psc_code")
+    assert all(
+        "parent_recipient_uei" not in route.source_fields
+        for route in profile.recommended_enrichment_routes
+    )
+    assert all(route.review_required for route in profile.recommended_enrichment_routes)
+
+
+def test_profile_projects_review_gated_candidates_without_trusted_outputs() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-C-0001",
+        normalized_piid="FA8650-23-C-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-C-0001",
+        generated_internal_id="CONT_AWD_FA865023C0001_9700",
+        recipient_name="ACME FEDERAL LLC",
+        recipient_uei="UEIACME12345",
+        awarding_agency_name="Department of the Air Force",
+        awarding_sub_agency_name="Air Force Materiel Command",
+        award_amount=1200000.0,
+        start_date="2023-05-01",
+        end_date="2025-04-30",
+        naics_code="541715",
+        psc_code="AC13",
+        solicitation_id="FA8650-22-R-0001",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+    history = USAspendingAwardHistoryResult(
+        generated_award_id="CONT_AWD_FA865023C0001_9700",
+        transaction_history=(
+            USAspendingAwardTransaction(
+                transaction_id="txn_base",
+                action_date="2023-05-01",
+                fiscal_year=2023,
+                modification_number="0",
+                action_type="Base Award",
+                obligation=900000.0,
+                description="Base award",
+            ),
+            USAspendingAwardTransaction(
+                transaction_id="txn_deob",
+                action_date="2024-09-15",
+                fiscal_year=2024,
+                modification_number="P00001",
+                action_type="Funding Modification",
+                obligation=-50000.0,
+                description="Partial deobligation",
+            ),
+        ),
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        award_history=history,
+        profile_id="piid_profile_FA8650_23_C_0001",
+        created_at="2026-05-16T14:30:00Z",
+    )
+
+    candidate_types = {candidate.candidate_type for candidate in profile.review_candidates}
+    assert {
+        PiidReviewCandidateType.SOURCE_EVIDENCE,
+        PiidReviewCandidateType.DERIVED_EVIDENCE,
+        PiidReviewCandidateType.PACKET_FIELD_ANSWER,
+        PiidReviewCandidateType.ACTION_PLAN_ITEM,
+        PiidReviewCandidateType.RISK_REGISTER_SIGNAL,
+        PiidReviewCandidateType.CALL_PLAN_SIGNAL,
+        PiidReviewCandidateType.FOLLOW_UP_ROUTE,
+    } <= candidate_types
+    packet_fields = {
+        candidate.field_key
+        for candidate in profile.review_candidates
+        if candidate.candidate_type is PiidReviewCandidateType.PACKET_FIELD_ANSWER
+    }
+    assert {"incumbent", "customer", "value", "timing", "risk"} <= packet_fields
+    assert all(
+        candidate.review_state is PiidReviewState.PENDING_REVIEW
+        for candidate in profile.review_candidates
+    )
+    assert all(
+        not candidate.trusted_output_written for candidate in profile.review_candidates
+    )
+
+    source_candidate = next(
+        candidate
+        for candidate in profile.review_candidates
+        if candidate.candidate_type is PiidReviewCandidateType.SOURCE_EVIDENCE
+    )
+    derived_candidate = next(
+        candidate
+        for candidate in profile.review_candidates
+        if candidate.candidate_type is PiidReviewCandidateType.DERIVED_EVIDENCE
+    )
+    assert source_candidate.target_workflow == "evidence_store"
+    assert "ACME FEDERAL LLC" in source_candidate.content
+    assert "award_baseline.recipient_name" in source_candidate.source_fields
+    assert derived_candidate.target_workflow == "evidence_store"
+    assert "net obligations" in derived_candidate.content
+    assert "burn_posture.net_obligations" in derived_candidate.source_fields
+
+
+def test_profile_emits_hermes_events_and_records_review_decisions() -> None:
+    lookup = USAspendingAwardLookupResult(
+        input_contract_number="FA8650-23-C-0001",
+        normalized_piid="FA8650-23-C-0001",
+        status=USAspendingAwardLookupStatus.SUCCESS,
+        award_type="contract",
+        resolved_award_id="FA8650-23-C-0001",
+        generated_internal_id="CONT_AWD_FA865023C0001_9700",
+        recipient_name="ACME FEDERAL LLC",
+        recipient_uei="UEIACME12345",
+        award_amount=1200000.0,
+        start_date="2023-05-01",
+        end_date="2025-04-30",
+        provenance=USAspendingLookupProvenance(
+            source_package="usaspending-gov-mcp",
+            source_package_version="0.3.2",
+            checked_at="2026-05-16T13:00:00Z",
+        ),
+        diagnostic_summary="Resolved one USAspending award match.",
+    )
+
+    profile = create_piid_contract_intelligence_profile(
+        lookup,
+        profile_id="piid_profile_FA8650_23_C_0001",
+        created_at="2026-05-16T14:40:00Z",
+    )
+
+    event_types = {event.event_type for event in profile.hermes_events}
+    assert {
+        PiidHermesEventType.PROFILE_STARTED,
+        PiidHermesEventType.AWARD_RESOLVED,
+        PiidHermesEventType.SCENARIO_CLASSIFIED,
+        PiidHermesEventType.BURN_POSTURE_COMPUTED,
+        PiidHermesEventType.PIVOTS_IDENTIFIED,
+        PiidHermesEventType.GAP_DETECTED,
+        PiidHermesEventType.NEXT_ENRICHMENT_RECOMMENDED,
+    } <= event_types
+    assert PiidHermesEventType.REVIEW_DECISION_RECORDED not in event_types
+
+    source_candidate = next(
+        candidate
+        for candidate in profile.review_candidates
+        if candidate.candidate_type is PiidReviewCandidateType.SOURCE_EVIDENCE
+    )
+    updated_profile = record_piid_review_decision(
+        profile,
+        candidate_id=source_candidate.id,
+        review_state=PiidReviewState.ACCEPTED,
+        reviewer_rationale="Baseline fields match the capture research spine.",
+        decided_at="2026-05-16T14:45:00Z",
+    )
+
+    accepted_candidate = next(
+        candidate
+        for candidate in updated_profile.review_candidates
+        if candidate.id == source_candidate.id
+    )
+    assert accepted_candidate.review_state is PiidReviewState.ACCEPTED
+    assert accepted_candidate.trusted_output_written is False
+    assert updated_profile.updated_at == "2026-05-16T14:45:00Z"
+    review_event = updated_profile.hermes_events[-1]
+    assert review_event.event_type is PiidHermesEventType.REVIEW_DECISION_RECORDED
+    assert review_event.payload["candidate_id"] == source_candidate.id
+    assert review_event.payload["review_state"] == "accepted"
+    assert review_event.payload["trusted_output_written"] is False
 
 
 def test_profile_classifies_idv_lookup_as_parent_idiq() -> None:

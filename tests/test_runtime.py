@@ -7,6 +7,12 @@ from ariadne.local_admin_model import (
     LocalAdminDraftSuggestion,
     LocalAdminModelAssistStatus,
 )
+from ariadne.next_action_recommendations import (
+    NextActionRecommendationReviewState,
+    NextActionRecommendationStore,
+    discard_next_action_recommendation,
+    refresh_stale_next_action_recommendation,
+)
 from ariadne.sam_gov_profiles import (
     SamGovAttachmentFetchResult,
     SamGovMcpToolResult,
@@ -3352,6 +3358,126 @@ def test_command_center_shell_shows_document_intake_demo_thread() -> None:
     assert "Call Plan" in response.text
     assert "Knowledge Note Projection: customer-capture-brief.md" in response.text
     assert "Open Markdown Projection" in response.text
+
+
+def test_command_center_shell_shows_compact_knowledge_context_panel() -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app()).get("/")
+
+    assert response.status_code == 200
+    assert "Knowledge Context" in response.text
+    assert "Context health" in response.text
+    assert "Trusted Context" in response.text
+    assert "Reviewable Context" in response.text
+    assert "Top gaps and limitations" in response.text
+    assert "Pending recommendations" in response.text
+    assert "Recommend Next Capture Actions" in response.text
+    assert (
+        "/knowledge-context/opportunities/opp-aflcmc-recompete/"
+        "recommend-next-capture-actions"
+    ) in response.text
+    assert "Review packet gap" in response.text
+    assert "Supporting refs and provenance" in response.text
+
+
+def test_knowledge_context_panel_generates_and_accepts_recommendation(
+    tmp_path,
+) -> None:
+    recommendation_root = tmp_path / "recommendations"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR": str(recommendation_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    generate_response = client.post(
+        "/knowledge-context/opportunities/opp-aflcmc-recompete/"
+        "recommend-next-capture-actions"
+    )
+    store = NextActionRecommendationStore(recommendation_root)
+    recommendations = store.list(opportunity_id="opp-aflcmc-recompete")
+    recommendation = recommendations[0]
+    pending_shell = client.get("/")
+
+    accept_response = client.post(
+        f"/knowledge-context/recommendations/{recommendation.id}/accept"
+    )
+    accepted = store.read(recommendation.id)
+    accepted_shell = client.get("/")
+
+    assert generate_response.status_code == 200
+    assert recommendation.review_state is NextActionRecommendationReviewState.PENDING
+    assert recommendation.title in pending_shell.text
+    assert "Accept to Action Plan" in pending_shell.text
+    assert accept_response.status_code == 200
+    assert accepted.review_state is NextActionRecommendationReviewState.ACCEPTED
+    assert accepted.created_action_plan_item_ids
+    assert accepted.review_decisions[0].reviewer_rationale == (
+        "Accepted from Knowledge Context Panel."
+    )
+    assert "State: accepted" in accepted_shell.text
+    assert recommendation.title in accepted_shell.text
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_knowledge_context_panel_shows_stale_and_discarded_recommendation_detail(
+    tmp_path,
+) -> None:
+    recommendation_root = tmp_path / "recommendations"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR": str(recommendation_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    client.post(
+        "/knowledge-context/opportunities/opp-aflcmc-recompete/"
+        "recommend-next-capture-actions"
+    )
+    store = NextActionRecommendationStore(recommendation_root)
+    recommendation = store.list(opportunity_id="opp-aflcmc-recompete")[0]
+    refresh_result = refresh_stale_next_action_recommendation(
+        store=store,
+        recommendation_id=recommendation.id,
+        stale_reason="Packet field gained new evidence.",
+        title="Resolve refreshed packet gap: primary_scope",
+        description="Re-check transition scope after new evidence.",
+        generated_at="2026-05-18T17:00:00Z",
+    )
+    discard_next_action_recommendation(
+        store=store,
+        recommendation_id=refresh_result.refreshed_recommendation.id,
+        reviewer_rationale="Not the right next action after review.",
+        decided_at="2026-05-18T17:05:00Z",
+    )
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Stale snapshot: Packet field gained new evidence." in response.text
+    assert "Refresh needed" in response.text
+    assert "Rejected/discarded recommendation history" in response.text
+    assert "State: discarded" in response.text
+    assert "Not the right next action after review." in response.text
+
+
+def test_runtime_settings_expose_next_action_recommendation_store_path(
+    tmp_path,
+) -> None:
+    recommendation_root = tmp_path / "recommendations"
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR": str(recommendation_root)}
+    )
+
+    assert settings.ariadne_next_action_recommendations_dir == recommendation_root
 
 
 def test_command_center_shell_shows_deferred_bucket_hints(tmp_path) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -20,6 +21,7 @@ from ariadne.capability_runs import (
     run_local_admin_model_readiness_probe,
 )
 from ariadne.command_center import (
+    build_command_center_knowledge_context,
     render_capability_studio_shell,
     render_command_center_shell,
     render_sam_gov_enrichment_profile_shell,
@@ -63,6 +65,11 @@ from ariadne.federal_data import (
     run_mcp_initialize_command,
 )
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
+from ariadne.next_action_recommendations import (
+    NextActionRecommendationStore,
+    accept_next_action_recommendation,
+    recommend_next_capture_actions,
+)
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
     PacketFieldReview,
@@ -446,6 +453,61 @@ def create_app(
             url=f"/capability-studio/runs/{run.run_id}",
             status_code=303,
         )
+
+    @app.post(
+        "/knowledge-context/opportunities/{opportunity_id}/"
+        "recommend-next-capture-actions"
+    )
+    def knowledge_context_recommend_next_capture_actions(
+        opportunity_id: str,
+    ) -> RedirectResponse:
+        knowledge_context = build_command_center_knowledge_context(
+            runtime_settings,
+            workspace_root=Path.cwd(),
+        )
+        if opportunity_id != knowledge_context.opportunity_id:
+            raise HTTPException(status_code=404, detail="Opportunity context not found")
+        store = NextActionRecommendationStore(
+            _resolve_runtime_path(runtime_settings.ariadne_next_action_recommendations_dir)
+        )
+        recommend_next_capture_actions(
+            context=knowledge_context.context,
+            capability_catalog=discover_local_capability_catalog(Path.cwd()),
+            store=store,
+            generated_at=_utc_timestamp(),
+        )
+        return RedirectResponse(url="/#knowledge-context", status_code=303)
+
+    @app.post("/knowledge-context/recommendations/{recommendation_id}/accept")
+    def knowledge_context_accept_recommendation(
+        recommendation_id: str,
+    ) -> RedirectResponse:
+        store = NextActionRecommendationStore(
+            _resolve_runtime_path(runtime_settings.ariadne_next_action_recommendations_dir)
+        )
+        try:
+            recommendation = store.read(recommendation_id)
+            knowledge_context = build_command_center_knowledge_context(
+                runtime_settings,
+                workspace_root=Path.cwd(),
+            )
+            if recommendation.opportunity_id != knowledge_context.opportunity_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Recommendation does not match selected Opportunity",
+                )
+            accept_next_action_recommendation(
+                store=store,
+                recommendation_id=recommendation_id,
+                action_plan=knowledge_context.action_plan,
+                reviewer_rationale="Accepted from Knowledge Context Panel.",
+                decided_at=_utc_timestamp(),
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Recommendation not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return RedirectResponse(url="/#knowledge-context", status_code=303)
 
     @app.get(
         "/federal-data/sam-gov/enrichment-profiles/{profile_id}",
@@ -1382,6 +1444,10 @@ def _resolve_runtime_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _federal_data_env_for_manifest(

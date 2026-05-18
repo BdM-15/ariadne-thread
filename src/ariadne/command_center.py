@@ -7,6 +7,7 @@ from ariadne.capabilities import CapabilityCatalog
 from ariadne.capability_runs import (
     CapabilityReasoningView,
     CapabilityRun,
+    CapabilityRunOutputReviewState,
     CapabilityRunStore,
     build_capability_reasoning_view,
 )
@@ -96,6 +97,10 @@ def render_command_center_shell(
         _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
     )
     sam_gov_profiles = sam_gov_profile_store.list()
+    capability_run_store = CapabilityRunStore(
+        _resolve_runtime_path(root, settings.ariadne_capability_runs_dir)
+    )
+    capability_runs = tuple(capability_run_store.list())
     sam_gov_live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
@@ -370,7 +375,7 @@ def render_command_center_shell(
       <div class="advanced">
         <p class="advanced-label">Advanced / read-only</p>
         <nav class="nav" aria-label="Advanced surfaces">
-          <a href="#capability-studio">Capability Studio <small>{len(catalog.entries)}</small></a>
+          <a href="#capability-studio">Capability Studio <small>{_capability_outputs_needing_review_count(capability_runs)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
           <a href="#sam-gov-enrichment-profiles">SAM.gov Profiles <small>{len(sam_gov_profiles)}</small></a>
           <a href="#piid-profile-command-surface">PIID Profiles <small>{len(piid_profiles)}</small></a>
@@ -406,7 +411,7 @@ def render_command_center_shell(
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
         {_render_action_plan_panel(action_view)}
-        {_render_capability_panel(catalog)}
+        {_render_capability_panel(catalog, capability_runs)}
       </div>
     </main>
   </div>
@@ -1439,14 +1444,49 @@ def _render_action_plan_panel(action_view) -> str:
     </section>"""
 
 
-def _render_capability_panel(catalog: CapabilityCatalog) -> str:
+def _render_capability_panel(
+    catalog: CapabilityCatalog,
+    capability_runs: tuple[CapabilityRun, ...],
+) -> str:
     entries = "".join(
         f"""<div class="row"><strong>{escape(entry.name)}</strong><span>{escape(entry.capability_type.value)} - {escape(entry.validation_status.value)} - {escape(entry.source_path)}</span></div>"""
         for entry in catalog.entries[:4]
     )
+    review_rows = _render_capability_outputs_needing_review(capability_runs)
     return f"""<section class="panel" id="capability-studio" aria-labelledby="capability-heading">
-      <div class="panel-heading"><h2 id="capability-heading">Capability Studio</h2><span class="status-chip cyan">Advanced / read-only</span></div>
-      <div class="row-list">{entries}</div>
+      <div class="panel-heading"><h2 id="capability-heading">Capability Studio</h2><span class="status-chip cyan">{len(capability_runs)} runs</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Run Capability Catalog Validation</strong><span>Create a deterministic Capability Run and open the Studio detail without model, network, or external API dependency.</span><form action="/capability-studio/actions/catalog-validation" method="post"><button class="action-button" type="submit">Run Capability Catalog Validation</button></form></div>
+        <div class="row"><strong>Capability Run Outputs Needing Review</strong><span>{_capability_outputs_needing_review_count(capability_runs)} outputs need review before trusted downstream use.</span></div>
+        {review_rows}
+        {entries}
+      </div>
             <a class="link-row" href="/capability-studio">Open Capability Studio</a>
             <a class="link-row" href="/api/capabilities/catalog">Open catalog API</a>
     </section>"""
+
+
+def _capability_outputs_needing_review_count(
+    capability_runs: tuple[CapabilityRun, ...],
+) -> int:
+    return sum(
+        output.review_state is CapabilityRunOutputReviewState.PENDING
+        for run in capability_runs
+        for output in run.outputs
+    )
+
+
+def _render_capability_outputs_needing_review(
+    capability_runs: tuple[CapabilityRun, ...],
+) -> str:
+    rows: list[str] = []
+    for run in capability_runs:
+        for output in run.outputs:
+            if output.review_state is not CapabilityRunOutputReviewState.PENDING:
+                continue
+            rows.append(
+                f"""<div class="row"><strong>{escape(output.title)}</strong><span>Run: {escape(run.run_id)} - Status: {escape(run.status.value)} - Review: {escape(output.review_state.value)}</span><span>{escape(output.summary)}</span><span>Autonomy: {escape(output.autonomy_recommendation.value)} - Destination: {escape(output.recommended_destination or "review queue")}</span><a class="link-row" href="/capability-studio/runs/{escape(run.run_id)}">Open in Capability Studio</a></div>"""
+            )
+    if not rows:
+        return """<div class="row"><strong>No Capability Run Outputs needing review</strong><span>Run validation from this panel to create the first reviewable output.</span></div>"""
+    return "".join(rows[:4])

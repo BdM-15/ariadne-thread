@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ariadne.action_plans import ActionPlanItem
@@ -437,6 +437,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="Capability Run not found") from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/capability-studio/actions/catalog-validation")
+    def capability_studio_catalog_validation_action() -> RedirectResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        run = run_capability_catalog_validation(workspace_root=Path.cwd(), store=store)
+        return RedirectResponse(
+            url=f"/capability-studio/runs/{run.run_id}",
+            status_code=303,
+        )
 
     @app.get(
         "/federal-data/sam-gov/enrichment-profiles/{profile_id}",

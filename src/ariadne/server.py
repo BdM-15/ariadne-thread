@@ -13,7 +13,9 @@ from ariadne.action_plans import ActionPlanItem
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.capability_runs import (
     CapabilityRun,
+    CapabilityRunReviewDecisionType,
     CapabilityRunStore,
+    record_capability_run_output_review,
     run_capability_catalog_validation,
 )
 from ariadne.command_center import (
@@ -231,6 +233,12 @@ class CapabilityRunResponse(BaseModel):
 
 class CapabilityRunListResponse(BaseModel):
     runs: tuple[CapabilityRun, ...]
+
+
+class CapabilityRunOutputReviewRequest(BaseModel):
+    decision: CapabilityRunReviewDecisionType
+    reviewer_rationale: str = ""
+    routed_destination: str | None = None
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -471,6 +479,29 @@ def create_app(
         store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
         try:
             return CapabilityRunResponse(run=store.read(run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capability-runs/{run_id}/outputs/{output_id}/review")
+    def capability_run_output_review(
+        run_id: str,
+        output_id: str,
+        request: CapabilityRunOutputReviewRequest,
+    ) -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        try:
+            return CapabilityRunResponse(
+                run=record_capability_run_output_review(
+                    store=store,
+                    run_id=run_id,
+                    output_id=output_id,
+                    decision=request.decision,
+                    reviewer_rationale=request.reviewer_rationale,
+                    routed_destination=request.routed_destination,
+                )
+            )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Capability Run not found") from error
         except ValueError as error:

@@ -1297,7 +1297,28 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
         if run.source_collection_records
         else "No source collection has run for this brief."
     )
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span><span>{escape(collection_state)}</span><span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    source_refs = _render_capture_research_source_refs(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span><span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+
+
+def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
+    if not run.source_profile_refs:
+        return ""
+    refs = "".join(
+        f"<span>{escape(_capture_research_source_profile_label(ref.source_profile_type.value))}: {escape(ref.source_profile_id)} - {escape(ref.source_element_key)} - {escape(ref.source_element_summary)}</span>"
+        for ref in run.source_profile_refs
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Source Profile refs</strong>{refs}</div></div>"""
+
+
+def _capture_research_source_profile_label(source_profile_type: str) -> str:
+    labels = {
+        "piid_contract_intelligence_profile": "PIID Contract Intelligence Profile",
+        "sam_gov_enrichment_profile": "SAM.gov Enrichment Profile",
+        "opportunity": "Opportunity",
+        "opportunity_knowledge_context": "Opportunity Knowledge Context",
+    }
+    return labels.get(source_profile_type, source_profile_type.replace("_", " ").title())
 
 
 def _render_piid_profile_row(profile: PiidContractIntelligenceProfile) -> str:

@@ -25,6 +25,8 @@ from ariadne.capture_research import (
     CaptureResearchRun,
     CaptureResearchRunStatus,
     CaptureResearchStore,
+    SourceProfileRef,
+    create_source_context_research_run,
     create_user_prompted_research_run,
 )
 from ariadne.command_center import (
@@ -259,7 +261,9 @@ class CapabilityRunOutputReviewRequest(BaseModel):
 
 class CaptureResearchRunCreateRequest(BaseModel):
     prompt: str
+    trigger_summary: str | None = None
     opportunity_id: str | None = None
+    source_profile_refs: tuple[SourceProfileRef, ...] = ()
     selected_lenses: tuple[CaptureResearchLens, ...]
     source_targets: tuple[str, ...]
     source_limits: tuple[str, ...]
@@ -638,14 +642,27 @@ def create_app(
             _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
         )
         try:
-            run = create_user_prompted_research_run(
-                request.prompt,
-                opportunity_id=request.opportunity_id,
-                selected_lenses=request.selected_lenses,
-                source_targets=request.source_targets,
-                source_limits=request.source_limits,
-                evidence_goals=request.evidence_goals,
-                known_pivots=request.known_pivots,
+            if request.source_profile_refs:
+                run = create_source_context_research_run(
+                    request.trigger_summary or request.prompt,
+                    opportunity_id=request.opportunity_id,
+                    source_profile_refs=request.source_profile_refs,
+                    prompt=request.prompt,
+                    selected_lenses=request.selected_lenses,
+                    source_targets=request.source_targets,
+                    source_limits=request.source_limits,
+                    evidence_goals=request.evidence_goals,
+                    known_pivots=request.known_pivots,
+                )
+            else:
+                run = create_user_prompted_research_run(
+                    request.prompt,
+                    opportunity_id=request.opportunity_id,
+                    selected_lenses=request.selected_lenses,
+                    source_targets=request.source_targets,
+                    source_limits=request.source_limits,
+                    evidence_goals=request.evidence_goals,
+                    known_pivots=request.known_pivots,
             )
             return CaptureResearchRunResponse(run=store.write(run))
         except ValueError as error:

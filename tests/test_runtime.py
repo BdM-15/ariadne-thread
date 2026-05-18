@@ -2274,6 +2274,73 @@ def test_command_center_shell_shows_prompted_capture_research_runs(tmp_path) -> 
     assert "No source collection has run for this brief." in response.text
 
 
+def test_capture_research_api_and_shell_show_source_profile_refs(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research which public sources clarify incumbent and buyer office.",
+            "trigger_summary": "SAM.gov ambiguity and PIID source limitation need research.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["public agency pages", "public award notices"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Clarify buyer office and incumbent signals."],
+            "source_profile_refs": [
+                {
+                    "source_profile_type": "piid_contract_intelligence_profile",
+                    "source_profile_id": "piid_profile_FA8650_23_F_0001",
+                    "source_element_key": "gaps.prime_recipient",
+                    "source_element_summary": "PIID profile cannot resolve PRIME recipient.",
+                },
+                {
+                    "source_profile_type": "sam_gov_enrichment_profile",
+                    "source_profile_id": "sam_profile_PROJECT_PHOENIX",
+                    "source_element_key": "opportunity_discovery.ambiguous_program_name",
+                    "source_element_summary": "SAM.gov discovery found ambiguous Project Phoenix notices.",
+                },
+            ],
+        },
+    )
+
+    assert create_response.status_code == 200
+    run = create_response.json()["run"]
+    assert run["research_trigger_context"]["trigger_type"] == "source_profile_context"
+    assert run["research_trigger_context"]["summary"] == (
+        "SAM.gov ambiguity and PIID source limitation need research."
+    )
+    assert run["user_prompt"]["prompt"] == (
+        "Research which public sources clarify incumbent and buyer office."
+    )
+    assert [ref["source_profile_id"] for ref in run["source_profile_refs"]] == [
+        "piid_profile_FA8650_23_F_0001",
+        "sam_profile_PROJECT_PHOENIX",
+    ]
+    response_json = create_response.text
+    assert "award_baseline" not in response_json
+    assert "burn_posture" not in response_json
+    assert "entity_matches" not in response_json
+    assert "opportunity_records" not in response_json
+    assert "attachment_metadata" not in response_json
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Trigger: source_profile_context" in shell_response.text
+    assert "PIID Contract Intelligence Profile" in shell_response.text
+    assert "piid_profile_FA8650_23_F_0001" in shell_response.text
+    assert "gaps.prime_recipient" in shell_response.text
+    assert "SAM.gov Enrichment Profile" in shell_response.text
+    assert "sam_profile_PROJECT_PHOENIX" in shell_response.text
+
+
 def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:
     run_root = tmp_path / "capability-runs"
     settings = RuntimeSettings.from_mapping(

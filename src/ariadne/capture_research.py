@@ -29,6 +29,30 @@ class CaptureResearchLens(StrEnum):
     CALL_PLAN_CRO = "call_plan_cro"
 
 
+class SourceProfileType(StrEnum):
+    PIID_CONTRACT_INTELLIGENCE_PROFILE = "piid_contract_intelligence_profile"
+    SAM_GOV_ENRICHMENT_PROFILE = "sam_gov_enrichment_profile"
+    OPPORTUNITY = "opportunity"
+    OPPORTUNITY_KNOWLEDGE_CONTEXT = "opportunity_knowledge_context"
+
+
+class SourceProfileRef(BaseModel):
+    source_profile_type: SourceProfileType
+    source_profile_id: str
+    source_element_key: str
+    source_element_summary: str
+
+    @model_validator(mode="after")
+    def validate_stable_ref(self) -> SourceProfileRef:
+        if not self.source_profile_id.strip():
+            raise ValueError("source_profile_id is required")
+        if not self.source_element_key.strip():
+            raise ValueError("source_element_key is required")
+        if not self.source_element_summary.strip():
+            raise ValueError("source_element_summary is required")
+        return self
+
+
 class UserPromptedResearchRequest(BaseModel):
     id: str
     prompt: str
@@ -84,7 +108,7 @@ class CaptureResearchRun(BaseModel):
     research_trigger_context: ResearchTriggerContext
     user_prompt: UserPromptedResearchRequest | None = None
     selected_lenses: tuple[CaptureResearchLens, ...]
-    source_profile_refs: tuple[str, ...] = ()
+    source_profile_refs: tuple[SourceProfileRef, ...] = ()
     seller_baseline_refs: tuple[str, ...] = ()
     source_collection_records: tuple[dict[str, object], ...] = ()
     source_findings: tuple[dict[str, object], ...] = ()
@@ -178,6 +202,61 @@ def create_user_prompted_research_run(
         ),
         user_prompt=prompt_request,
         selected_lenses=brief.selected_lenses,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+
+def create_source_context_research_run(
+    trigger_summary: str,
+    *,
+    opportunity_id: str | None = None,
+    source_profile_refs: tuple[SourceProfileRef, ...],
+    selected_lenses: tuple[CaptureResearchLens, ...],
+    source_targets: tuple[str, ...],
+    source_limits: tuple[str, ...],
+    prompt: str | None = None,
+    evidence_goals: tuple[str, ...] = (),
+    known_pivots: tuple[str, ...] = (),
+    created_at: str | None = None,
+) -> CaptureResearchRun:
+    if not trigger_summary.strip():
+        raise ValueError("trigger_summary is required")
+    if not source_profile_refs:
+        raise ValueError("source_profile_refs are required")
+    timestamp = created_at or datetime.now(UTC).isoformat()
+    prompt_request = None
+    if prompt is not None:
+        prompt_request = UserPromptedResearchRequest(
+            id=f"user_prompt_{uuid4().hex}",
+            prompt=prompt.strip(),
+            opportunity_id=opportunity_id,
+            source_targets=tuple(source_targets),
+            source_limits=tuple(source_limits),
+            created_at=timestamp,
+        )
+    research_question = prompt_request.prompt if prompt_request else trigger_summary.strip()
+    brief = CaptureResearchBrief(
+        research_question=research_question,
+        known_pivots=tuple(known_pivots),
+        source_targets=tuple(source_targets),
+        selected_lenses=tuple(selected_lenses),
+        evidence_goals=tuple(evidence_goals),
+        source_limits=tuple(source_limits),
+        approval_basis="source_profile_context",
+    )
+    return CaptureResearchRun(
+        research_run_id=f"capture_research_run_{uuid4().hex}",
+        opportunity_id=opportunity_id,
+        research_brief=brief,
+        research_trigger_context=ResearchTriggerContext(
+            trigger_type="source_profile_context",
+            summary=trigger_summary.strip(),
+            captured_at=timestamp,
+        ),
+        user_prompt=prompt_request,
+        selected_lenses=brief.selected_lenses,
+        source_profile_refs=tuple(source_profile_refs),
         created_at=timestamp,
         updated_at=timestamp,
     )

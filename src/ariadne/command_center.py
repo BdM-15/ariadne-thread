@@ -14,6 +14,7 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
     build_capability_reasoning_view,
 )
+from ariadne.capture_research import CaptureResearchRun, CaptureResearchStore
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
@@ -132,6 +133,10 @@ def render_command_center_shell(
         _resolve_runtime_path(root, settings.ariadne_capability_runs_dir)
     )
     capability_runs = tuple(capability_run_store.list())
+    capture_research_store = CaptureResearchStore(
+        _resolve_runtime_path(root, settings.ariadne_capture_research_dir)
+    )
+    capture_research_runs = tuple(capture_research_store.list())
     sam_gov_live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
@@ -421,6 +426,7 @@ def render_command_center_shell(
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{_capability_outputs_needing_review_count(capability_runs)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
+                    <a href="#capture-research-enrichment">Capture Research <small>{len(capture_research_runs)}</small></a>
           <a href="#sam-gov-enrichment-profiles">SAM.gov Profiles <small>{len(sam_gov_profiles)}</small></a>
           <a href="#piid-profile-command-surface">PIID Profiles <small>{len(piid_profiles)}</small></a>
         </nav>
@@ -447,6 +453,7 @@ def render_command_center_shell(
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
         {_render_federal_data_capabilities_panel(federal_data_registry.capabilities)}
+        {_render_capture_research_enrichment_panel(capture_research_runs)}
         {_render_sam_gov_enrichment_profiles_panel(sam_gov_profiles, sam_gov_live_ready)}
         {_render_piid_profile_command_surface_panel(piid_profiles)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
@@ -1260,6 +1267,37 @@ def _render_piid_profile_command_surface_panel(
       {rows}
       </div>
     </section>"""
+
+
+def _render_capture_research_enrichment_panel(
+    runs: tuple[CaptureResearchRun, ...],
+) -> str:
+    if not runs:
+        rows = """<div class="row"><strong>No Capture Research runs yet</strong><span>Create one through POST /api/capture-research/runs with a bounded prompt, selected lenses, source targets, and source limits.</span><span>Page render reads persisted research runs only and does not start Firecrawl or other source collection.</span></div>"""
+    else:
+        rows = "".join(_render_capture_research_run_row(run) for run in runs[-3:])
+    return f"""<section class="panel" id="capture-research-enrichment" aria-labelledby="capture-research-enrichment-heading">
+      <div class="panel-heading"><h2 id="capture-research-enrichment-heading">Capture Research Enrichment</h2><span class="status-chip cyan">{len(runs)} persisted</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Bounded research brief workflow</strong><span>Prompted runs start as Capture Research Briefs with selected lenses, source targets, and source limits before any source collection can occur.</span><span>Trusted downstream writes remain unavailable in this first slice.</span></div>
+        {rows}
+      </div>
+    </section>"""
+
+
+def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
+    prompt = run.user_prompt.prompt if run.user_prompt else run.research_brief.research_question
+    lenses = ", ".join(
+        lens.value.replace("_", " ") for lens in run.research_brief.selected_lenses
+    )
+    source_targets = ", ".join(run.research_brief.source_targets) or "none"
+    source_limits = ", ".join(run.research_brief.source_limits) or "none"
+    collection_state = (
+        f"Source collection records: {len(run.source_collection_records)}"
+        if run.source_collection_records
+        else "No source collection has run for this brief."
+    )
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span><span>{escape(collection_state)}</span><span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
 
 
 def _render_piid_profile_row(profile: PiidContractIntelligenceProfile) -> str:

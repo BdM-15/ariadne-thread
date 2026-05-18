@@ -2181,6 +2181,99 @@ def test_runtime_settings_expose_capability_run_store_path(tmp_path) -> None:
     assert settings.ariadne_capability_runs_dir == run_root
 
 
+def test_prompted_capture_research_api_creates_lists_and_reads_runs(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research the customer's historical use of this contract vehicle.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research", "call_plan_cro"],
+            "source_targets": ["public customer website"],
+            "source_limits": ["public_web_only", "no_linkedin"],
+            "evidence_goals": ["Find customer hot buttons and engagement questions."],
+        },
+    )
+
+    assert create_response.status_code == 200
+    run = create_response.json()["run"]
+    assert run["status"] == "planned"
+    assert run["opportunity_id"] == "opp_aflcmc_recompete"
+    assert run["user_prompt"]["prompt"] == (
+        "Research the customer's historical use of this contract vehicle."
+    )
+    assert run["research_trigger_context"]["trigger_type"] == (
+        "user_prompted_research_request"
+    )
+    assert run["research_brief"]["selected_lenses"] == [
+        "customer_research",
+        "call_plan_cro",
+    ]
+    assert run["research_brief"]["source_limits"] == [
+        "public_web_only",
+        "no_linkedin",
+    ]
+    assert run["source_collection_records"] == []
+    assert run["source_findings"] == []
+    assert run["capability_run_refs"] == []
+
+    list_response = client.get("/api/capture-research/runs")
+
+    assert list_response.status_code == 200
+    assert [item["research_run_id"] for item in list_response.json()["runs"]] == [
+        run["research_run_id"]
+    ]
+
+    detail_response = client.get(f"/api/capture-research/runs/{run['research_run_id']}")
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["run"]["research_run_id"] == run["research_run_id"]
+    assert len(list(research_root.glob("*.json"))) == 1
+
+
+def test_command_center_shell_shows_prompted_capture_research_runs(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research the customer's historical use of this contract vehicle.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research", "call_plan_cro"],
+            "source_targets": ["public customer website"],
+            "source_limits": ["public_web_only", "no_linkedin"],
+            "evidence_goals": ["Find customer hot buttons and engagement questions."],
+        },
+    )
+
+    response = client.get("/")
+
+    assert create_response.status_code == 200
+    assert response.status_code == 200
+    assert "Capture Research Enrichment" in response.text
+    assert "1 persisted" in response.text
+    assert "Research the customer&#x27;s historical use of this contract vehicle." in (
+        response.text
+    )
+    assert "Status: Planned" in response.text
+    assert "Lenses: customer research, call plan cro" in response.text
+    assert "Source limits: public_web_only, no_linkedin" in response.text
+    assert "No source collection has run for this brief." in response.text
+
+
 def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:
     run_root = tmp_path / "capability-runs"
     settings = RuntimeSettings.from_mapping(

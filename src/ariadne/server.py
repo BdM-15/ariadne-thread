@@ -20,6 +20,13 @@ from ariadne.capability_runs import (
     run_capability_catalog_validation,
     run_local_admin_model_readiness_probe,
 )
+from ariadne.capture_research import (
+    CaptureResearchLens,
+    CaptureResearchRun,
+    CaptureResearchRunStatus,
+    CaptureResearchStore,
+    create_user_prompted_research_run,
+)
 from ariadne.command_center import (
     build_command_center_knowledge_context,
     render_capability_studio_shell,
@@ -248,6 +255,24 @@ class CapabilityRunOutputReviewRequest(BaseModel):
     decision: CapabilityRunReviewDecisionType
     reviewer_rationale: str = ""
     routed_destination: str | None = None
+
+
+class CaptureResearchRunCreateRequest(BaseModel):
+    prompt: str
+    opportunity_id: str | None = None
+    selected_lenses: tuple[CaptureResearchLens, ...]
+    source_targets: tuple[str, ...]
+    source_limits: tuple[str, ...]
+    evidence_goals: tuple[str, ...] = ()
+    known_pivots: tuple[str, ...] = ()
+
+
+class CaptureResearchRunResponse(BaseModel):
+    run: CaptureResearchRun
+
+
+class CaptureResearchRunListResponse(BaseModel):
+    runs: tuple[CaptureResearchRun, ...]
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -602,6 +627,55 @@ def create_app(
             )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs")
+    def create_capture_research_run(
+        request: CaptureResearchRunCreateRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            run = create_user_prompted_research_run(
+                request.prompt,
+                opportunity_id=request.opportunity_id,
+                selected_lenses=request.selected_lenses,
+                source_targets=request.source_targets,
+                source_limits=request.source_limits,
+                evidence_goals=request.evidence_goals,
+                known_pivots=request.known_pivots,
+            )
+            return CaptureResearchRunResponse(run=store.write(run))
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/capture-research/runs")
+    def capture_research_runs(
+        opportunity_id: str | None = None,
+        status: CaptureResearchRunStatus | None = None,
+    ) -> CaptureResearchRunListResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        return CaptureResearchRunListResponse(
+            runs=tuple(store.list(opportunity_id=opportunity_id, status=status))
+        )
+
+    @app.get("/api/capture-research/runs/{research_run_id}")
+    def capture_research_run_detail(
+        research_run_id: str,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(run=store.read(research_run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 

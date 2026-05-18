@@ -1,16 +1,16 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.13**
+**Product Requirements Document (PRD) v1.16**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
-**Date:** May 17, 2026
-**Status:** SAM.gov Enrichment Profile complete; ready for the next `grill-with-docs` session
+**Date:** May 18, 2026
+**Status:** Capability Run Foundation + Assisted Execution Command Surface complete; ready for the next `grill-with-docs` session
 
 ---
 
-## 0. Current State Snapshot (May 17, 2026)
+## 0. Current State Snapshot (May 18, 2026)
 
 **Completed**
 
@@ -36,9 +36,13 @@
 - The Federal Data MCP Foundation epic includes manifest registration, safe initialize smoke checks, richer operational MCP descriptions, USAspending PIID lookup/history adapter behavior, local PIID profile persistence, burn posture, vehicle context, deterministic pivots, source-limit gaps, recommended enrichment routes, review-gated command-surface candidates, Hermes-observable event records, review-decision recording without automatic trusted-output promotion, and a persisted PIID Profile Command Surface in the existing Command Center shell.
 - A fresh `grill-with-docs` planning session selected the **SAM.gov Enrichment Profile** as the next vertical product epic. `CONTEXT.md` now defines SAM.gov Enrichment Profile, SAM.gov Entity Record, SAM.gov Opportunity Record, SAM.gov Opportunity Discovery, SAM.gov Opportunity Attachment Intake, and Web Enrichment Support.
 - `docs/architecture/sam-gov-enrichment-plan.md` records the selected SAM.gov epic plan: one combined profile with entity, known opportunity, discovery, and attachment-intake lanes; live SAM.gov product behavior when `SAM_GOV_API_KEY` is configured; fake-adapter tests that never masquerade as live source success; source-mode provenance; approved official-link attachment downloads into Document Intake; and review-gated downstream candidates.
-- SAM.gov Enrichment Profile is complete on the SAM.gov epic branch: Entity Record lane, Opportunity Discovery lane, Known Opportunity Record lane, Attachment Intake lane, saved-profile command surface, and command-surface summary API. It preserves live/fake/demo source-mode boundaries, local profile persistence, Command Center links, source limitations, explicit attachment-download approval, Document Intake provenance, explicit deferrals, and review-gated downstream candidates for Evidence, Living Briefing Packet, Capture Action Plan, Risk Register, Call Plan, Document Intake, and follow-up routes.
-- The first SAM.gov command-surface UI shape was reviewed as good enough for now and can be merged to `main` before the next planning session.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the SAM.gov epic branch, with 192 tests passing.
+- SAM.gov Enrichment Profile is complete: Entity Record lane, Opportunity Discovery lane, Known Opportunity Record lane, Attachment Intake lane, saved-profile command surface, and command-surface summary API. It preserves live/fake/demo source-mode boundaries, local profile persistence, Command Center links, source limitations, explicit attachment-download approval, Document Intake provenance, explicit deferrals, and review-gated downstream candidates for Evidence, Living Briefing Packet, Capture Action Plan, Risk Register, Call Plan, Document Intake, and follow-up routes.
+- The first SAM.gov command-surface UI shape was reviewed as good enough for the SAM.gov stage before Capability Run Foundation planning.
+- SAM.gov completion validation: `uv run ruff check src tests` and `uv run pytest -q` passed with 192 tests.
+- A `grill-with-docs` planning session selected **Capability Run Foundation + Assisted Execution Command Surface** as the next vertical product epic. `CONTEXT.md` now defines Capability Run Store, Capability Reasoning View, Model Rationale Summary, and Graduated Autonomy.
+- `docs/architecture/capability-run-foundation-plan.md` records the selected Capability Run epic plan: separate local-first Capability Run Store, deterministic Capability Catalog validation as the required tracer, optional Local Admin Model readiness/probe through existing Ollama settings, CLI-Anything as one executor style, Microsoft Agent Framework as a future candidate runtime only, Theseus-inspired but Ariadne-native provenance/reasoning views, review-gated Capability Run Outputs, metadata-only autonomy recommendations, and no new ADR for this slice.
+- Capability Run Foundation is complete on `06-build/capability-run-foundation`: local Capability Run Store, deterministic Capability Catalog validation runs, reviewable Capability Run Outputs, review decisions without trusted downstream writes, Capability Reasoning View, Capability Studio run history/detail pages, optional Local Admin Model readiness probe, and Command Center launch/review entry points. Issues #40 through #44 are closed as completed.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Capability Run Foundation epic branch, with 209 tests passing.
 
 **Still Deferred**
 
@@ -47,11 +51,11 @@
 
 **Next Build Gate**
 
-- Run the next **grill-with-docs** session to choose the vertical epic after SAM.gov Enrichment Profile.
-- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/document-intake-command-surface-plan.md`, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/sam-gov-enrichment-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as planning inputs.
-- Force the next slice to declare whether it is primarily a Command Center UI workflow, CLI-first harness, external integration adapter, or a deliberately paired UI plus CLI workflow.
-- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, skill chaining/LangGraph, graph visualization, and Next.js migration deferred unless the next grill session explicitly selects one.
-- Preserve the completed SAM.gov boundaries as precedent: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, and all trusted downstream writes remain review-gated.
+- Run the next **grill-with-docs** session to choose the vertical epic after Capability Run Foundation.
+- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/document-intake-command-surface-plan.md`, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/sam-gov-enrichment-plan.md`, `docs/architecture/capability-run-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as planning inputs.
+- Force the next slice to declare whether it is primarily a Command Center UI workflow, CLI-first harness, external integration adapter, Capability Run executor expansion, or a deliberately paired UI plus CLI workflow.
+- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, third-party capability installation, automatic trusted downstream writes, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
+- Preserve completed boundaries: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, Capability Run Outputs land in review, and trusted downstream writes remain human-gated.
 
 ---
 
@@ -307,7 +311,7 @@ If Obsidian or another Knowledge Mirror is edited directly, those edits should r
 
 The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices until selected through a fresh `grill-with-docs` session.
 
-## 6.2 Selected Next Epic PRD: SAM.gov Enrichment Profile
+## 6.2 Completed Epic PRD: SAM.gov Enrichment Profile
 
 ### Problem Statement
 
@@ -317,7 +321,7 @@ The problem is not simply “look up a solicitation.” The user needs a command
 
 ### Solution
 
-Build the **SAM.gov Enrichment Profile** as the next vertical product epic. The profile should combine four lanes in one reviewable command surface:
+The completed **SAM.gov Enrichment Profile** combines four lanes in one reviewable command surface:
 
 1. **Entity Record lane** for official SAM.gov entity registration or responsibility records used in incumbent, parent-company, vendor ecosystem, competitor, subcontractor, and teaming research.
 2. **Known Opportunity lane** for official SAM.gov opportunity records found from a solicitation number, notice ID, or other clean pivot.
@@ -379,7 +383,7 @@ The SAM.gov profile is a structured, reviewable source profile. It may create ca
 - Add provenance source mode values for live SAM.gov, fake adapter tests, and demo fixtures. Fake and demo output must not be eligible for normal trusted Evidence promotion.
 - User-triggered product workflows should call live SAM.gov by default when the private key is configured. Page render should not trigger live calls.
 - The Command Center should show saved SAM.gov profiles, live-readiness status, profile lanes, source limitations, review candidates, attachment download state, and Document Intake links.
-- The first implementation should use epic branch `05-build/sam-gov-enrichment-profile`, with progression branches for domain/store, adapter, attachment intake, and command surface work.
+- Implemented on epic branch `05-build/sam-gov-enrichment-profile`, with progression branches for domain/store, adapter, attachment intake, and command surface work.
 
 ### Testing Decisions
 
@@ -406,7 +410,7 @@ The SAM.gov profile is a structured, reviewable source profile. It may create ca
 
 ### Further Notes
 
-This epic extends ADR 0007 and ADR 0006 rather than requiring a new ADR. ADR 0007 keeps federal data access behind upstream 1102tools Federal Data Capabilities. ADR 0006 keeps parser and retrieval outputs behind Document Intake's Extraction Bundle and review boundaries. The SAM.gov plan is recorded in `docs/architecture/sam-gov-enrichment-plan.md`.
+This epic extends ADR 0007 and ADR 0006 rather than requiring a new ADR. ADR 0007 keeps federal data access behind upstream 1102tools Federal Data Capabilities. ADR 0006 keeps parser and retrieval outputs behind Document Intake's Extraction Bundle and review boundaries. The SAM.gov plan and implementation trail are recorded in `docs/architecture/sam-gov-enrichment-plan.md`.
 
 ## 6.3 Future Capability Integration Strategy
 
@@ -488,23 +492,33 @@ Each future slice should leave a short documentation trail before code: what is 
 - Kept artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
 - Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI.
 
-**SAM.gov Enrichment Profile Epic** ← **SELECTED / READY FOR IMPLEMENTATION**
+**SAM.gov Enrichment Profile Epic** ← **COMPLETE**
 
-- Selected through a fresh `grill-with-docs` session after the Federal Data MCP Foundation merge.
-- Plan recorded in `docs/architecture/sam-gov-enrichment-plan.md`; no new ADR is needed because the slice extends ADR 0007's upstream Federal Data Capability boundary and ADR 0006's Document Intake extraction boundary.
+- Selected through a fresh `grill-with-docs` session after the Federal Data MCP Foundation merge, then completed and reviewed.
+- Plan and implementation trail recorded in `docs/architecture/sam-gov-enrichment-plan.md`; no new ADR was needed because the slice extends ADR 0007's upstream Federal Data Capability boundary and ADR 0006's Document Intake extraction boundary.
 - Epic branch: `05-build/sam-gov-enrichment-profile`.
-- Build one SAM.gov Enrichment Profile with four lanes: Entity Record, Known Opportunity, Opportunity Discovery, and Opportunity Attachment Intake.
-- Use live SAM.gov by default for user-triggered workflows when `SAM_GOV_API_KEY` is configured; keep automated tests deterministic with fake adapters that are clearly labeled and never presented as live source success.
-- Route approved official SAM.gov attachment downloads into Document Intake; classify documents before choosing generic extraction versus future Solicitation Parser Capability routing.
-- Keep all downstream Evidence, Packet, Action Plan, Risk Register, Call Plan, Opportunity Knowledge, and follow-up route outputs review-gated.
-- Defer Firecrawl/web enrichment, Theseus solicitation parsing, BLS/GSA pricing, subaward/competitor/customer profile workflows, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration.
+- Built one SAM.gov Enrichment Profile with four lanes: Entity Record, Known Opportunity, Opportunity Discovery, and Opportunity Attachment Intake.
+- Uses live SAM.gov by default for user-triggered workflows when `SAM_GOV_API_KEY` is configured; automated tests stay deterministic with fake adapters that are clearly labeled and never presented as live source success.
+- Routes approved official SAM.gov attachment downloads into Document Intake; documents are classified before choosing generic extraction versus future Solicitation Parser Capability routing.
+- Keeps all downstream Evidence, Packet, Action Plan, Risk Register, Call Plan, Opportunity Knowledge, and follow-up route outputs review-gated.
+- Deferred Firecrawl/web enrichment, Theseus solicitation parsing, BLS/GSA pricing, subaward/competitor/customer profile workflows, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration.
+
+**Capability Run Foundation + Assisted Execution Command Surface Epic** ← **COMPLETE**
+
+- Selected through `grill-with-docs` after SAM.gov Enrichment Profile, then completed and reviewed.
+- Plan and implementation trail recorded in `docs/architecture/capability-run-foundation-plan.md`; no new ADR was needed because the slice follows existing local-first, Capability Module, and review-gated-promotion decisions.
+- Epic branch: `06-build/capability-run-foundation`.
+- Built the local Capability Run Store, deterministic Capability Catalog validation runs, reviewable Capability Run Outputs, review decisions without trusted downstream writes, Capability Reasoning View, Capability Studio run history/detail pages, optional Local Admin Model readiness probe, and Command Center launch/review entry points.
+- Closed issues #40 through #44 as completed after validation and required UI review.
+- Keeps Microsoft Agent Framework, Hermes runtime, LangGraph orchestration, third-party capability installation, external API product workflows, artifact rendering, automatic trusted downstream writes, and full Next.js UI migration deferred until selected through a future documented slice.
 
 **Next Implementation Gate**
 
-- Start implementation on `05-build/sam-gov-enrichment-profile`, with progression branches such as `05-build/01-sam-gov-domain-store`, `05-build/02-sam-gov-adapter`, `05-build/03-sam-gov-attachments-document-intake`, and `05-build/04-sam-gov-command-surface`.
-- Keep the Command Center command-first: SAM.gov data should appear with recommendations, review candidates, source limitations, attachment actions, Document Intake links, and follow-up routes rather than as passive API output.
-- Run `improve-codebase-architecture` before substantive application code or refactors in the SAM.gov epic.
-- Before selecting the next external integration after SAM.gov, run another `grill-with-docs` session and update PRD/CONTEXT/architecture docs inline.
+- Run the next `grill-with-docs` session to choose the vertical epic after Capability Run Foundation.
+- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/document-intake-command-surface-plan.md`, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/sam-gov-enrichment-plan.md`, `docs/architecture/capability-run-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as planning inputs.
+- Force the next slice to declare whether it is primarily a Command Center UI workflow, CLI-first harness, external integration adapter, Capability Run executor expansion, or a deliberately paired UI plus CLI workflow.
+- Run `improve-codebase-architecture` before substantive application code or refactors in the next selected epic.
+- Keep the Command Center command-first: evidence, recommendations, review candidates, source limitations, launches, decisions, routes, and follow-up actions should stay connected rather than becoming passive API or capability output.
 
 **Phase 1 – Core Infrastructure**
 

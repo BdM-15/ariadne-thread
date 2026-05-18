@@ -2165,6 +2165,321 @@ def test_runtime_settings_expose_sam_gov_profile_store_path(tmp_path) -> None:
     assert settings.ariadne_sam_gov_profiles_dir == profile_root
 
 
+def test_runtime_settings_expose_capability_run_store_path(tmp_path) -> None:
+    run_root = tmp_path / "capability-runs"
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    assert settings.ariadne_capability_runs_dir == run_root
+
+
+def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post("/api/capability-runs/catalog-validation")
+
+    assert create_response.status_code == 200
+    run = create_response.json()["run"]
+    assert run["capability_id"] == "capability_catalog_validation"
+    assert run["executor_kind"] == "deterministic_python"
+    assert run["status"] == "needs_review"
+    assert run["outputs"]
+    assert run["outputs"][0]["review_state"] == "pending"
+    assert run["outputs"][0]["autonomy_recommendation"] == "review_required"
+    assert "sources" in run["provenance"]
+
+    list_response = client.get("/api/capability-runs")
+
+    assert list_response.status_code == 200
+    assert [item["run_id"] for item in list_response.json()["runs"]] == [
+        run["run_id"]
+    ]
+
+    detail_response = client.get(f"/api/capability-runs/{run['run_id']}")
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["run"]["run_id"] == run["run_id"]
+    assert len(list(run_root.glob("*.json"))) == 1
+
+
+def test_local_admin_model_readiness_probe_api_records_disabled_outcome(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPABILITY_RUNS_DIR": str(run_root),
+            "LOCAL_ADMIN_MODEL_ENABLED": "false",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    response = client.post("/api/capability-runs/local-admin-model-readiness-probe")
+
+    assert response.status_code == 200
+    run = response.json()["run"]
+    assert run["capability_id"] == "local_admin_model_readiness_probe"
+    assert run["executor_kind"] == "local_admin_model"
+    assert run["status"] == "unavailable"
+    assert run["provenance"]["model_name"] == "qwen3.5:9b"
+    assert run["provenance"]["model_status"] == "disabled"
+    assert run["provenance"]["source_mode"] == "local_admin_model_probe"
+    assert run["outputs"][0]["output_type"] == "local_admin_model_readiness"
+    assert run["outputs"][0]["review_state"] == "pending"
+    assert run["outputs"][0]["provenance"]["ollama_required"] is False
+    assert len(list(run_root.glob("*.json"))) == 1
+
+    detail_response = client.get(f"/capability-studio/runs/{run['run_id']}")
+
+    assert detail_response.status_code == 200
+    assert "local_admin_model_probe" in detail_response.text
+    assert "qwen3.5:9b" in detail_response.text
+    assert "disabled" in detail_response.text
+
+
+def test_capability_run_output_review_api_records_decision_without_trusted_writes(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPABILITY_RUNS_DIR": str(run_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    created_run = client.post("/api/capability-runs/catalog-validation").json()["run"]
+    output_id = created_run["outputs"][0]["output_id"]
+
+    review_response = client.post(
+        f"/api/capability-runs/{created_run['run_id']}/outputs/{output_id}/review",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Catalog finding reviewed; keep as work item.",
+        },
+    )
+
+    assert review_response.status_code == 200
+    reviewed_run = review_response.json()["run"]
+    reviewed_output = reviewed_run["outputs"][0]
+    assert reviewed_output["review_state"] == "accepted"
+    assert reviewed_output["review_decisions"][0]["decision"] == "accept"
+    assert reviewed_output["review_decisions"][0]["reviewer_rationale"] == (
+        "Catalog finding reviewed; keep as work item."
+    )
+
+    detail_response = client.get(f"/api/capability-runs/{created_run['run_id']}")
+
+    assert detail_response.json()["run"]["outputs"][0]["review_state"] == "accepted"
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
+def test_capability_studio_page_shows_run_history_and_reasoning_view(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    skill_dir = tmp_path / ".github" / "skills" / "thin-studio-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: thin-studio-skill\n"
+        "---\n"
+        "# Thin Studio Skill\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    run = client.post("/api/capability-runs/catalog-validation").json()["run"]
+
+    history_response = client.get("/capability-studio")
+
+    assert history_response.status_code == 200
+    assert "text/html" in history_response.headers["content-type"]
+    assert "Capability Studio" in history_response.text
+    assert "Run History" in history_response.text
+    assert run["run_id"] in history_response.text
+    assert "capability_catalog_validation" in history_response.text
+
+    detail_response = client.get(f"/capability-studio/runs/{run['run_id']}")
+
+    assert detail_response.status_code == 200
+    assert "Capability Reasoning View" in detail_response.text
+    assert "Capability Provenance" in detail_response.text
+    assert "deterministic_python" in detail_response.text
+    assert "review_required" in detail_response.text
+    assert "Missing capability description metadata" in detail_response.text
+    assert "discover_local_capability_catalog" in detail_response.text
+
+
+def test_capability_studio_page_handles_empty_failed_and_unavailable_states(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from ariadne.capability_runs import (
+        CapabilityRun,
+        CapabilityRunCapabilityType,
+        CapabilityRunExecutorKind,
+        CapabilityRunOutput,
+        CapabilityRunStatus,
+        CapabilityRunStore,
+    )
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    empty_response = client.get("/capability-studio")
+
+    assert empty_response.status_code == 200
+    assert "No Capability Runs yet" in empty_response.text
+
+    store = CapabilityRunStore(run_root)
+    for status in (CapabilityRunStatus.FAILED, CapabilityRunStatus.UNAVAILABLE):
+        run = CapabilityRun(
+            run_id=f"caprun_{status.value}",
+            capability_id=f"{status.value}_capability",
+            capability_type=CapabilityRunCapabilityType.ADAPTER,
+            executor_kind=CapabilityRunExecutorKind.DETERMINISTIC_PYTHON,
+            product_workflow="capability_catalog",
+            status=status,
+            inputs_summary=f"{status.value} run summary",
+            outputs=(
+                CapabilityRunOutput(
+                    output_id=f"{status.value}_output",
+                    output_type="capability_catalog_validation_finding",
+                    title=f"{status.value.title()} output",
+                    summary=f"{status.value} output summary",
+                ),
+            ),
+        )
+        store.write(run)
+
+        detail_response = client.get(f"/capability-studio/runs/{run.run_id}")
+
+        assert detail_response.status_code == 200
+        assert status.value in detail_response.text
+        assert f"Run status is {status.value}." in detail_response.text
+
+
+def test_capability_studio_reasoning_view_shows_review_decision_history(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    skill_dir = tmp_path / ".github" / "skills" / "reviewed-studio-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: reviewed-studio-skill\n"
+        "---\n"
+        "# Reviewed Studio Skill\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    run = client.post("/api/capability-runs/catalog-validation").json()["run"]
+    output_id = run["outputs"][0]["output_id"]
+    client.post(
+        f"/api/capability-runs/{run['run_id']}/outputs/{output_id}/review",
+        json={
+            "decision": "route",
+            "reviewer_rationale": "Send to improvement proposal queue.",
+            "routed_destination": "Improvement Proposal",
+        },
+    )
+
+    detail_response = client.get(f"/capability-studio/runs/{run['run_id']}")
+
+    assert detail_response.status_code == 200
+    assert "Review history" in detail_response.text
+    assert "route -&gt; Improvement Proposal" in detail_response.text
+    assert "Send to improvement proposal queue." in detail_response.text
+
+
+def test_command_center_surfaces_capability_run_launch_and_review_entries(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    run = client.post("/api/capability-runs/catalog-validation").json()["run"]
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Run Capability Catalog Validation" in response.text
+    assert "/capability-studio/actions/catalog-validation" in response.text
+    assert "Capability Run Outputs Needing Review" in response.text
+    assert run["run_id"] in response.text
+    assert "needs_review" in response.text
+    assert "pending" in response.text
+    assert f"/capability-studio/runs/{run['run_id']}" in response.text
+
+
+def test_command_center_capability_validation_action_opens_studio_detail(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    skill_dir = tmp_path / ".github" / "skills" / "command-center-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: command-center-skill\n"
+        "---\n"
+        "# Command Center Skill\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/capability-studio/actions/catalog-validation"
+    )
+
+    assert response.status_code == 200
+    assert "Capability Reasoning View" in response.text
+    assert "command-center-skill" in response.text
+    assert len(list(run_root.glob("*.json"))) == 1
+
+
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     settings = RuntimeSettings.from_mapping(
         {

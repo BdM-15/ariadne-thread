@@ -102,16 +102,20 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capability Module: an underlying skill, skill chain, CLI harness, MCP tool, parser, renderer, model workflow, or adapter that a product workflow can use.
 - Federal Data Capability: a read-only capability module that gathers public federal contracting, spending, wage, rate, policy, or regulatory data for capture analysis.
 - Capability Studio: an advanced workspace for adding, testing, refining, and validating capability modules without making capability management the main capture experience.
+- Capability Run Store: the local-first structured home for Capability Runs, Capability Run Outputs, review decisions, iterations, and provenance.
 - Capability Run: one execution of a capability module with its inputs, outputs, rationale, evidence links, artifacts, and audit trail.
 - Capability Run Output: an output from a capability run that must be reviewed, refined, promoted, or discarded before becoming trusted knowledge or a final artifact.
 - Capability Iteration: a versioned refinement step for a capability run output, including user feedback, revised output, acceptance, and promotion history.
 - Interactive Capability Session: a capability run that requires back-and-forth user input before it can produce a useful output.
 - Capability Session Context: the purpose and scope in which a capability module runs, such as opportunity-scoped product work, exploratory capture work, or studio testing.
+- Model Rationale Summary: a concise user-facing explanation of the evidence, assumptions, logic, alternatives, uncertainty, and review needs behind a model-assisted output.
+- Graduated Autonomy: the controlled expansion of what Ariadne may do automatically after a workflow proves reliable, reversible, low-risk, and well-instrumented.
 - Exploratory Capture Session: a capture strategy, learning, research, or ideation session that is not yet tied to a specific opportunity.
 - Operational Learning: a pattern or lesson Hermes observes across product, studio, and exploratory work that may improve future workflows, capability modules, action plans, or mentoring behavior.
 - Improvement Proposal: a human-reviewed suggestion from Hermes to improve Ariadne's workflows, capability modules, product behavior, documentation, or action patterns.
 - Capability Artifact Library: the advanced studio surface for inspecting artifacts produced by capability runs across product workflows.
-- Capability Provenance: the trace that explains why a capability run produced an output and which sources, tools, prompts, or evidence supported it.
+- Capability Provenance: the trace that explains which sources, tools, prompts, evidence, assumptions, and review decisions supported a Capability Run Output.
+- Capability Reasoning View: a user-facing inspection view that summarizes Capability Provenance, evidence strength, assumptions, logic, gaps, and review decisions behind a generated output.
 - Capability Catalog: the local inventory of available capability modules, their metadata, maturity, workflow fit, validation status, and run history.
 - Guided Capture Mentor: AI assistance that helps execute capture work while explaining the capture reasoning, tradeoffs, and importance of each step.
 - Capture Action Plan: a dated sequence of actions tied to lifecycle states, decision gates, milestones, and opportunity deadlines.
@@ -164,13 +168,18 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.
 - The first **Capability Studio** stage focuses on a local **Capability Catalog**, testing, refinement, validation, run history, artifacts, and provenance before third-party plugin installation.
 - The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.
+- The **Capability Run Store** records what happened when a **Capability Module** ran, while the **Capability Catalog** records what can run and the **Evidence Store** records trusted support.
 - **Capability Run Outputs** land in review before becoming **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, **Reusable Capture Insight** candidates, or final artifacts.
 - **Capability Run Outputs** can move through **Capability Iterations** before acceptance or promotion.
+- A **Capability Reasoning View** presents **Capability Provenance** for a **Capability Run Output** without making the toolchain the primary capture workflow.
+- A **Capability Reasoning View** can include a **Model Rationale Summary**, but Ariadne should not depend on storing raw hidden model reasoning as the source of truth.
+- **Graduated Autonomy** can move low-risk **Capability Run Outputs** toward automatic handling only when provenance, confidence, reversibility, sensitivity, and user-approved autonomy rules support it.
 - An **Interactive Capability Session** supports capability modules that require conversational input, clarification, critique, or staged decisions.
 - An **Interactive Capability Session** can run in different **Capability Session Contexts** without changing the underlying **Capability Module**.
 - An **Exploratory Capture Session** can later produce **Reusable Capture Insight**, **Raw Capture Items**, **Action Plan Items**, or a new **Opportunity**.
 - **Hermes Agent** can observe saved product, studio, and exploratory sessions for **Operational Learning** while preserving human approval for durable changes.
 - **Operational Learning** can become an **Improvement Proposal**, but durable Ariadne changes require human approval.
+- **Hermes Agent** can propose **Graduated Autonomy** changes through **Improvement Proposals**, but it must not silently grant itself broader permissions.
 - A **Quick Capture Inbox** contains **Raw Capture Items** that can be handled by a **Knowledge Processing Workflow**.
 - Pasted text and supported text or Markdown uploads can become **Raw Capture Items** with source metadata before entering the **Knowledge Processing Workflow**.
 - A **Knowledge Processing Workflow** can create **Capture Intelligence Drafts** from **Raw Capture Items** or uploaded source material.
@@ -308,3 +317,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "SAM.gov profile as trusted output" was rejected — resolved: the **SAM.gov Enrichment Profile** persists official source data and reviewable interpretation, while trusted downstream writes stay review-gated.
 - "SAM.gov direct API or MCP" was resolved by keeping search/entity/opportunity data behind the upstream **Federal Data Capability** adapter, with direct official-link fetches allowed only for user-approved attachment downloads surfaced by SAM.gov results.
 - "generic vs Theseus parser for SAM.gov documents" was resolved as a Document Intake classification concern: downloaded attachments enter **Document Intake**, then material type determines generic extraction versus future **Solicitation Parser Capability** routing.
+- "why this artifact," "reasoning view," "skill-run chain tracing," and "source tracing" were resolved as Ariadne-native **Capability Provenance** plus **Capability Reasoning View**. Project Theseus remains useful inspiration, but Ariadne should not copy Theseus UI or runtime assumptions.
+- "thinking" or "reasoning" from LLMs was resolved as **Model Rationale Summary** and **Capability Reasoning View** for user-facing explanation, evidence grounding, assumptions, uncertainty, and review needs, not as a requirement to persist raw hidden model reasoning.
+- "where capability runs live" was resolved as a separate local-first **Capability Run Store**, not the **Capability Catalog** or **Evidence Store**.
+- "eventual automatic AI/LLM work" was resolved as **Graduated Autonomy**: start review-gated, then allow low-risk automation only after reliability, provenance quality, reversibility, sensitivity handling, and user-approved autonomy rules are proven.

@@ -6,12 +6,21 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ariadne.action_plans import ActionPlanItem
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
+from ariadne.capability_runs import (
+    CapabilityRun,
+    CapabilityRunReviewDecisionType,
+    CapabilityRunStore,
+    record_capability_run_output_review,
+    run_capability_catalog_validation,
+    run_local_admin_model_readiness_probe,
+)
 from ariadne.command_center import (
+    render_capability_studio_shell,
     render_command_center_shell,
     render_sam_gov_enrichment_profile_shell,
 )
@@ -53,7 +62,7 @@ from ariadne.federal_data import (
     run_federal_data_initialize_smoke_check,
     run_mcp_initialize_command,
 )
-from ariadne.local_admin_model import request_local_admin_draft_assist
+from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
     PacketFieldReview,
@@ -220,6 +229,20 @@ class FederalDataSmokeCheckResponse(BaseModel):
     safe_smoke_check_method: str = "json_rpc_initialize_only"
 
 
+class CapabilityRunResponse(BaseModel):
+    run: CapabilityRun
+
+
+class CapabilityRunListResponse(BaseModel):
+    runs: tuple[CapabilityRun, ...]
+
+
+class CapabilityRunOutputReviewRequest(BaseModel):
+    decision: CapabilityRunReviewDecisionType
+    reviewer_rationale: str = ""
+    routed_destination: str | None = None
+
+
 class USAspendingPiidLookupRequest(BaseModel):
     contract_number: str
     limit: int = Field(default=5, ge=1, le=100)
@@ -375,6 +398,7 @@ def create_app(
     sam_gov_opportunity_runner: SamGovMcpToolRunner | None = None,
     sam_gov_attachment_fetcher: SamGovAttachmentFetcher | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
+    local_admin_model_client: LocalAdminModelClient | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -400,6 +424,28 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:
         return render_command_center_shell(runtime_settings)
+
+    @app.get("/capability-studio", response_class=HTMLResponse)
+    def capability_studio() -> str:
+        return render_capability_studio_shell(runtime_settings)
+
+    @app.get("/capability-studio/runs/{run_id}", response_class=HTMLResponse)
+    def capability_studio_run_detail(run_id: str) -> str:
+        try:
+            return render_capability_studio_shell(runtime_settings, run_id=run_id)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/capability-studio/actions/catalog-validation")
+    def capability_studio_catalog_validation_action() -> RedirectResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        run = run_capability_catalog_validation(workspace_root=Path.cwd(), store=store)
+        return RedirectResponse(
+            url=f"/capability-studio/runs/{run.run_id}",
+            status_code=303,
+        )
 
     @app.get(
         "/federal-data/sam-gov/enrichment-profiles/{profile_id}",
@@ -437,6 +483,65 @@ def create_app(
     @app.get("/api/capabilities/catalog")
     def capability_catalog() -> CapabilityCatalog:
         return discover_local_capability_catalog(Path.cwd())
+
+    @app.post("/api/capability-runs/catalog-validation")
+    def capability_catalog_validation_run() -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunResponse(
+            run=run_capability_catalog_validation(
+                workspace_root=Path.cwd(),
+                store=store,
+            )
+        )
+
+    @app.post("/api/capability-runs/local-admin-model-readiness-probe")
+    def local_admin_model_readiness_probe() -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunResponse(
+            run=run_local_admin_model_readiness_probe(
+                settings=runtime_settings.local_admin_model,
+                store=store,
+                client=local_admin_model_client,
+            )
+        )
+
+    @app.get("/api/capability-runs")
+    def capability_runs() -> CapabilityRunListResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunListResponse(runs=tuple(store.list()))
+
+    @app.get("/api/capability-runs/{run_id}")
+    def capability_run_detail(run_id: str) -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        try:
+            return CapabilityRunResponse(run=store.read(run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capability-runs/{run_id}/outputs/{output_id}/review")
+    def capability_run_output_review(
+        run_id: str,
+        output_id: str,
+        request: CapabilityRunOutputReviewRequest,
+    ) -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        try:
+            return CapabilityRunResponse(
+                run=record_capability_run_output_review(
+                    store=store,
+                    run_id=run_id,
+                    output_id=output_id,
+                    decision=request.decision,
+                    reviewer_rationale=request.reviewer_rationale,
+                    routed_destination=request.routed_destination,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/document-intake/capabilities")
     def document_intake_capabilities() -> DocumentIntakeCapabilitiesResponse:

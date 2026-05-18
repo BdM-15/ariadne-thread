@@ -17,6 +17,7 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
     record_capability_run_output_review,
     run_capability_catalog_validation,
+    run_local_admin_model_readiness_probe,
 )
 from ariadne.command_center import (
     render_capability_studio_shell,
@@ -61,7 +62,7 @@ from ariadne.federal_data import (
     run_federal_data_initialize_smoke_check,
     run_mcp_initialize_command,
 )
-from ariadne.local_admin_model import request_local_admin_draft_assist
+from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
     PacketFieldReview,
@@ -397,6 +398,7 @@ def create_app(
     sam_gov_opportunity_runner: SamGovMcpToolRunner | None = None,
     sam_gov_attachment_fetcher: SamGovAttachmentFetcher | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
+    local_admin_model_client: LocalAdminModelClient | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -480,6 +482,17 @@ def create_app(
             run=run_capability_catalog_validation(
                 workspace_root=Path.cwd(),
                 store=store,
+            )
+        )
+
+    @app.post("/api/capability-runs/local-admin-model-readiness-probe")
+    def local_admin_model_readiness_probe() -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunResponse(
+            run=run_local_admin_model_readiness_probe(
+                settings=runtime_settings.local_admin_model,
+                store=store,
+                client=local_admin_model_client,
             )
         )
 

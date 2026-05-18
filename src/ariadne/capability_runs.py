@@ -8,6 +8,12 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from ariadne.capabilities import CapabilityCatalogEntry, discover_local_capability_catalog
+from ariadne.config import LocalAdminModelSettings
+from ariadne.local_admin_model import (
+    LocalAdminModelAssistStatus,
+    LocalAdminModelClient,
+    request_local_admin_draft_assist,
+)
 
 
 class CapabilityRunCapabilityType(StrEnum):
@@ -203,6 +209,51 @@ def run_capability_catalog_validation(
     return store.write(run)
 
 
+def run_local_admin_model_readiness_probe(
+    *,
+    settings: LocalAdminModelSettings,
+    store: CapabilityRunStore,
+    client: LocalAdminModelClient | None = None,
+) -> CapabilityRun:
+    assist = request_local_admin_draft_assist(
+        "Capability Run readiness probe. Return one confidence note if available.",
+        settings=settings,
+        client=client,
+    )
+    completed_at = datetime.now(UTC)
+    run = CapabilityRun(
+        run_id=f"caprun_{uuid4().hex}",
+        capability_id="local_admin_model_readiness_probe",
+        capability_type=CapabilityRunCapabilityType.MODEL_WORKFLOW,
+        executor_kind=CapabilityRunExecutorKind.LOCAL_ADMIN_MODEL,
+        product_workflow="capability_catalog",
+        status=(
+            CapabilityRunStatus.NEEDS_REVIEW
+            if assist.status is LocalAdminModelAssistStatus.USED
+            else CapabilityRunStatus.UNAVAILABLE
+        ),
+        inputs_summary=(
+            "Checked optional Local Admin Model readiness through existing Ollama "
+            "configuration."
+        ),
+        outputs=(_local_admin_model_probe_output(assist, settings),),
+        provenance={
+            "sources": ["LOCAL_ADMIN_MODEL_ENABLED", "OLLAMA_HOST", "LOCAL_DAILY_MODEL"],
+            "tool_names": ["request_local_admin_draft_assist"],
+            "executor": CapabilityRunExecutorKind.LOCAL_ADMIN_MODEL.value,
+            "source_mode": "local_admin_model_probe",
+            "model_name": settings.model,
+            "model_status": assist.status.value,
+            "ollama_base_url": settings.ollama_base_url,
+            "timeout_seconds": settings.timeout_seconds,
+            "used": assist.used,
+            "checked_at": completed_at.isoformat(),
+        },
+        completed_at=completed_at,
+    )
+    return store.write(run)
+
+
 def record_capability_run_output_review(
     *,
     store: CapabilityRunStore,
@@ -261,6 +312,52 @@ def record_capability_run_output_review(
         }
     )
     return store.write(updated_run)
+
+
+def _local_admin_model_probe_output(
+    assist,
+    settings: LocalAdminModelSettings,
+) -> CapabilityRunOutput:
+    status = assist.status.value
+    gaps = _local_admin_model_probe_gaps(assist.status, assist.reason)
+    return CapabilityRunOutput(
+        output_id=f"local_admin_model_probe_{status}",
+        output_type="local_admin_model_readiness",
+        title=f"Local Admin Model readiness: {status}",
+        summary=_local_admin_model_probe_summary(status, assist.reason),
+        gaps=gaps,
+        recommended_destination="Capability Studio",
+        provenance={
+            "source_mode": "local_admin_model_probe",
+            "model_name": settings.model,
+            "ollama_base_url": settings.ollama_base_url,
+            "timeout_seconds": settings.timeout_seconds,
+            "model_status": status,
+            "used": assist.used,
+            "response_shape_valid": assist.status is LocalAdminModelAssistStatus.USED,
+            "ollama_required": False,
+            "reason": assist.reason,
+        },
+    )
+
+
+def _local_admin_model_probe_gaps(
+    status: LocalAdminModelAssistStatus,
+    reason: str,
+) -> tuple[str, ...]:
+    if status is LocalAdminModelAssistStatus.USED:
+        return ()
+    if status is LocalAdminModelAssistStatus.DISABLED:
+        return ("Local Admin Model is disabled in runtime configuration.",)
+    if status is LocalAdminModelAssistStatus.INVALID_RESPONSE:
+        return (f"Local Admin Model returned invalid JSON or schema: {reason}",)
+    return (f"Local Admin Model unavailable: {reason}",)
+
+
+def _local_admin_model_probe_summary(status: str, reason: str) -> str:
+    if status == LocalAdminModelAssistStatus.USED.value:
+        return "Local Admin Model returned valid low-risk readiness support."
+    return f"Local Admin Model probe completed with {status}: {reason}"
 
 
 def build_capability_reasoning_view(

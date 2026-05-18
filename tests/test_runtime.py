@@ -2210,6 +2210,43 @@ def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> No
     assert len(list(run_root.glob("*.json"))) == 1
 
 
+def test_local_admin_model_readiness_probe_api_records_disabled_outcome(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPABILITY_RUNS_DIR": str(run_root),
+            "LOCAL_ADMIN_MODEL_ENABLED": "false",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    response = client.post("/api/capability-runs/local-admin-model-readiness-probe")
+
+    assert response.status_code == 200
+    run = response.json()["run"]
+    assert run["capability_id"] == "local_admin_model_readiness_probe"
+    assert run["executor_kind"] == "local_admin_model"
+    assert run["status"] == "unavailable"
+    assert run["provenance"]["model_name"] == "qwen3.5:9b"
+    assert run["provenance"]["model_status"] == "disabled"
+    assert run["provenance"]["source_mode"] == "local_admin_model_probe"
+    assert run["outputs"][0]["output_type"] == "local_admin_model_readiness"
+    assert run["outputs"][0]["review_state"] == "pending"
+    assert run["outputs"][0]["provenance"]["ollama_required"] is False
+    assert len(list(run_root.glob("*.json"))) == 1
+
+    detail_response = client.get(f"/capability-studio/runs/{run['run_id']}")
+
+    assert detail_response.status_code == 200
+    assert "local_admin_model_probe" in detail_response.text
+    assert "qwen3.5:9b" in detail_response.text
+    assert "disabled" in detail_response.text
+
+
 def test_capability_run_output_review_api_records_decision_without_trusted_writes(
     tmp_path,
 ) -> None:

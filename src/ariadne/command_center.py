@@ -531,12 +531,29 @@ def _render_capability_run_output_row(output) -> str:
 
 
 def _render_capability_reasoning_view(reasoning: CapabilityReasoningView) -> str:
-    return f"""<div class="row"><strong>Capability Reasoning View</strong><span>{escape(reasoning.title)}</span><span>Capability: {escape(reasoning.capability_id)} - Executor: {escape(reasoning.executor_kind.value)} - Output: {escape(reasoning.output_id)}</span><span>Input summary: {escape(reasoning.input_summary)}</span><span>Source refs: {escape(_join_or_none(reasoning.source_refs))}</span><span>Tools: {escape(_join_or_none(reasoning.tool_names))}</span><span>Validation logic: {escape(_join_or_none(reasoning.validation_logic))}</span><span>Gaps: {escape(_join_or_none(reasoning.gaps))}</span><span>Limitations: {escape(_join_or_none(reasoning.limitations))}</span><span>Recommended destination: {escape(reasoning.recommended_destination or "review queue")} - Autonomy: {escape(reasoning.autonomy_recommendation.value)}</span><span>Review history: {escape(_join_or_none(reasoning.review_decision_history))}</span></div>"""
+    model_status = (
+        f"Model: {reasoning.model_name} - {reasoning.model_status}"
+        if reasoning.model_name or reasoning.model_status
+        else "Model: none"
+    )
+    return f"""<div class="row"><strong>Capability Reasoning View</strong><span>{escape(reasoning.title)}</span><span>Capability: {escape(reasoning.capability_id)} - Executor: {escape(reasoning.executor_kind.value)} - Output: {escape(reasoning.output_id)}</span><span>{escape(model_status)}</span><span>Input summary: {escape(reasoning.input_summary)}</span><span>Source refs: {escape(_join_or_none(reasoning.source_refs))}</span><span>Tools: {escape(_join_or_none(reasoning.tool_names))}</span><span>Validation logic: {escape(_join_or_none(reasoning.validation_logic))}</span><span>Gaps: {escape(_join_or_none(reasoning.gaps))}</span><span>Limitations: {escape(_join_or_none(reasoning.limitations))}</span><span>Recommended destination: {escape(reasoning.recommended_destination or "review queue")} - Autonomy: {escape(reasoning.autonomy_recommendation.value)}</span><span>Review history: {escape(_join_or_none(reasoning.review_decision_history))}</span></div>"""
 
 
 def _provenance_items(run: CapabilityRun) -> tuple[str, ...]:
     items: list[str] = []
-    for key in ("sources", "tool_names", "executor", "entry_count", "model_required", "network_required"):
+    for key in (
+        "sources",
+        "tool_names",
+        "executor",
+        "source_mode",
+        "model_name",
+        "model_status",
+        "ollama_base_url",
+        "timeout_seconds",
+        "entry_count",
+        "model_required",
+        "network_required",
+    ):
         if key in run.provenance:
             items.append(f"{key}: {run.provenance[key]}")
     return tuple(items)

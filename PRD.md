@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.16**
+**Product Requirements Document (PRD) v1.17**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 18, 2026
-**Status:** Capability Run Foundation + Assisted Execution Command Surface complete; ready for the next `grill-with-docs` session
+**Status:** Knowledge Layer Foundation selected through `grill-with-docs`; ready for implementation
 
 ---
 
@@ -43,19 +43,24 @@
 - `docs/architecture/capability-run-foundation-plan.md` records the selected Capability Run epic plan: separate local-first Capability Run Store, deterministic Capability Catalog validation as the required tracer, optional Local Admin Model readiness/probe through existing Ollama settings, CLI-Anything as one executor style, Microsoft Agent Framework as a future candidate runtime only, Theseus-inspired but Ariadne-native provenance/reasoning views, review-gated Capability Run Outputs, metadata-only autonomy recommendations, and no new ADR for this slice.
 - Capability Run Foundation is complete on `06-build/capability-run-foundation`: local Capability Run Store, deterministic Capability Catalog validation runs, reviewable Capability Run Outputs, review decisions without trusted downstream writes, Capability Reasoning View, Capability Studio run history/detail pages, optional Local Admin Model readiness probe, and Command Center launch/review entry points. Issues #40 through #44 are closed as completed.
 - Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Capability Run Foundation epic branch, with 209 tests passing.
+- A fresh `grill-with-docs` planning session selected **Knowledge Layer Foundation** as the next vertical product epic. `CONTEXT.md` now defines Knowledge Layer Foundation, Structured Knowledge Index, Knowledge Context Panel, Opportunity Knowledge Context, Trusted Context, Reviewable Context, Action Capability Route, Next Action Recommendation, and Next Action Recommendation Store.
+- `docs/architecture/knowledge-layer-foundation-plan.md` records the selected Knowledge Layer Foundation plan: a deterministic on-demand Structured Knowledge Index over already-built accepted or reviewable Ariadne records; explicit-reference connections first; a Command Center Knowledge Context Panel as the first proof surface; Opportunity Knowledge Context as the required tracer; trusted and reviewable context kept distinct without convoluting production command execution; **Recommend Next Capture Actions** as the first AI-assisted command; deterministic Action Capability Routes from the Capability Catalog and known product workflows; Next Action Recommendations persisted in a narrow local-first store while the Structured Knowledge Index remains on-demand and non-authoritative; explicit user acceptance can create Action Plan Items with provenance; autonomy learning signals are preserved for future Hermes Operational Learning and Graduated Autonomy proposals; no new ADR for the slice.
 
 **Still Deferred**
 
-- Hermes runtime, durable knowledge/retrieval engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond the selected SAM.gov enrichment slice, advanced skill installation, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
+- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond the selected SAM.gov enrichment slice, advanced skill installation, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 
 **Next Build Gate**
 
-- Run the next **grill-with-docs** session to choose the vertical epic after Capability Run Foundation.
-- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/document-intake-command-surface-plan.md`, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/sam-gov-enrichment-plan.md`, `docs/architecture/capability-run-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/next-grill-with-docs-session.md` as planning inputs.
-- Force the next slice to declare whether it is primarily a Command Center UI workflow, CLI-first harness, external integration adapter, Capability Run executor expansion, or a deliberately paired UI plus CLI workflow.
-- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, third-party capability installation, automatic trusted downstream writes, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
-- Preserve completed boundaries: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, Capability Run Outputs land in review, and trusted downstream writes remain human-gated.
+- Implement the **Knowledge Layer Foundation** vertical epic using `docs/architecture/knowledge-layer-foundation-plan.md` as the build plan.
+- Build a deterministic on-demand **Structured Knowledge Index** before semantic search, embeddings, LightRAG, RAGAnything, graph databases, graph visualization, Hermes memory, or persisted indexing work.
+- Prove the slice through **Opportunity Knowledge Context** in a Command Center **Knowledge Context Panel** that separates Trusted Context from Reviewable Context while keeping the user's production commands easy to execute.
+- Add **Recommend Next Capture Actions** as persisted, reviewable **Next Action Recommendations** with deterministic **Action Capability Routes** showing available tools, partial assistance, user-owned work, and Capability Gaps.
+- Keep the **Next Action Recommendation Store** narrow to recommendations, review state, context refs, capability routes, autonomy hints, created Action Plan links, and review decisions; do not turn it into a broad knowledge database or persist the full Structured Knowledge Index.
+- Preserve recommendation causes, deterministic inputs, capability routes, review outcomes, created action links, and advisory autonomy hints so future Hermes Operational Learning can propose fewer-click workflows, while this epic grants no automatic autonomy without later human-approved autonomy rules.
+- Keep Firecrawl/web enrichment, BLS/GSA pricing, subaward/competitor/customer profile workflows, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
+- Preserve completed boundaries: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, Capability Run Outputs land in review, Knowledge Mirror/Obsidian-style material remains non-authoritative, and trusted downstream writes remain human-gated.
 
 ---
 

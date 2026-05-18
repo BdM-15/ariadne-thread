@@ -1,7 +1,7 @@
 # Knowledge Layer Foundation Plan
 
 Date: 2026-05-18  
-Status: selected through `grill-with-docs`; ready for implementation
+Status: completed and validated through issues #45-#50
 
 ## Selected Epic
 
@@ -17,6 +17,22 @@ Published progression issues:
 - #48 Review recommendations into Action Plan work
 - #49 Show Knowledge Context in the Command Center
 - #50 Validate and document Knowledge Layer Foundation
+
+Implementation and validation trail:
+
+- #45 added the deterministic Structured Knowledge Index projection over existing accepted and reviewable Ariadne records, with explicit-reference traversal and opportunity-boundary tests.
+- #46 added the Opportunity Knowledge Context View as the first public query surface, separating Trusted Context, Reviewable Context, gaps, limitations, related profiles/runs, and next command links.
+- #47 added deterministic Next Action Recommendations, Recommendation Context Snapshots, action capability routes, advisory autonomy hints, and a narrow local-first recommendation store.
+- #48 added review decisions for accept, route, discard, edit, and stale-refresh flows, plus explicit Action Plan create-or-update behavior with recommendation provenance.
+- #49 added the Command Center Knowledge Context Panel, POST commands for generating and accepting recommendations, stable demo refs, a runtime setting for the recommendation store path, and the public `.env.example` contract.
+- #50 validated the full epic with `uv run ruff check src tests` and `uv run pytest -q` passing with 227 tests, then updated the PRD and current-state docs.
+
+Acceptance review outcome:
+
+- The local FastAPI Command Center ran on the project-standard `9622` port.
+- The Knowledge Context Panel rebuilt one Opportunity's context on demand, separated Trusted Context from Reviewable Context, showed gaps/limitations and supporting refs, generated a reviewable Next Action Recommendation, and accepted that recommendation through the panel.
+- The accepted recommendation appeared in review history with provenance, and no other trusted downstream records were created automatically.
+- The user reviewed the first UI shape and accepted it as good enough for this stage.
 
 The slice should create Ariadne's first deterministic, local-first relationship projection across accepted capture records before adding semantic retrieval, graph visualization, Hermes memory, parser integrations, or artifact workflows.
 
@@ -193,6 +209,13 @@ The acceptance demo should show a single Opportunity moving through the full Kno
 12. The user reviews the first UI shape and either accepts it as good enough for this stage or requests changes before the UI/HITL acceptance criteria are considered complete.
 13. Semantic search, graph visualization, Hermes runtime, and persistent indexing remain absent.
 
+Validated result for issue #50:
+
+- `uv run ruff check src tests` passed.
+- `uv run pytest -q` passed with 227 tests.
+- The browser demo on `http://127.0.0.1:9622/#knowledge-context` completed the generate-and-accept loop for the demo Opportunity and showed the accepted recommendation in expandable provenance/history.
+- First UI shape review outcome: accepted as good enough for this stage.
+
 ## Accepted Implementation Order
 
 1. Build the Structured Knowledge Index domain model and on-demand projection builder, with early tests around relationship correctness and trust boundaries.
@@ -216,6 +239,7 @@ The acceptance demo should show a single Opportunity moving through the full Kno
 - MinerU, OCR, multimodal extraction, or full document parser integrations.
 - Artifact Renderer, DOCX, XLSX, presentation, or huashu-design workflows.
 - Automatic trusted downstream writes from indexed relationships.
+- Broad storage/database work beyond existing stores and the narrow Next Action Recommendation Store.
 
 ## ADR Note
 

@@ -268,22 +268,22 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Evidence Items** live in the **Evidence Store** and can support **Opportunity Knowledge**, **Reusable Capture Insight**, and **Milestone Decision Briefing Packets**.
 - **Derived Evidence** should point back to the **Source Evidence** or earlier **Derived Evidence** that produced it.
 - The **Knowledge Layer Foundation** connects accepted **Evidence Items**, **Opportunity Knowledge**, **Packet Field Answers**, **Action Plan Items**, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, and **Capability Runs** without making RAG, graph visualization, or agent memory the source of truth.
-- The first **Knowledge Layer Foundation** should use a **Structured Knowledge Index** before semantic search, embeddings, RAG engines, graph databases, graph visualization, or Hermes memory depend on the knowledge layer.
-- The first **Structured Knowledge Index** should include already-built Ariadne records such as **Opportunities**, accepted **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, accepted document-intake evidence links, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, **Capability Runs**, and **Capability Run Outputs**.
-- The first **Structured Knowledge Index** should be rebuilt on demand from existing Ariadne source records rather than becoming a separate durable source of truth.
-- The first **Structured Knowledge Index** should connect records through explicit references and accepted provenance before Ariadne adds inferred, fuzzy, semantic, or model-discovered relationships.
-- The first **Structured Knowledge Index** may project all already-built source records, but the first **Knowledge Context Panel** query should stay scoped to one selected **Opportunity**.
-- A **Knowledge Context Panel** should prove the first **Structured Knowledge Index** inside the **Capture Command Center** before Ariadne adds a full **Knowledge Graph View**.
+- The first **Knowledge Layer Foundation** uses a **Structured Knowledge Index** before semantic search, embeddings, RAG engines, graph databases, graph visualization, or Hermes memory depend on the knowledge layer.
+- The first **Structured Knowledge Index** includes already-built Ariadne records such as **Opportunities**, accepted **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, accepted document-intake evidence links, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, **Capability Runs**, and **Capability Run Outputs**.
+- The first **Structured Knowledge Index** rebuilds on demand from existing Ariadne source records rather than becoming a separate durable source of truth.
+- The first **Structured Knowledge Index** connects records through explicit references and accepted provenance before Ariadne adds inferred, fuzzy, semantic, or model-discovered relationships.
+- The first **Structured Knowledge Index** may project all already-built source records, but the first **Knowledge Context Panel** query stays scoped to one selected **Opportunity**.
+- A **Knowledge Context Panel** proves the first **Structured Knowledge Index** inside the **Capture Command Center** before Ariadne adds a full **Knowledge Graph View**.
 - **Opportunity Knowledge Context** is the required first tracer for the **Knowledge Context Panel** because **Opportunity** is the durable center of gravity for capture work.
-- The first public Knowledge Layer query should return a single **Opportunity Knowledge Context View** rather than many small user-facing query surfaces.
-- An **Opportunity Knowledge Context View** should provide structured data with concise display summaries, not HTML, layout strings, or final presentation copy.
-- The first **Knowledge Context Panel** should show one **Opportunity** at a time and defer cross-opportunity sensemaking unless records are already explicitly linked.
-- A **Knowledge Context Panel** should separate **Trusted Context** from **Reviewable Context** while keeping production command execution simple and letting AI assistance do the heavy lifting behind clear user actions.
-- The first **Knowledge Context Panel** should be visible in the existing **Capture Command Center** shell so the Knowledge Layer Foundation is proven as a user workflow, not only an API.
-- A **Knowledge Context Panel** should default to compact command-first summaries and reveal provenance, route details, stale comparisons, and review history through expansion.
-- **Recommended Next Capture Actions** from a **Knowledge Context Panel** should include **Action Capability Routes** so the user can see which tools can help, where assistance is partial, and which gaps may need Hermes-supported improvement later.
-- **Recommended Next Capture Actions** should be generated from deterministic structured signals first, with optional **Local Admin Model** polish that cannot become required for the workflow to function.
-- **Recommended Next Capture Actions** should be saved as **Next Action Recommendations** before they become **Action Plan Items** or routed work.
+- The first public Knowledge Layer query returns a single **Opportunity Knowledge Context View** rather than many small user-facing query surfaces.
+- An **Opportunity Knowledge Context View** provides structured data with concise display summaries, not HTML, layout strings, or final presentation copy.
+- The first **Knowledge Context Panel** shows one **Opportunity** at a time and defers cross-opportunity sensemaking unless records are already explicitly linked.
+- A **Knowledge Context Panel** separates **Trusted Context** from **Reviewable Context** while keeping production command execution simple and letting AI assistance do the heavy lifting behind clear user actions.
+- The first **Knowledge Context Panel** is visible in the existing **Capture Command Center** shell so the Knowledge Layer Foundation is proven as a user workflow, not only an API.
+- A **Knowledge Context Panel** defaults to compact command-first summaries and reveals provenance, route details, stale comparisons, and review history through expansion.
+- **Recommended Next Capture Actions** from a **Knowledge Context Panel** include **Action Capability Routes** so the user can see which tools can help, where assistance is partial, and which gaps may need Hermes-supported improvement later.
+- **Recommended Next Capture Actions** are generated from deterministic structured signals first, with optional **Local Admin Model** polish that cannot become required for the workflow to function.
+- **Recommended Next Capture Actions** are saved as **Next Action Recommendations** before they become **Action Plan Items** or routed work.
 - A **Next Action Recommendation** belongs to **Opportunity Knowledge Context** until accepted or routed; it is not an **Action Plan Item** commitment before review.
 - A **Next Action Recommendation** should preserve a **Recommendation Context Snapshot** so review, provenance, and future learning can compare the original basis with current **Opportunity Knowledge Context**.
 - A stale **Next Action Recommendation** is a recommendation whose **Recommendation Context Snapshot** no longer matches current **Opportunity Knowledge Context** closely enough for immediate acceptance.

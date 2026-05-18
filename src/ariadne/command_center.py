@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from hashlib import sha256
 from html import escape
 from pathlib import Path
 
+from ariadne.action_plans import CaptureActionPlan
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.capability_runs import (
     CapabilityReasoningView,
@@ -23,9 +26,19 @@ from ariadne.document_intake import (
     create_capture_intelligence_draft_from_extraction_bundle,
     list_document_intake_adapter_declarations,
 )
+from ariadne.evidence import EvidenceItem
 from ariadne.federal_data import (
     FederalDataCapabilityManifest,
     list_federal_data_capability_manifests,
+)
+from ariadne.next_action_recommendations import (
+    NextActionRecommendation,
+    NextActionRecommendationReviewState,
+    NextActionRecommendationStore,
+)
+from ariadne.packet_knowledge import (
+    PacketFieldAnswerStatus,
+    create_packet_field_answer,
 )
 from ariadne.packets import (
     CanonicalPacketSection,
@@ -40,6 +53,8 @@ from ariadne.piid_profiles import (
 from ariadne.quick_capture import CaptureIntelligenceDraft
 from ariadne.quick_capture_demo import (
     DocumentIntakeDemoThread,
+    InMemoryDemoEvidenceStore,
+    QuickCaptureDemoThread,
     build_quick_capture_demo_thread,
 )
 from ariadne.reference_wiki import ReferenceWikiInfluence
@@ -49,6 +64,22 @@ from ariadne.sam_gov_profiles import (
     SamGovReviewCandidate,
     build_sam_gov_command_surface_summary,
 )
+from ariadne.structured_knowledge import (
+    KnowledgeContextItem,
+    KnowledgeContextSection,
+    KnowledgeGapSummary,
+    KnowledgeSourceLimitation,
+    OpportunityKnowledgeContextView,
+    get_opportunity_knowledge_context,
+)
+
+
+@dataclass(frozen=True)
+class CommandCenterKnowledgeContext:
+    opportunity_id: str
+    context: OpportunityKnowledgeContextView
+    recommendations: tuple[NextActionRecommendation, ...]
+    action_plan: CaptureActionPlan
 
 
 def render_command_center_shell(
@@ -110,6 +141,11 @@ def render_command_center_shell(
     reference_influences = demo.reference_influences
     coverage_view = demo.coverage_view
     catalog = demo.catalog
+    knowledge_context = build_command_center_knowledge_context(
+        settings,
+        workspace_root=root,
+        demo=demo,
+    )
 
     return f"""<!doctype html>
 <html lang="en">
@@ -274,6 +310,7 @@ def render_command_center_shell(
     .status-chip.cyan {{ border-color: rgba(34, 211, 238, 0.55); color: var(--cyan); background: rgba(34, 211, 238, 0.1); }}
     .status-chip.amber {{ border-color: rgba(251, 191, 36, 0.55); color: var(--amber); background: rgba(251, 191, 36, 0.1); }}
     .row-list {{ display: grid; gap: 8px; }}
+    .compact-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
     .row {{
       display: grid;
       gap: 6px;
@@ -283,7 +320,8 @@ def render_command_center_shell(
       background: var(--surface-strong);
     }}
     .row strong {{ color: var(--text); }}
-    .row span {{ color: var(--muted); line-height: 1.45; }}
+    .row span {{ color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }}
+    .row .meta-line {{ display: block; margin-top: 2px; color: var(--quiet); font-family: Consolas, "Courier New", monospace; overflow-wrap: anywhere; word-break: break-word; }}
     .link-row {{
       display: inline-flex;
       align-items: center;
@@ -318,6 +356,10 @@ def render_command_center_shell(
     .action-button.danger {{ border-color: rgba(251, 113, 133, 0.7); background: rgba(251, 113, 133, 0.12); color: var(--red); }}
     .action-button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
     .action-button[disabled] {{ cursor: not-allowed; opacity: 0.72; }}
+    details.detail-block {{ margin-top: 10px; border: 1px solid var(--edge-soft); border-radius: 8px; background: var(--surface-strong); }}
+    details.detail-block > summary {{ min-height: 44px; padding: 12px; cursor: pointer; color: var(--cyan); font-weight: 900; }}
+    .detail-body {{ display: grid; gap: 8px; padding: 0 12px 12px; }}
+    .inline-form {{ margin: 0; }}
     .upload-form {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) auto;
@@ -338,7 +380,8 @@ def render_command_center_shell(
       .shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
       .nav {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      .metric-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+            .metric-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+            .compact-grid {{ grid-template-columns: 1fr; }}
       .surface-grid {{ grid-template-columns: 1fr; }}
     }}
     @media (max-width: 680px) {{
@@ -367,6 +410,7 @@ def render_command_center_shell(
       </div>
       <nav class="nav" aria-label="First-slice surfaces">
         <a href="#opportunity">Opportunity <small>active</small></a>
+        <a href="#knowledge-context">Knowledge Context <small>{_pending_recommendation_count(knowledge_context.recommendations)}</small></a>
         <a href="#quick-capture">Quick Capture <small>review</small></a>
         <a href="#document-intake">Document Intake <small>{len(document_intake_records)}</small></a>
         <a href="/packets/review">Living Briefing Packet <small>deck</small></a>
@@ -397,6 +441,7 @@ def render_command_center_shell(
       </section>
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
+        {_render_knowledge_context_panel(knowledge_context)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_document_intake_demo_thread_panel(document_intake_demo)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
@@ -417,6 +462,166 @@ def render_command_center_shell(
   </div>
 </body>
 </html>"""
+
+
+def build_command_center_knowledge_context(
+    settings: RuntimeSettings,
+    *,
+    workspace_root: Path | None = None,
+    demo: QuickCaptureDemoThread | None = None,
+) -> CommandCenterKnowledgeContext:
+    root = workspace_root or Path.cwd()
+    thread = demo or build_quick_capture_demo_thread(settings, workspace_root=root)
+    opportunity_id = _knowledge_context_opportunity_id(thread)
+    evidence_items = _stable_demo_knowledge_evidence_items(thread)
+    evidence_id_map = _knowledge_evidence_id_map(thread)
+    evidence_store = _demo_knowledge_evidence_store(evidence_items)
+    action_plan = _stable_knowledge_action_plan(
+        thread,
+        opportunity_id=opportunity_id,
+        evidence_id_map=evidence_id_map,
+    )
+    context = get_opportunity_knowledge_context(
+        opportunity_id=opportunity_id,
+        opportunities=(thread.opportunity.model_copy(update={"name": opportunity_id}),),
+        evidence_store=evidence_store,
+        document_intake_store=DocumentIntakeStore(
+            _resolve_runtime_path(root, settings.ariadne_document_intake_dir)
+        ),
+        piid_profile_store=PiidProfileStore(
+            _resolve_runtime_path(root, settings.ariadne_piid_profiles_dir)
+        ),
+        sam_gov_profile_store=SamGovProfileStore(
+            _resolve_runtime_path(root, settings.ariadne_sam_gov_profiles_dir)
+        ),
+        capability_run_store=CapabilityRunStore(
+            _resolve_runtime_path(root, settings.ariadne_capability_runs_dir)
+        ),
+        packet_field_answers=_knowledge_packet_field_answers(
+            thread,
+            opportunity_id,
+            evidence_items=evidence_items,
+            evidence_id_map=evidence_id_map,
+        ),
+        action_plans=(action_plan,),
+    )
+    recommendation_store = NextActionRecommendationStore(
+        _resolve_runtime_path(root, settings.ariadne_next_action_recommendations_dir)
+    )
+    return CommandCenterKnowledgeContext(
+        opportunity_id=opportunity_id,
+        context=context,
+        recommendations=tuple(
+            recommendation_store.list(opportunity_id=opportunity_id)
+        ),
+        action_plan=action_plan,
+    )
+
+
+def _knowledge_context_opportunity_id(thread: QuickCaptureDemoThread) -> str:
+    return thread.accepted_packet_answer.opportunity_id or thread.opportunity.name
+
+
+def _demo_knowledge_evidence_store(
+    evidence_items: tuple[EvidenceItem, ...],
+) -> InMemoryDemoEvidenceStore:
+    evidence_store = InMemoryDemoEvidenceStore()
+    for evidence in evidence_items:
+        evidence_store.write(evidence)
+    return evidence_store
+
+
+def _stable_demo_knowledge_evidence_items(
+    thread: QuickCaptureDemoThread,
+) -> tuple[EvidenceItem, ...]:
+    evidence_items: list[EvidenceItem] = []
+    if thread.accepted_evidence.evidence is not None:
+        evidence_items.append(
+            thread.accepted_evidence.evidence.model_copy(
+                update={"id": "ev_demo_quick_capture_customer_signal"}
+            )
+        )
+    if thread.document_intake.accepted_evidence.evidence is not None:
+        evidence_items.append(thread.document_intake.accepted_evidence.evidence)
+    return tuple(evidence_items)
+
+
+def _knowledge_evidence_id_map(thread: QuickCaptureDemoThread) -> dict[str, str]:
+    evidence_id_map: dict[str, str] = {}
+    if thread.accepted_evidence.evidence is not None:
+        evidence_id_map[thread.accepted_evidence.evidence.id] = (
+            "ev_demo_quick_capture_customer_signal"
+        )
+    if thread.document_intake.accepted_evidence.evidence is not None:
+        evidence = thread.document_intake.accepted_evidence.evidence
+        evidence_id_map[evidence.id] = evidence.id
+    return evidence_id_map
+
+
+def _stable_knowledge_action_plan(
+    thread: QuickCaptureDemoThread,
+    *,
+    opportunity_id: str,
+    evidence_id_map: dict[str, str],
+) -> CaptureActionPlan:
+    return thread.action_plan.model_copy(
+        update={
+            "opportunity_name": opportunity_id,
+            "items": tuple(
+                item.model_copy(
+                    update={
+                        "id": _stable_action_item_id(opportunity_id, index, item.action),
+                        "related_evidence_ids": _map_evidence_ids(
+                            item.related_evidence_ids,
+                            evidence_id_map,
+                        ),
+                    }
+                )
+                for index, item in enumerate(thread.action_plan.items, start=1)
+            ),
+        }
+    )
+
+
+def _knowledge_packet_field_answers(
+    thread: QuickCaptureDemoThread,
+    opportunity_id: str,
+    *,
+    evidence_items: tuple[EvidenceItem, ...],
+    evidence_id_map: dict[str, str],
+):
+    trusted_evidence_ids = tuple(evidence.id for evidence in evidence_items)
+    return (
+        thread.accepted_packet_answer.model_copy(
+            update={
+                "opportunity_id": opportunity_id,
+                "evidence_ids": _map_evidence_ids(
+                    thread.accepted_packet_answer.evidence_ids,
+                    evidence_id_map,
+                ),
+            }
+        ),
+        create_packet_field_answer(
+            field_key="primary_scope",
+            opportunity_id=opportunity_id,
+            status=PacketFieldAnswerStatus.GAP,
+            evidence_status=EvidenceStatus.GAP,
+            evidence_ids=trusted_evidence_ids[:1],
+            gap_summary="Need validated transition scope before gate review.",
+        ),
+    )
+
+
+def _map_evidence_ids(
+    evidence_ids: tuple[str, ...],
+    evidence_id_map: dict[str, str],
+) -> tuple[str, ...]:
+    return tuple(evidence_id_map.get(evidence_id, evidence_id) for evidence_id in evidence_ids)
+
+
+def _stable_action_item_id(opportunity_id: str, index: int, action: str) -> str:
+    digest = sha256(f"{opportunity_id}|{index}|{action}".encode("utf-8")).hexdigest()
+    return f"ap_demo_{digest[:12]}"
 
 
 def render_capability_studio_shell(
@@ -625,6 +830,195 @@ def _render_opportunity_panel(opportunity) -> str:
         {workstreams}
       </div>
     </section>"""
+
+
+def _render_knowledge_context_panel(
+    knowledge_context: CommandCenterKnowledgeContext,
+) -> str:
+    context = knowledge_context.context
+    recommendations = knowledge_context.recommendations
+    pending_recommendations = tuple(
+        recommendation
+        for recommendation in recommendations
+        if recommendation.review_state is NextActionRecommendationReviewState.PENDING
+    )
+    history_recommendations = tuple(
+        recommendation
+        for recommendation in recommendations
+        if recommendation.review_state is not NextActionRecommendationReviewState.PENDING
+    )
+    health_label = _knowledge_context_health_label(context, pending_recommendations)
+    gap_rows = _render_knowledge_gap_rows(context.gaps, context.source_limitations)
+    pending_rows = _render_pending_recommendation_rows(pending_recommendations)
+    command_rows = _render_knowledge_command_rows(context)
+    detail_rows = _render_knowledge_context_detail_rows(
+        context,
+        recommendations=recommendations,
+        history_recommendations=history_recommendations,
+    )
+    return f"""<section class="panel" id="knowledge-context" aria-labelledby="knowledge-context-heading">
+      <div class="panel-heading"><h2 id="knowledge-context-heading">Knowledge Context</h2><span class="status-chip amber">{escape(health_label)}</span></div>
+      <div class="row-list">
+        <div class="compact-grid" aria-label="Knowledge Context compact summary">
+          <div class="row"><strong>Context health</strong><span>{escape(health_label)} for {escape(knowledge_context.opportunity_id)}.</span></div>
+          <div class="row"><strong>Trusted Context</strong><span>{context.trusted_context.count} records ready for capture decisions.</span></div>
+          <div class="row"><strong>Reviewable Context</strong><span>{context.reviewable_context.count} records need human review before trusted use.</span></div>
+        </div>
+        <div class="row"><strong>Recommend Next Capture Actions</strong><span>Generate reviewable recommendations from current gaps, source limitations, and deterministic capability routes.</span><form class="inline-form" action="/knowledge-context/opportunities/{escape(knowledge_context.opportunity_id)}/recommend-next-capture-actions" method="post"><button class="action-button" type="submit">Recommend Next Capture Actions</button></form></div>
+        <div class="row"><strong>Top gaps and limitations</strong>{gap_rows}</div>
+        <div class="row"><strong>Pending recommendations</strong>{pending_rows}</div>
+        <div class="row"><strong>Next command links</strong>{command_rows}</div>
+      </div>
+      <details class="detail-block">
+        <summary>Supporting refs and provenance</summary>
+        <div class="detail-body">{detail_rows}</div>
+      </details>
+    </section>"""
+
+
+def _knowledge_context_health_label(
+    context: OpportunityKnowledgeContextView,
+    pending_recommendations: tuple[NextActionRecommendation, ...],
+) -> str:
+    if context.gaps or context.source_limitations or pending_recommendations:
+        return "Review needed"
+    if context.reviewable_context.count:
+        return "Context review"
+    return "Steady"
+
+
+def _render_knowledge_gap_rows(
+    gaps: tuple[KnowledgeGapSummary, ...],
+    source_limitations: tuple[KnowledgeSourceLimitation, ...],
+) -> str:
+    rows = []
+    rows.extend(
+        f"""<span>{escape(gap.summary)} <span class="meta-line">{escape(gap.record_id)}</span></span>"""
+        for gap in gaps[:2]
+    )
+    rows.extend(
+        f"""<span>{escape(limitation.summary)} <span class="meta-line">{escape(limitation.record_id)}</span></span>"""
+        for limitation in source_limitations[:2]
+    )
+    if not rows:
+        return "<span>No active gaps or source limitations for this Opportunity.</span>"
+    return "".join(rows)
+
+
+def _render_pending_recommendation_rows(
+    recommendations: tuple[NextActionRecommendation, ...],
+) -> str:
+    if not recommendations:
+        return "<span>No pending recommendations yet.</span>"
+    return "".join(
+        _render_pending_recommendation_row(recommendation)
+        for recommendation in recommendations[:3]
+    )
+
+
+def _render_pending_recommendation_row(
+    recommendation: NextActionRecommendation,
+) -> str:
+    summary = f"""<span>{escape(recommendation.title)} - {escape(recommendation.capability_route.support.value.replace("_", " "))}</span>"""
+    if recommendation.is_stale:
+        return (
+            summary
+            + """<span>Refresh needed before this recommendation can create Action Plan work.</span><button class="action-button secondary" type="button" disabled>Refresh needed</button>"""
+        )
+    return (
+        summary
+        + f"""<form class="inline-form" action="/knowledge-context/recommendations/{escape(recommendation.id)}/accept" method="post"><button class="action-button secondary" type="submit">Accept to Action Plan</button></form>"""
+    )
+
+
+def _render_knowledge_command_rows(context: OpportunityKnowledgeContextView) -> str:
+    if not context.next_command_links:
+        return "<span>No context command links yet.</span>"
+    return "".join(
+        f"""<span>{escape(link.label)} <span class="meta-line">{escape(link.command_id)} - {escape(link.target_id)}</span></span>"""
+        for link in context.next_command_links[:4]
+    )
+
+
+def _render_knowledge_context_detail_rows(
+    context: OpportunityKnowledgeContextView,
+    *,
+    recommendations: tuple[NextActionRecommendation, ...],
+    history_recommendations: tuple[NextActionRecommendation, ...],
+) -> str:
+    trusted = _render_knowledge_context_items(context.trusted_context, "Trusted Context")
+    reviewable = _render_knowledge_context_items(
+        context.reviewable_context,
+        "Reviewable Context",
+    )
+    recommendation_rows = _render_recommendation_detail_rows(recommendations)
+    history_rows = _render_recommendation_history_rows(history_recommendations)
+    return trusted + reviewable + recommendation_rows + history_rows
+
+
+def _render_knowledge_context_items(
+    section: KnowledgeContextSection,
+    label: str,
+) -> str:
+    if not section.items:
+        return f"""<div class="row"><strong>{escape(label)}</strong><span>No records in this section.</span></div>"""
+    rows = "".join(_render_knowledge_context_item(item) for item in section.items[:5])
+    return f"""<div class="row"><strong>{escape(label)}</strong><div class="row-list">{rows}</div></div>"""
+
+
+def _render_knowledge_context_item(item: KnowledgeContextItem) -> str:
+    return f"""<div class="row"><strong>{escape(item.title)}</strong><span>{escape(item.summary)}</span><span class="meta-line">{escape(item.record_kind.value)} - {escape(item.record_id)} - {item.related_connection_count} refs</span></div>"""
+
+
+def _render_recommendation_detail_rows(
+    recommendations: tuple[NextActionRecommendation, ...],
+) -> str:
+    if not recommendations:
+        return """<div class="row"><strong>Recommendation detail</strong><span>No recommendation snapshots have been generated.</span></div>"""
+    rows = "".join(_render_recommendation_detail_row(item) for item in recommendations[:5])
+    return f"""<div class="row"><strong>Recommendation detail</strong><div class="row-list">{rows}</div></div>"""
+
+
+def _render_recommendation_detail_row(recommendation: NextActionRecommendation) -> str:
+    snapshot = recommendation.context_snapshot
+    stale = (
+        f"Stale snapshot: {escape(recommendation.stale_reason or 'refresh needed')}"
+        if recommendation.is_stale
+        else "Snapshot current"
+    )
+    route = recommendation.capability_route
+    return f"""<div class="row"><strong>{escape(recommendation.title)}</strong><span>{escape(recommendation.description)}</span><span>Capability route: {escape(route.support.value.replace("_", " "))} - {escape(route.capability_id or route.next_command_id)} - {escape(route.rationale)}</span><span>{stale}</span><span class="meta-line">trusted refs: {escape(", ".join(snapshot.trusted_refs) or "none")} | reviewable refs: {escape(", ".join(snapshot.reviewable_refs) or "none")}</span></div>"""
+
+
+def _render_recommendation_history_rows(
+    recommendations: tuple[NextActionRecommendation, ...],
+) -> str:
+    if not recommendations:
+        return """<div class="row"><strong>Rejected/discarded recommendation history</strong><span>No routed, accepted, or discarded recommendation decisions yet.</span></div>"""
+    rows = "".join(
+        _render_recommendation_history_row(recommendation)
+        for recommendation in recommendations[:5]
+    )
+    return f"""<div class="row"><strong>Rejected/discarded recommendation history</strong><div class="row-list">{rows}</div></div>"""
+
+
+def _render_recommendation_history_row(
+    recommendation: NextActionRecommendation,
+) -> str:
+    decisions = " | ".join(
+        f"{decision.decision}: {decision.reviewer_rationale}"
+        for decision in recommendation.review_decisions
+    ) or "No review decision recorded."
+    return f"""<div class="row"><strong>{escape(recommendation.title)}</strong><span>State: {escape(recommendation.review_state.value)} - Version: {recommendation.version}</span><span>{escape(decisions)}</span></div>"""
+
+
+def _pending_recommendation_count(
+    recommendations: tuple[NextActionRecommendation, ...],
+) -> int:
+    return sum(
+        recommendation.review_state is NextActionRecommendationReviewState.PENDING
+        for recommendation in recommendations
+    )
 
 
 def _render_quick_capture_panel(

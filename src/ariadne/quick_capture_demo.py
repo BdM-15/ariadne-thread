@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 from ariadne.action_plans import (
     ActionPlanItem,
+    CaptureActionPlan,
     ActionPlanView,
     add_packet_gap_actions,
     build_action_plan_view,
@@ -110,6 +111,7 @@ class QuickCaptureDemoThread:
     accepted_action: ActionPlanItem
     accepted_packet_answer: PacketFieldAnswer
     discarded_output: DraftPartPromotionDecision
+    action_plan: CaptureActionPlan
     action_view: ActionPlanView
     reference_influences: tuple[ReferenceWikiInfluence, ...]
     coverage_view: CoverageView
@@ -267,6 +269,7 @@ def build_quick_capture_demo_thread(
         accepted_action=accepted_action,
         accepted_packet_answer=accepted_packet_answer,
         discarded_output=discarded_output,
+        action_plan=action_plan,
         action_view=action_view,
         reference_influences=capture_review.reference_influences,
         coverage_view=build_coverage_view(packet),

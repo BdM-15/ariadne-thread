@@ -28,6 +28,9 @@ class RuntimeSettings(BaseModel):
     ariadne_capability_runs_dir: Path = Field(
         default=Path(".ariadne/capability-runs")
     )
+    ariadne_next_action_recommendations_dir: Path = Field(
+        default=Path(".ariadne/next-action-recommendations")
+    )
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
@@ -89,6 +92,16 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_CAPABILITY_RUNS_DIR",
                     str(cls.model_fields["ariadne_capability_runs_dir"].default),
+                )
+            ),
+            ariadne_next_action_recommendations_dir=Path(
+                values.get(
+                    "ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR",
+                    str(
+                        cls.model_fields[
+                            "ariadne_next_action_recommendations_dir"
+                        ].default
+                    ),
                 )
             ),
             ariadne_reference_wiki_dir=Path(

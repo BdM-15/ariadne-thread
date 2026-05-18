@@ -59,6 +59,10 @@ class ActionPlanItem(BaseModel):
     promoted_from_draft_part_id: str | None = None
     source_raw_item_id: str | None = None
     source_draft_id: str | None = None
+    source_recommendation_id: str | None = None
+    recommendation_context_refs: tuple[str, ...] = ()
+    recommendation_capability_route: str | None = None
+    recommendation_review_decision_id: str | None = None
     review_edits: tuple[str, ...] = ()
     execution_details: tuple[ExecutionDetail, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -103,6 +107,10 @@ class ActionPlanItemDetailView(BaseModel):
     promoted_from_draft_part_id: str | None = None
     source_raw_item_id: str | None = None
     source_draft_id: str | None = None
+    source_recommendation_id: str | None = None
+    recommendation_context_refs: tuple[str, ...] = ()
+    recommendation_capability_route: str | None = None
+    recommendation_review_decision_id: str | None = None
     review_edits: tuple[str, ...] = ()
     execution_details: tuple[ExecutionDetail, ...]
 
@@ -205,6 +213,10 @@ def build_action_plan_item_detail_view(
         promoted_from_draft_part_id=item.promoted_from_draft_part_id,
         source_raw_item_id=item.source_raw_item_id,
         source_draft_id=item.source_draft_id,
+        source_recommendation_id=item.source_recommendation_id,
+        recommendation_context_refs=item.recommendation_context_refs,
+        recommendation_capability_route=item.recommendation_capability_route,
+        recommendation_review_decision_id=item.recommendation_review_decision_id,
         review_edits=item.review_edits,
         execution_details=item.execution_details,
     )

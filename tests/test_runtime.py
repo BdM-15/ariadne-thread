@@ -2210,6 +2210,47 @@ def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> No
     assert len(list(run_root.glob("*.json"))) == 1
 
 
+def test_capability_run_output_review_api_records_decision_without_trusted_writes(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    evidence_root = tmp_path / "evidence"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPABILITY_RUNS_DIR": str(run_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    created_run = client.post("/api/capability-runs/catalog-validation").json()["run"]
+    output_id = created_run["outputs"][0]["output_id"]
+
+    review_response = client.post(
+        f"/api/capability-runs/{created_run['run_id']}/outputs/{output_id}/review",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Catalog finding reviewed; keep as work item.",
+        },
+    )
+
+    assert review_response.status_code == 200
+    reviewed_run = review_response.json()["run"]
+    reviewed_output = reviewed_run["outputs"][0]
+    assert reviewed_output["review_state"] == "accepted"
+    assert reviewed_output["review_decisions"][0]["decision"] == "accept"
+    assert reviewed_output["review_decisions"][0]["reviewer_rationale"] == (
+        "Catalog finding reviewed; keep as work item."
+    )
+
+    detail_response = client.get(f"/api/capability-runs/{created_run['run_id']}")
+
+    assert detail_response.json()["run"]["outputs"][0]["review_state"] == "accepted"
+    assert LocalEvidenceStore(evidence_root).list() == []
+
+
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     settings = RuntimeSettings.from_mapping(
         {

@@ -1,6 +1,11 @@
+import pytest
+
 from ariadne.capability_runs import (
+    CapabilityRunOutputReviewState,
+    CapabilityRunReviewDecisionType,
     CapabilityRunStatus,
     CapabilityRunStore,
+    record_capability_run_output_review,
     run_capability_catalog_validation,
 )
 
@@ -52,3 +57,68 @@ def test_catalog_validation_run_records_summary_when_no_gaps(tmp_path) -> None:
     assert run.outputs[0].output_id == "catalog_validation_summary"
     assert run.outputs[0].gaps == ()
     assert run.outputs[0].recommended_destination == "Capability Studio"
+
+
+def test_records_discard_review_decision_on_capability_run_output(tmp_path) -> None:
+    store, run = _catalog_validation_run_with_gap(tmp_path)
+
+    reviewed_run = record_capability_run_output_review(
+        store=store,
+        run_id=run.run_id,
+        output_id=run.outputs[0].output_id,
+        decision=CapabilityRunReviewDecisionType.DISCARD,
+        reviewer_rationale="Not useful for this pass.",
+    )
+
+    reviewed_output = reviewed_run.outputs[0]
+    assert reviewed_output.review_state is CapabilityRunOutputReviewState.DISCARDED
+    assert reviewed_output.review_decisions[0].decision == "discard"
+    assert reviewed_output.review_decisions[0].reviewer_rationale == (
+        "Not useful for this pass."
+    )
+    assert store.read(run.run_id).outputs[0].review_state == "discarded"
+
+
+def test_routes_review_decision_requires_destination(tmp_path) -> None:
+    store, run = _catalog_validation_run_with_gap(tmp_path)
+
+    with pytest.raises(ValueError, match="routed review requires routed_destination"):
+        record_capability_run_output_review(
+            store=store,
+            run_id=run.run_id,
+            output_id=run.outputs[0].output_id,
+            decision=CapabilityRunReviewDecisionType.ROUTE,
+        )
+
+
+def test_rejects_second_review_decision_for_same_output(tmp_path) -> None:
+    store, run = _catalog_validation_run_with_gap(tmp_path)
+    record_capability_run_output_review(
+        store=store,
+        run_id=run.run_id,
+        output_id=run.outputs[0].output_id,
+        decision=CapabilityRunReviewDecisionType.ACCEPT,
+    )
+
+    with pytest.raises(ValueError, match="Capability Run Output already reviewed"):
+        record_capability_run_output_review(
+            store=store,
+            run_id=run.run_id,
+            output_id=run.outputs[0].output_id,
+            decision=CapabilityRunReviewDecisionType.DISCARD,
+        )
+
+
+def _catalog_validation_run_with_gap(tmp_path):
+    skill_dir = tmp_path / ".github" / "skills" / "review-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: review-skill\n"
+        "---\n"
+        "# Review Skill\n",
+        encoding="utf-8",
+    )
+    store = CapabilityRunStore(tmp_path / "capability-runs")
+    run = run_capability_catalog_validation(workspace_root=tmp_path, store=store)
+    return store, run

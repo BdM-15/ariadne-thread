@@ -55,10 +55,25 @@ class CapabilityRunOutputReviewState(StrEnum):
     PROMOTED = "promoted"
 
 
+class CapabilityRunReviewDecisionType(StrEnum):
+    ACCEPT = "accept"
+    DISCARD = "discard"
+    ROUTE = "route"
+
+
 class CapabilityRunAutonomyRecommendation(StrEnum):
     REVIEW_REQUIRED = "review_required"
     ASK_BEFORE_RUNNING = "ask_before_running"
     SAFE_TO_AUTO_HANDLE_LATER = "safe_to_auto_handle_later"
+
+
+class CapabilityRunReviewDecision(BaseModel):
+    decision_id: str
+    output_id: str
+    decision: CapabilityRunReviewDecisionType
+    reviewer_rationale: str = ""
+    routed_destination: str | None = None
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CapabilityRunOutput(BaseModel):
@@ -72,6 +87,7 @@ class CapabilityRunOutput(BaseModel):
         CapabilityRunAutonomyRecommendation.REVIEW_REQUIRED
     )
     recommended_destination: str | None = None
+    review_decisions: tuple[CapabilityRunReviewDecision, ...] = ()
     provenance: dict[str, object] = Field(default_factory=dict)
 
 
@@ -164,6 +180,76 @@ def run_capability_catalog_validation(
         completed_at=completed_at,
     )
     return store.write(run)
+
+
+def record_capability_run_output_review(
+    *,
+    store: CapabilityRunStore,
+    run_id: str,
+    output_id: str,
+    decision: CapabilityRunReviewDecisionType,
+    reviewer_rationale: str = "",
+    routed_destination: str | None = None,
+) -> CapabilityRun:
+    run = store.read(run_id)
+    updated_outputs: list[CapabilityRunOutput] = []
+    matched_output = False
+    if decision is CapabilityRunReviewDecisionType.ROUTE and not routed_destination:
+        raise ValueError("routed review requires routed_destination")
+    for output in run.outputs:
+        if output.output_id != output_id:
+            updated_outputs.append(output)
+            continue
+        matched_output = True
+        if output.review_state is not CapabilityRunOutputReviewState.PENDING:
+            raise ValueError("Capability Run Output already reviewed")
+        review_decision = CapabilityRunReviewDecision(
+            decision_id=f"capreview_{uuid4().hex}",
+            output_id=output_id,
+            decision=decision,
+            reviewer_rationale=reviewer_rationale,
+            routed_destination=routed_destination,
+        )
+        updated_outputs.append(
+            output.model_copy(
+                update={
+                    "review_state": _review_state_for_decision(decision),
+                    "review_decisions": output.review_decisions + (review_decision,),
+                }
+            )
+        )
+    if not matched_output:
+        raise ValueError("Capability Run Output not found")
+
+    reviewed_at = datetime.now(UTC)
+    review_summary = {
+        "output_id": output_id,
+        "decision": decision.value,
+        "reviewed_at": reviewed_at.isoformat(),
+    }
+    updated_run = run.model_copy(
+        update={
+            "outputs": tuple(updated_outputs),
+            "provenance": {
+                **run.provenance,
+                "review_decisions": [
+                    *run.provenance.get("review_decisions", []),
+                    review_summary,
+                ],
+            },
+        }
+    )
+    return store.write(updated_run)
+
+
+def _review_state_for_decision(
+    decision: CapabilityRunReviewDecisionType,
+) -> CapabilityRunOutputReviewState:
+    if decision is CapabilityRunReviewDecisionType.ACCEPT:
+        return CapabilityRunOutputReviewState.ACCEPTED
+    if decision is CapabilityRunReviewDecisionType.DISCARD:
+        return CapabilityRunOutputReviewState.DISCARDED
+    return CapabilityRunOutputReviewState.ROUTED
 
 
 def _catalog_entry_validation_output(

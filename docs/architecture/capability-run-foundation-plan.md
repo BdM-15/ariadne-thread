@@ -1,7 +1,7 @@
 # Capability Run Foundation Plan
 
 Date: 2026-05-18  
-Status: selected through `grill-with-docs`; ready for implementation planning
+Status: completed on `06-build/capability-run-foundation`; ready for next-epic planning
 
 ## Selected Epic
 
@@ -160,6 +160,16 @@ The acceptance demo should show:
 9. No trusted Evidence Item, Packet Field Answer, Action Plan Item, Risk Register Item, Call Plan signal, Opportunity Knowledge, reusable insight, or final artifact is created automatically.
 10. If included, the optional Ollama probe records local model readiness or unavailability without making Ollama required.
 
+## Implementation Trail
+
+- #40 Persist a Capability Catalog Validation Run: added the local Capability Run Store, deterministic Capability Catalog validation runs, reviewable outputs, provenance, autonomy metadata, and API list/detail/launch surfaces.
+- #41 Review Capability Run Outputs Without Trusted Writes: added output review decisions for accept, discard, and route, persisted review history, invalid transition handling, and no automatic trusted Evidence, Packet, Action Plan, Risk Register, Call Plan, Opportunity Knowledge, reusable insight, or artifact writes.
+- #42 Show Capability Studio Run History and Reasoning View: added Capability Studio run history/detail pages, Capability Reasoning View, Capability Provenance display, validation findings, gaps, autonomy metadata, review history, and empty/failed/unavailable/needs-review states. User reviewed the first UI shape as good enough for this stage.
+- #43 Add Optional Local Admin Model Readiness Probe: added optional Local Admin Model readiness runs through existing Ollama/local-admin settings, recording `used`, `unavailable`, `invalid_response`, and `disabled` outcomes without requiring live Ollama.
+- #44 Add Command Center Launch and Review Entry Points: added Command Center launch action, review-needed Capability Run Output rows, and jump links into Capability Studio detail/review context. User reviewed the first UI shape as good enough for this stage.
+
+Validated with `uv run ruff check src tests` and `uv run pytest -q` on the epic branch; full suite passed with 209 tests.
+
 ## Accepted Implementation Order
 
 1. Add the Capability Run domain model and local Capability Run Store.
@@ -167,4 +177,4 @@ The acceptance demo should show:
 3. Add optional Local Admin Model readiness/probe run behavior.
 4. Add review decisions for Capability Run Outputs.
 5. Add Capability Studio run history/detail/Capability Reasoning View and lightweight Command Center entries.
-6. Add tests and update PRD/current-state docs after the implemented slice is validated.
+6. Add tests and update PRD/current-state docs after the implemented slice is validated. Completed after #44 review.

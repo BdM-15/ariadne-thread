@@ -25,6 +25,9 @@ class RuntimeSettings(BaseModel):
     ariadne_sam_gov_profiles_dir: Path = Field(
         default=Path(".ariadne/sam-gov-profiles")
     )
+    ariadne_capability_runs_dir: Path = Field(
+        default=Path(".ariadne/capability-runs")
+    )
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
@@ -80,6 +83,12 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_SAM_GOV_PROFILES_DIR",
                     str(cls.model_fields["ariadne_sam_gov_profiles_dir"].default),
+                )
+            ),
+            ariadne_capability_runs_dir=Path(
+                values.get(
+                    "ARIADNE_CAPABILITY_RUNS_DIR",
+                    str(cls.model_fields["ariadne_capability_runs_dir"].default),
                 )
             ),
             ariadne_reference_wiki_dir=Path(

@@ -2165,6 +2165,51 @@ def test_runtime_settings_expose_sam_gov_profile_store_path(tmp_path) -> None:
     assert settings.ariadne_sam_gov_profiles_dir == profile_root
 
 
+def test_runtime_settings_expose_capability_run_store_path(tmp_path) -> None:
+    run_root = tmp_path / "capability-runs"
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    assert settings.ariadne_capability_runs_dir == run_root
+
+
+def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post("/api/capability-runs/catalog-validation")
+
+    assert create_response.status_code == 200
+    run = create_response.json()["run"]
+    assert run["capability_id"] == "capability_catalog_validation"
+    assert run["executor_kind"] == "deterministic_python"
+    assert run["status"] == "needs_review"
+    assert run["outputs"]
+    assert run["outputs"][0]["review_state"] == "pending"
+    assert run["outputs"][0]["autonomy_recommendation"] == "review_required"
+    assert "sources" in run["provenance"]
+
+    list_response = client.get("/api/capability-runs")
+
+    assert list_response.status_code == 200
+    assert [item["run_id"] for item in list_response.json()["runs"]] == [
+        run["run_id"]
+    ]
+
+    detail_response = client.get(f"/api/capability-runs/{run['run_id']}")
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["run"]["run_id"] == run["run_id"]
+    assert len(list(run_root.glob("*.json"))) == 1
+
+
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     settings = RuntimeSettings.from_mapping(
         {

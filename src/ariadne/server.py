@@ -11,6 +11,11 @@ from pydantic import BaseModel, Field
 
 from ariadne.action_plans import ActionPlanItem
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
+from ariadne.capability_runs import (
+    CapabilityRun,
+    CapabilityRunStore,
+    run_capability_catalog_validation,
+)
 from ariadne.command_center import (
     render_command_center_shell,
     render_sam_gov_enrichment_profile_shell,
@@ -218,6 +223,14 @@ class FederalDataCapabilitiesResponse(BaseModel):
 class FederalDataSmokeCheckResponse(BaseModel):
     result: FederalDataSmokeCheckResult
     safe_smoke_check_method: str = "json_rpc_initialize_only"
+
+
+class CapabilityRunResponse(BaseModel):
+    run: CapabilityRun
+
+
+class CapabilityRunListResponse(BaseModel):
+    runs: tuple[CapabilityRun, ...]
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -437,6 +450,31 @@ def create_app(
     @app.get("/api/capabilities/catalog")
     def capability_catalog() -> CapabilityCatalog:
         return discover_local_capability_catalog(Path.cwd())
+
+    @app.post("/api/capability-runs/catalog-validation")
+    def capability_catalog_validation_run() -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunResponse(
+            run=run_capability_catalog_validation(
+                workspace_root=Path.cwd(),
+                store=store,
+            )
+        )
+
+    @app.get("/api/capability-runs")
+    def capability_runs() -> CapabilityRunListResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunListResponse(runs=tuple(store.list()))
+
+    @app.get("/api/capability-runs/{run_id}")
+    def capability_run_detail(run_id: str) -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        try:
+            return CapabilityRunResponse(run=store.read(run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/document-intake/capabilities")
     def document_intake_capabilities() -> DocumentIntakeCapabilitiesResponse:

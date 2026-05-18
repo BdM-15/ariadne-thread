@@ -35,6 +35,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Follow-Up Question Route: an explicit routing decision that turns draft questions into a next research, customer engagement, call plan, or skill-run prompt without writing trusted evidence.
 - Clarification Request: a review route back to the user when a raw note is too low-signal for Ariadne to infer useful capture intelligence without more context.
 - Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
+- Action Capability Route: the suggested way Ariadne can help complete an action using available Capability Modules, partial assistance, user work, or a declared Capability Gap.
 - Risk Register: a review-gated workflow and artifact that tracks pursuit risks and upside opportunities, their probability, impact, response plan, owner, cost or schedule exposure, and links to evidence, packet fields, and action plan items.
 - Risk Register Item: one risk or opportunity row in the Risk Register, framed as a threat or opportunity, measurable impact, response, score, and current review status.
 - Risk Response Plan: the accepted mitigation, acceptance, costing, avoidance, or opportunity-capture approach for a Risk Register Item.
@@ -87,6 +88,13 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - SAM.gov Opportunity Attachment Intake: a review-gated workflow that discovers official SAM.gov opportunity description links and resource links, asks before downloading, and routes downloaded current or archived posting documents into the Document Intake Queue.
 - Web Enrichment Support: complementary non-SAM.gov research, such as Firecrawl-backed web discovery, used when official identifiers are missing, program names changed, descriptions are fuzzy, or public context outside SAM.gov is needed.
 - Knowledge Layer: the local-first retrieval and graph context behind opportunity-specific reasoning.
+- Knowledge Layer Foundation: the foundational retrieval and relationship capability that connects accepted capture knowledge across product workflows before richer graph, RAG, agent memory, or artifact workflows depend on it.
+- Structured Knowledge Index: a deterministic projection of accepted Ariadne records and their relationships that supports exact lookup, traversal, provenance summaries, and gap/source-limitation queries before semantic retrieval is added.
+- Knowledge Context Panel: the first Command Center proof surface for the Knowledge Layer Foundation, showing connected records, supporting evidence, gaps, limitations, pending reviews, and next command surfaces for a selected capture object.
+- Opportunity Knowledge Context: the selected tracer for the Knowledge Layer Foundation, showing the connected evidence, packet fields, action items, document-intake links, public-data profiles, capability runs, gaps, limitations, pending reviews, and next command surfaces for one opportunity.
+- Opportunity Knowledge Context View: the composed user-facing view of one opportunity's trusted context, reviewable context, gaps, limitations, related runs, recommendations, and next command links.
+- Trusted Context: accepted Ariadne knowledge that can support capture decisions, recommendations, and artifacts.
+- Reviewable Context: pending, routed, or parser-required Ariadne signals that can guide user action but must not be treated as trusted support until accepted.
 - Knowledge Mirror: an optional human-readable export or integration, such as Obsidian, that reflects Ariadne knowledge without becoming the primary source of truth.
 - Knowledge Note Projection: a one-way Markdown-style note generated from accepted Ariadne knowledge so humans and lightweight retrieval can browse connected context without making the note the source of truth.
 - Mirror Update Proposal: a proposed Ariadne knowledge update derived from edits made in a knowledge mirror.
@@ -120,6 +128,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Guided Capture Mentor: AI assistance that helps execute capture work while explaining the capture reasoning, tradeoffs, and importance of each step.
 - Capture Action Plan: a dated sequence of actions tied to lifecycle states, decision gates, milestones, and opportunity deadlines.
 - Action Plan Item: a single actionable unit in a capture action plan, with rationale, owner, due date, status, autonomy tier, and links to the opportunity context it advances.
+- Next Action Recommendation: a reviewable Ariadne recommendation for a possible capture action, produced from Knowledge Context before it becomes an Action Plan Item or routed work.
+- Recommendation Context Snapshot: the lightweight saved references and summaries that explain what a Next Action Recommendation was based on when generated.
+- Next Action Recommendation Store: the narrow local-first home for Next Action Recommendations, review decisions, context references, capability routes, autonomy hints, and created action links.
 - Outcome-Level Task: an action plan item framed as the capture outcome the user needs to steer, not the internal execution steps Ariadne may perform.
 - Execution Detail: a lower-level supporting step Ariadne performs or tracks under an outcome-level task.
 - Action Plan Dashboard: the UI-native working surface for managing capture action plan items across urgency, status, timeline, packet section, workstream, and evidence gap.
@@ -192,6 +203,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Risk Response Plans** can create or update **Action Plan Items** and can support **Packet Field Answers** for risks, mitigation approach, pricing exposure, schedule exposure, and gate recommendations.
 - A **Follow-Up Question Route** can launch customer engagement preparation, a **Call Plan**, research, or a **Capability Module** without treating the routed question as trusted evidence.
 - A **Skill Chain Recommendation** can point to existing **Capability Modules**, recommend a **Product Workflow**, or become a **Capability Gap** or **Improvement Proposal** when Hermes detects that no suitable skill exists.
+- An **Action Capability Route** can show whether Ariadne can handle an action with existing **Capability Modules**, partially assist it, route it to user work, or mark it as a **Capability Gap** for future **Improvement Proposals**.
+- The first **Action Capability Routes** should be deterministic from the **Capability Catalog** and known **Product Workflows**, while Hermes-supported gap filling remains future work.
 - A **Recompete Intelligence Intake** can use **Federal Data Capabilities** to prepare incumbent, customer, vehicle, obligation, and timing signals before those signals become trusted **Evidence Items**, **Packet Field Answers**, **Risk Register Items**, or **Action Plan Items**.
 - A **PIID Contract Intelligence Profile** should begin with deterministic federal data before later enrichment, skill chaining, or Hermes-supported research expands the profile.
 - A **SAM.gov Enrichment Profile** can consume deterministic pivots from a **PIID Contract Intelligence Profile** or **Opportunity** record, but its outputs remain review-gated signals until promoted into trusted capture records.
@@ -254,6 +267,37 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Traceable Recommendation** is supported by one or more **Evidence Items**.
 - **Evidence Items** live in the **Evidence Store** and can support **Opportunity Knowledge**, **Reusable Capture Insight**, and **Milestone Decision Briefing Packets**.
 - **Derived Evidence** should point back to the **Source Evidence** or earlier **Derived Evidence** that produced it.
+- The **Knowledge Layer Foundation** connects accepted **Evidence Items**, **Opportunity Knowledge**, **Packet Field Answers**, **Action Plan Items**, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, and **Capability Runs** without making RAG, graph visualization, or agent memory the source of truth.
+- The first **Knowledge Layer Foundation** uses a **Structured Knowledge Index** before semantic search, embeddings, RAG engines, graph databases, graph visualization, or Hermes memory depend on the knowledge layer.
+- The first **Structured Knowledge Index** includes already-built Ariadne records such as **Opportunities**, accepted **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, accepted document-intake evidence links, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, **Capability Runs**, and **Capability Run Outputs**.
+- The first **Structured Knowledge Index** rebuilds on demand from existing Ariadne source records rather than becoming a separate durable source of truth.
+- The first **Structured Knowledge Index** connects records through explicit references and accepted provenance before Ariadne adds inferred, fuzzy, semantic, or model-discovered relationships.
+- The first **Structured Knowledge Index** may project all already-built source records, but the first **Knowledge Context Panel** query stays scoped to one selected **Opportunity**.
+- A **Knowledge Context Panel** proves the first **Structured Knowledge Index** inside the **Capture Command Center** before Ariadne adds a full **Knowledge Graph View**.
+- **Opportunity Knowledge Context** is the required first tracer for the **Knowledge Context Panel** because **Opportunity** is the durable center of gravity for capture work.
+- The first public Knowledge Layer query returns a single **Opportunity Knowledge Context View** rather than many small user-facing query surfaces.
+- An **Opportunity Knowledge Context View** provides structured data with concise display summaries, not HTML, layout strings, or final presentation copy.
+- The first **Knowledge Context Panel** shows one **Opportunity** at a time and defers cross-opportunity sensemaking unless records are already explicitly linked.
+- A **Knowledge Context Panel** separates **Trusted Context** from **Reviewable Context** while keeping production command execution simple and letting AI assistance do the heavy lifting behind clear user actions.
+- The first **Knowledge Context Panel** is visible in the existing **Capture Command Center** shell so the Knowledge Layer Foundation is proven as a user workflow, not only an API.
+- A **Knowledge Context Panel** defaults to compact command-first summaries and reveals provenance, route details, stale comparisons, and review history through expansion.
+- **Recommended Next Capture Actions** from a **Knowledge Context Panel** include **Action Capability Routes** so the user can see which tools can help, where assistance is partial, and which gaps may need Hermes-supported improvement later.
+- **Recommended Next Capture Actions** are generated from deterministic structured signals first, with optional **Local Admin Model** polish that cannot become required for the workflow to function.
+- **Recommended Next Capture Actions** are saved as **Next Action Recommendations** before they become **Action Plan Items** or routed work.
+- A **Next Action Recommendation** belongs to **Opportunity Knowledge Context** until accepted or routed; it is not an **Action Plan Item** commitment before review.
+- A **Next Action Recommendation** should preserve a **Recommendation Context Snapshot** so review, provenance, and future learning can compare the original basis with current **Opportunity Knowledge Context**.
+- A stale **Next Action Recommendation** is a recommendation whose **Recommendation Context Snapshot** no longer matches current **Opportunity Knowledge Context** closely enough for immediate acceptance.
+- **Next Action Recommendations** live in a narrow **Next Action Recommendation Store** because recommendation review history and autonomy learning signals must persist even though the **Structured Knowledge Index** is rebuilt on demand.
+- Stale pending **Next Action Recommendations** can remain visible with a refresh action, but stale recommendations require re-review before creating **Action Plan Items**.
+- Refreshing a stale **Next Action Recommendation** should create a new recommendation version in the same recommendation thread, preserving the older version for history and learning.
+- Light edits to a **Next Action Recommendation** before acceptance should preserve the original generated recommendation while letting the edited version become the accepted basis for an **Action Plan Item**.
+- Accepting a **Next Action Recommendation** can create a new **Action Plan Item** or explicitly update an existing one, but Ariadne should not auto-merge recommendations into existing actions.
+- Duplicate suggestions between **Next Action Recommendations** and existing **Action Plan Items** should use explicit shared references first, not fuzzy title or body similarity.
+- An explicitly accepted **Next Action Recommendation** can create an **Action Plan Item** with provenance back to the **Opportunity Knowledge Context**, recommendation, supporting context, capability route, and review decision.
+- A created **Action Plan Item** should link back to the accepted **Next Action Recommendation** so Ariadne preserves recommendation history and autonomy learning context.
+- Over time, repeated accepted **Next Action Recommendations** can inform **Operational Learning** and future **Graduated Autonomy** proposals, but automatic action handling still requires human-approved autonomy rules.
+- **Next Action Recommendations** should preserve autonomy learning signals such as recommendation cause, deterministic inputs, capability route, review outcome, created action link, and future safety conditions without reducing clicks automatically in the first epic.
+- Future fewer-click or automatic handling for **Next Action Recommendations** should be blocked unless the action is low-risk, reversible, well-provenanced, repeatedly accepted, and outside sensitive, external-facing, deletion, gate, pricing, compliance, legal, credit-spending, or broad-research decisions.
 - A **Knowledge Mirror** can reflect Ariadne knowledge for human browsing, but Ariadne's primary knowledge remains structured in the **Evidence Store** and **Knowledge Layer**.
 - A **Knowledge Note Projection** can make accepted **Extraction Bundle** content readable and linkable while preserving Ariadne's structured records as the source of truth.
 - Edits made in a **Knowledge Mirror** return to Ariadne as **Mirror Update Proposals**, not direct source-of-truth overwrites.

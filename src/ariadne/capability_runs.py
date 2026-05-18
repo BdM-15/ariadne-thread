@@ -108,6 +108,27 @@ class CapabilityRun(BaseModel):
     completed_at: datetime | None = None
 
 
+class CapabilityReasoningView(BaseModel):
+    run_id: str
+    output_id: str
+    title: str
+    capability_id: str
+    executor_kind: CapabilityRunExecutorKind
+    input_summary: str
+    input_refs: tuple[str, ...] = ()
+    source_refs: tuple[str, ...] = ()
+    tool_names: tuple[str, ...] = ()
+    model_name: str | None = None
+    model_status: str | None = None
+    assumptions: tuple[str, ...] = ()
+    validation_logic: tuple[str, ...] = ()
+    gaps: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+    recommended_destination: str | None = None
+    autonomy_recommendation: CapabilityRunAutonomyRecommendation
+    review_decision_history: tuple[str, ...] = ()
+
+
 class CapabilityRunStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
@@ -242,6 +263,37 @@ def record_capability_run_output_review(
     return store.write(updated_run)
 
 
+def build_capability_reasoning_view(
+    run: CapabilityRun,
+    *,
+    output_id: str | None = None,
+) -> CapabilityReasoningView:
+    output = _select_reasoning_output(run, output_id)
+    return CapabilityReasoningView(
+        run_id=run.run_id,
+        output_id=output.output_id,
+        title=output.title,
+        capability_id=run.capability_id,
+        executor_kind=run.executor_kind,
+        input_summary=run.inputs_summary,
+        input_refs=run.input_refs,
+        source_refs=_string_tuple(run.provenance.get("sources", ())),
+        tool_names=_string_tuple(run.provenance.get("tool_names", ())),
+        model_name=_optional_string(run.provenance.get("model_name")),
+        model_status=_optional_string(run.provenance.get("model_status")),
+        assumptions=_string_tuple(output.provenance.get("assumptions", ())),
+        validation_logic=_validation_logic_for_output(output),
+        gaps=output.gaps,
+        limitations=_limitations_for_run(run, output),
+        recommended_destination=output.recommended_destination,
+        autonomy_recommendation=output.autonomy_recommendation,
+        review_decision_history=tuple(
+            _review_decision_summary(decision)
+            for decision in output.review_decisions
+        ),
+    )
+
+
 def _review_state_for_decision(
     decision: CapabilityRunReviewDecisionType,
 ) -> CapabilityRunOutputReviewState:
@@ -250,6 +302,69 @@ def _review_state_for_decision(
     if decision is CapabilityRunReviewDecisionType.DISCARD:
         return CapabilityRunOutputReviewState.DISCARDED
     return CapabilityRunOutputReviewState.ROUTED
+
+
+def _select_reasoning_output(
+    run: CapabilityRun,
+    output_id: str | None,
+) -> CapabilityRunOutput:
+    if not run.outputs:
+        raise ValueError("Capability Run has no outputs")
+    if output_id is None:
+        return run.outputs[0]
+    for output in run.outputs:
+        if output.output_id == output_id:
+            return output
+    raise ValueError("Capability Run Output not found")
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if isinstance(value, tuple | list):
+        return tuple(str(item) for item in value)
+    if value is None:
+        return ()
+    return (str(value),)
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _validation_logic_for_output(
+    output: CapabilityRunOutput,
+) -> tuple[str, ...]:
+    if output.output_type.startswith("capability_catalog_validation"):
+        return (
+            "Deterministic Capability Catalog validation inspected local skill metadata.",
+            "No model, network call, external API, or agent runtime was required.",
+        )
+    return ("Capability Run Output preserved its executor provenance for review.",)
+
+
+def _limitations_for_run(
+    run: CapabilityRun,
+    output: CapabilityRunOutput,
+) -> tuple[str, ...]:
+    limitations: list[str] = []
+    if run.status in {CapabilityRunStatus.FAILED, CapabilityRunStatus.UNAVAILABLE}:
+        limitations.append(f"Run status is {run.status.value}.")
+    if output.review_state is CapabilityRunOutputReviewState.PENDING:
+        limitations.append("Output still needs human review before trusted use.")
+    if output.gaps:
+        limitations.append("Validation gaps remain unresolved.")
+    return tuple(limitations)
+
+
+def _review_decision_summary(decision: CapabilityRunReviewDecision) -> str:
+    destination = (
+        f" -> {decision.routed_destination}" if decision.routed_destination else ""
+    )
+    rationale = (
+        f": {decision.reviewer_rationale}" if decision.reviewer_rationale else ""
+    )
+    return f"{decision.decision.value}{destination}{rationale}"
 
 
 def _catalog_entry_validation_output(

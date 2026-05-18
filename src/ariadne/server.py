@@ -19,6 +19,7 @@ from ariadne.capability_runs import (
     run_capability_catalog_validation,
 )
 from ariadne.command_center import (
+    render_capability_studio_shell,
     render_command_center_shell,
     render_sam_gov_enrichment_profile_shell,
 )
@@ -421,6 +422,19 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:
         return render_command_center_shell(runtime_settings)
+
+    @app.get("/capability-studio", response_class=HTMLResponse)
+    def capability_studio() -> str:
+        return render_capability_studio_shell(runtime_settings)
+
+    @app.get("/capability-studio/runs/{run_id}", response_class=HTMLResponse)
+    def capability_studio_run_detail(run_id: str) -> str:
+        try:
+            return render_capability_studio_shell(runtime_settings, run_id=run_id)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get(
         "/federal-data/sam-gov/enrichment-profiles/{profile_id}",

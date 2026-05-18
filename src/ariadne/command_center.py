@@ -4,6 +4,12 @@ from html import escape
 from pathlib import Path
 
 from ariadne.capabilities import CapabilityCatalog
+from ariadne.capability_runs import (
+    CapabilityReasoningView,
+    CapabilityRun,
+    CapabilityRunStore,
+    build_capability_reasoning_view,
+)
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
@@ -408,10 +414,158 @@ def render_command_center_shell(
 </html>"""
 
 
+def render_capability_studio_shell(
+        settings: RuntimeSettings,
+        *,
+        run_id: str | None = None,
+        workspace_root: Path | None = None,
+) -> str:
+        root = workspace_root or Path.cwd()
+        store = CapabilityRunStore(
+                _resolve_runtime_path(root, settings.ariadne_capability_runs_dir)
+        )
+        runs = tuple(store.list())
+        selected_run = store.read(run_id) if run_id is not None else (runs[0] if runs else None)
+        detail = _render_capability_studio_empty_state()
+        if selected_run is not None:
+                detail = _render_capability_run_detail(selected_run)
+
+        return f"""<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{escape(settings.public_app_name)} Capability Studio</title>
+    <style>
+        :root {{ color-scheme: dark; --bg: #020617; --surface: #0f172a; --surface-strong: #111c31; --edge: #334155; --edge-soft: #243244; --text: #f8fafc; --muted: #b6c4d6; --quiet: #8292a8; --cyan: #22d3ee; --green: #22c55e; --amber: #fbbf24; --red: #fb7185; --focus: #fbbf24; }}
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; min-height: 100dvh; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); }}
+        a {{ color: inherit; }}
+        a:focus-visible, button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+        .shell {{ width: min(100% - 32px, 1360px); margin: 0 auto; padding: 24px 0 48px; }}
+        .topbar {{ display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }}
+        .back-link, .link-row {{ display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 14px; border: 1px solid var(--cyan); border-radius: 8px; color: var(--cyan); text-decoration: none; font-weight: 900; }}
+        .eyebrow {{ margin: 0 0 8px; color: var(--cyan); font-size: 0.78rem; font-weight: 800; letter-spacing: 0; text-transform: uppercase; }}
+        h1 {{ margin: 0; font-size: 1.7rem; line-height: 1.15; letter-spacing: 0; }}
+        h2 {{ margin: 0; font-size: 1.05rem; line-height: 1.25; letter-spacing: 0; }}
+        h3 {{ margin: 0; font-size: 0.95rem; line-height: 1.3; letter-spacing: 0; }}
+        p {{ margin: 0; color: var(--muted); line-height: 1.55; }}
+        .studio-grid {{ display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 14px; }}
+        .panel {{ border: 1px solid var(--edge); border-radius: 8px; background: rgba(15, 23, 42, 0.94); padding: 16px; }}
+        .panel-heading {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }}
+        .row-list {{ display: grid; gap: 8px; }}
+        .row {{ display: grid; gap: 6px; padding: 12px; border: 1px solid var(--edge-soft); border-radius: 8px; background: var(--surface-strong); }}
+        .row strong {{ color: var(--text); }}
+        .row span {{ color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }}
+        .status-chip {{ display: inline-flex; align-items: center; min-height: 30px; padding: 5px 8px; border: 1px solid var(--edge); border-radius: 8px; color: var(--muted); background: #0b1220; font-size: 0.78rem; font-weight: 800; white-space: nowrap; }}
+        .status-chip.green {{ border-color: rgba(34, 197, 94, 0.55); color: var(--green); background: rgba(34, 197, 94, 0.1); }}
+        .status-chip.cyan {{ border-color: rgba(34, 211, 238, 0.55); color: var(--cyan); background: rgba(34, 211, 238, 0.1); }}
+        .status-chip.amber {{ border-color: rgba(251, 191, 36, 0.55); color: var(--amber); background: rgba(251, 191, 36, 0.1); }}
+        .status-chip.red {{ border-color: rgba(251, 113, 133, 0.55); color: var(--red); background: rgba(251, 113, 133, 0.1); }}
+        .mono {{ font-family: Consolas, "Courier New", monospace; }}
+        @media (max-width: 920px) {{ .studio-grid {{ grid-template-columns: 1fr; }} .topbar {{ display: block; }} .back-link {{ margin-top: 12px; }} }}
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <div class="topbar">
+            <div><p class="eyebrow">Advanced workspace</p><h1>Capability Studio</h1></div>
+            <a class="back-link" href="/#capability-studio">Back to Command Center</a>
+        </div>
+        <div class="studio-grid">
+            {_render_capability_run_history(runs)}
+            {detail}
+        </div>
+    </main>
+</body>
+</html>"""
+
+
 def _resolve_runtime_path(workspace_root: Path, path: Path) -> Path:
     if path.is_absolute():
         return path
     return workspace_root / path
+
+
+def _render_capability_run_history(runs: tuple[CapabilityRun, ...]) -> str:
+    if not runs:
+        rows = """<div class="row"><strong>No Capability Runs yet</strong><span>Run local Capability Catalog validation to create the first reviewable run record.</span></div>"""
+    else:
+        rows = "".join(_render_capability_run_history_row(run) for run in runs)
+    return f"""<section class="panel" aria-labelledby="capability-run-history-heading">
+      <div class="panel-heading"><h2 id="capability-run-history-heading">Run History</h2><span class="status-chip cyan">{len(runs)} runs</span></div>
+      <div class="row-list">{rows}</div>
+    </section>"""
+
+
+def _render_capability_run_history_row(run: CapabilityRun) -> str:
+    return f"""<div class="row"><strong class="mono">{escape(run.run_id)}</strong><span>{escape(run.capability_id)} - {escape(run.executor_kind.value)} - {escape(run.status.value)}</span><span>{len(run.outputs)} outputs - {escape(run.product_workflow)}</span><a class="link-row" href="/capability-studio/runs/{escape(run.run_id)}">Open run detail</a></div>"""
+
+
+def _render_capability_studio_empty_state() -> str:
+    return """<section class="panel" aria-labelledby="capability-run-detail-heading"><div class="panel-heading"><h2 id="capability-run-detail-heading">Run Detail</h2><span class="status-chip amber">empty</span></div><div class="row-list"><div class="row"><strong>No run selected</strong><span>Capability Reasoning View appears after a run exists.</span></div></div></section>"""
+
+
+def _render_capability_run_detail(run: CapabilityRun) -> str:
+    outputs = "".join(_render_capability_run_output_row(output) for output in run.outputs)
+    reasoning = build_capability_reasoning_view(run)
+    return f"""<section class="panel" aria-labelledby="capability-run-detail-heading">
+      <div class="panel-heading"><h2 id="capability-run-detail-heading">Run Detail</h2><span class="status-chip {_status_chip_class(run.status.value)}">{escape(run.status.value)}</span></div>
+      <div class="row-list">
+        <div class="row"><strong>{escape(run.capability_id)}</strong><span>Executor: {escape(run.executor_kind.value)} - Capability type: {escape(run.capability_type.value)} - Workflow: {escape(run.product_workflow)}</span><span>{escape(run.inputs_summary)}</span><span>Created: {escape(run.created_at.isoformat())}</span></div>
+        <div class="row"><strong>Capability Provenance</strong>{_render_inline_spans(_provenance_items(run))}</div>
+        <div class="row"><strong>Validation Findings</strong>{outputs}</div>
+        {_render_capability_reasoning_view(reasoning)}
+      </div>
+    </section>"""
+
+
+def _render_capability_run_output_row(output) -> str:
+    gaps = " | ".join(output.gaps) if output.gaps else "No gaps recorded."
+    decisions = (
+        " | ".join(_review_decision_label(decision) for decision in output.review_decisions)
+        if output.review_decisions
+        else "No review decisions recorded."
+    )
+    return f"""<span><strong>{escape(output.title)}</strong></span><span>{escape(output.summary)}</span><span>Review: {escape(output.review_state.value)} - Autonomy: {escape(output.autonomy_recommendation.value)} - Destination: {escape(output.recommended_destination or "review queue")}</span><span>Gaps: {escape(gaps)}</span><span>Review decisions: {escape(decisions)}</span>"""
+
+
+def _render_capability_reasoning_view(reasoning: CapabilityReasoningView) -> str:
+    return f"""<div class="row"><strong>Capability Reasoning View</strong><span>{escape(reasoning.title)}</span><span>Capability: {escape(reasoning.capability_id)} - Executor: {escape(reasoning.executor_kind.value)} - Output: {escape(reasoning.output_id)}</span><span>Input summary: {escape(reasoning.input_summary)}</span><span>Source refs: {escape(_join_or_none(reasoning.source_refs))}</span><span>Tools: {escape(_join_or_none(reasoning.tool_names))}</span><span>Validation logic: {escape(_join_or_none(reasoning.validation_logic))}</span><span>Gaps: {escape(_join_or_none(reasoning.gaps))}</span><span>Limitations: {escape(_join_or_none(reasoning.limitations))}</span><span>Recommended destination: {escape(reasoning.recommended_destination or "review queue")} - Autonomy: {escape(reasoning.autonomy_recommendation.value)}</span><span>Review history: {escape(_join_or_none(reasoning.review_decision_history))}</span></div>"""
+
+
+def _provenance_items(run: CapabilityRun) -> tuple[str, ...]:
+    items: list[str] = []
+    for key in ("sources", "tool_names", "executor", "entry_count", "model_required", "network_required"):
+        if key in run.provenance:
+            items.append(f"{key}: {run.provenance[key]}")
+    return tuple(items)
+
+
+def _render_inline_spans(values: tuple[str, ...]) -> str:
+    if not values:
+        return "<span>No provenance recorded.</span>"
+    return "".join(f"<span>{escape(value)}</span>" for value in values)
+
+
+def _review_decision_label(decision) -> str:
+    destination = f" -> {decision.routed_destination}" if decision.routed_destination else ""
+    rationale = f": {decision.reviewer_rationale}" if decision.reviewer_rationale else ""
+    return f"{decision.decision.value}{destination}{rationale}"
+
+
+def _join_or_none(values: tuple[str, ...]) -> str:
+    return " | ".join(values) if values else "none"
+
+
+def _status_chip_class(status: str) -> str:
+    if status == "needs_review":
+        return "amber"
+    if status == "succeeded":
+        return "green"
+    if status in {"failed", "unavailable"}:
+        return "red"
+    return "cyan"
 
 
 def _render_metrics(
@@ -1276,5 +1430,6 @@ def _render_capability_panel(catalog: CapabilityCatalog) -> str:
     return f"""<section class="panel" id="capability-studio" aria-labelledby="capability-heading">
       <div class="panel-heading"><h2 id="capability-heading">Capability Studio</h2><span class="status-chip cyan">Advanced / read-only</span></div>
       <div class="row-list">{entries}</div>
-      <a class="link-row" href="/api/capabilities/catalog">Open catalog API</a>
+            <a class="link-row" href="/capability-studio">Open Capability Studio</a>
+            <a class="link-row" href="/api/capabilities/catalog">Open catalog API</a>
     </section>"""

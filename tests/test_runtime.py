@@ -2425,6 +2425,61 @@ def test_capability_studio_reasoning_view_shows_review_decision_history(
     assert "Send to improvement proposal queue." in detail_response.text
 
 
+def test_command_center_surfaces_capability_run_launch_and_review_entries(
+    tmp_path,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    run = client.post("/api/capability-runs/catalog-validation").json()["run"]
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Run Capability Catalog Validation" in response.text
+    assert "/capability-studio/actions/catalog-validation" in response.text
+    assert "Capability Run Outputs Needing Review" in response.text
+    assert run["run_id"] in response.text
+    assert "needs_review" in response.text
+    assert "pending" in response.text
+    assert f"/capability-studio/runs/{run['run_id']}" in response.text
+
+
+def test_command_center_capability_validation_action_opens_studio_detail(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    run_root = tmp_path / "capability-runs"
+    skill_dir = tmp_path / ".github" / "skills" / "command-center-skill"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\n"
+        "name: command-center-skill\n"
+        "---\n"
+        "# Command Center Skill\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPABILITY_RUNS_DIR": str(run_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).post(
+        "/capability-studio/actions/catalog-validation"
+    )
+
+    assert response.status_code == 200
+    assert "Capability Reasoning View" in response.text
+    assert "command-center-skill" in response.text
+    assert len(list(run_root.glob("*.json"))) == 1
+
+
 def test_runtime_settings_expose_optional_local_admin_model_config() -> None:
     settings = RuntimeSettings.from_mapping(
         {

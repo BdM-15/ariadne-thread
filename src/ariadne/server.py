@@ -31,11 +31,13 @@ from ariadne.capture_research import (
     SourceProviderSmokeCheckResult,
     SourceProviderSmokeRunner,
     SourceProfileRef,
+    build_seller_baseline_query,
     build_source_provider_registry,
     create_source_provider_adapter,
     create_source_context_research_run,
     create_user_prompted_research_run,
     run_approved_source_provider_collection,
+    run_requirements_fit_analysis,
     run_source_provider_smoke_check,
     run_web_source_collection,
 )
@@ -311,6 +313,11 @@ class CaptureResearchSourceProviderCollectionRequest(BaseModel):
     approved: bool = False
     provider_ids: tuple[str, ...] = ()
     collected_at: str | None = None
+
+
+class CaptureResearchRequirementsFitRequest(BaseModel):
+    analyzed_at: str | None = None
+    reference_limit: int = Field(default=5, ge=0, le=10)
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -810,6 +817,41 @@ def create_app(
                     research_run_id=research_run_id,
                     adapter=FakeWebSourceCollectionAdapter(),
                     collected_at=request.collected_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/requirements-fit-analysis")
+    def capture_research_requirements_fit_analysis(
+        research_run_id: str,
+        request: CaptureResearchRequirementsFitRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        evidence_store = LocalEvidenceStore(
+            _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
+        )
+        try:
+            run = store.read(research_run_id)
+            reference_influences = load_reference_wiki(
+                _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+            ).find_influences(
+                build_seller_baseline_query(run),
+                limit=request.reference_limit,
+            )
+            return CaptureResearchRunResponse(
+                run=run_requirements_fit_analysis(
+                    store=store,
+                    research_run_id=research_run_id,
+                    evidence_items=tuple(evidence_store.list()),
+                    reference_influences=reference_influences,
+                    analyzed_at=request.analyzed_at,
                 )
             )
         except FileNotFoundError as error:

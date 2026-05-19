@@ -14,6 +14,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
+from ariadne.evidence import EvidenceItem
+from ariadne.reference_wiki import ReferenceWikiInfluence
+
 
 class CaptureResearchRunStatus(StrEnum):
     PLANNED = "planned"
@@ -271,6 +274,58 @@ class SourceFinding(BaseModel):
     approval_basis: str | None = None
 
 
+class SellerBaselineRefType(StrEnum):
+    ACCEPTED_EVIDENCE = "accepted_evidence"
+    REFERENCE_WIKI_NOTE = "reference_wiki_note"
+    BASELINE_GAP = "baseline_gap"
+
+
+class SellerBaselineRef(BaseModel):
+    id: str
+    ref_type: SellerBaselineRefType
+    source_label: str
+    source_ref: str
+    summarized_support: str
+    assumptions: tuple[str, ...] = ()
+    baseline_gaps: tuple[str, ...] = ()
+    matched_terms: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_reviewable_ref(self) -> SellerBaselineRef:
+        if not self.id.strip():
+            raise ValueError("seller baseline ref id is required")
+        if not self.source_label.strip():
+            raise ValueError("seller baseline source label is required")
+        if not self.source_ref.strip():
+            raise ValueError("seller baseline source ref is required")
+        if not self.summarized_support.strip():
+            raise ValueError("seller baseline summarized support is required")
+        return self
+
+
+class RequirementsFitSignal(BaseModel):
+    id: str
+    summary: str
+    supporting_seller_baseline_ref_ids: tuple[str, ...] = ()
+    supporting_source_finding_ids: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    confidence: float = Field(ge=0, le=1)
+
+
+class RequirementsFitAnalysis(BaseModel):
+    id: str
+    analyzed_at: str
+    summary: str
+    seller_baseline_ref_ids: tuple[str, ...]
+    source_finding_ids: tuple[str, ...] = ()
+    selected_lenses: tuple[CaptureResearchLens, ...]
+    strengths: tuple[RequirementsFitSignal, ...] = ()
+    weaknesses: tuple[RequirementsFitSignal, ...] = ()
+    qualification_risks: tuple[RequirementsFitSignal, ...] = ()
+    proof_needs: tuple[RequirementsFitSignal, ...] = ()
+    follow_up_recommendations: tuple[RequirementsFitSignal, ...] = ()
+
+
 class CaptureResearchRun(BaseModel):
     research_run_id: str
     opportunity_id: str | None = None
@@ -280,9 +335,10 @@ class CaptureResearchRun(BaseModel):
     user_prompt: UserPromptedResearchRequest | None = None
     selected_lenses: tuple[CaptureResearchLens, ...]
     source_profile_refs: tuple[SourceProfileRef, ...] = ()
-    seller_baseline_refs: tuple[str, ...] = ()
+    seller_baseline_refs: tuple[SellerBaselineRef, ...] = ()
     source_collection_records: tuple[WebSourceCollectionRecord, ...] = ()
     source_findings: tuple[SourceFinding, ...] = ()
+    requirements_fit_analysis: RequirementsFitAnalysis | None = None
     insight_candidates: tuple[dict[str, object], ...] = ()
     downstream_candidates: tuple[dict[str, object], ...] = ()
     research_summary_view: str | None = None
@@ -668,6 +724,52 @@ _RESTRICTED_SOURCE_MARKERS = (
     "logged-in",
     "private group",
     "paywall bypass",
+)
+
+_SELLER_BASELINE_KEYWORDS = frozenset(
+    {
+        "baseline",
+        "capability",
+        "capabilities",
+        "certification",
+        "certifications",
+        "constraint",
+        "constraints",
+        "differentiator",
+        "differentiators",
+        "experience",
+        "incumbent",
+        "past",
+        "performance",
+        "proof",
+        "relationship",
+        "relationships",
+        "seller",
+        "staffing",
+        "transition",
+        "vehicle",
+        "vehicles",
+        "workload",
+    }
+)
+
+_LOW_SIGNAL_REQUIREMENT_TERMS = frozenset(
+    {
+        "agency",
+        "and",
+        "context",
+        "customer",
+        "evidence",
+        "find",
+        "for",
+        "public",
+        "research",
+        "source",
+        "sources",
+        "the",
+        "this",
+        "with",
+    }
 )
 
 _SOURCE_PROVIDER_MANIFESTS = (
@@ -1255,6 +1357,485 @@ def run_approved_source_provider_collection(
         }
     )
     return store.write(updated)
+
+
+def build_seller_baseline_query(run: CaptureResearchRun) -> str:
+    parts = [
+        run.research_brief.research_question,
+        run.research_trigger_context.summary,
+        " ".join(run.research_brief.known_pivots),
+        " ".join(run.research_brief.evidence_goals),
+        " ".join(run.research_brief.source_targets),
+        " ".join(ref.source_element_summary for ref in run.source_profile_refs),
+        " ".join(finding.title for finding in run.source_findings),
+        " ".join(finding.excerpt for finding in run.source_findings),
+        "seller capability baseline past performance proof vehicle transition",
+    ]
+    return " ".join(part.strip() for part in parts if part and part.strip())
+
+
+def run_requirements_fit_analysis(
+    *,
+    store: CaptureResearchStore,
+    research_run_id: str,
+    evidence_items: tuple[EvidenceItem, ...] = (),
+    reference_influences: tuple[ReferenceWikiInfluence, ...] = (),
+    analyzed_at: str | None = None,
+) -> CaptureResearchRun:
+    timestamp = analyzed_at or datetime.now(UTC).isoformat()
+    run = store.read(research_run_id)
+    baseline_refs = select_seller_baseline_refs(
+        run,
+        evidence_items=evidence_items,
+        reference_influences=reference_influences,
+    )
+    analysis = build_requirements_fit_analysis(
+        run,
+        seller_baseline_refs=baseline_refs,
+        analyzed_at=timestamp,
+    )
+    insight_candidates = _requirements_fit_insight_candidates(analysis)
+    updated = run.model_copy(
+        update={
+            "status": CaptureResearchRunStatus.NEEDS_REVIEW,
+            "seller_baseline_refs": baseline_refs,
+            "requirements_fit_analysis": analysis,
+            "insight_candidates": run.insight_candidates + insight_candidates,
+            "research_summary_view": _requirements_fit_summary_view(analysis),
+            "updated_at": timestamp,
+        }
+    )
+    return store.write(updated)
+
+
+def select_seller_baseline_refs(
+    run: CaptureResearchRun,
+    *,
+    evidence_items: tuple[EvidenceItem, ...] = (),
+    reference_influences: tuple[ReferenceWikiInfluence, ...] = (),
+    evidence_limit: int = 4,
+    reference_limit: int = 4,
+) -> tuple[SellerBaselineRef, ...]:
+    query_tokens = _normalized_signal_tokens(build_seller_baseline_query(run))
+    evidence_refs = tuple(
+        _seller_baseline_ref_from_evidence(evidence, matched_terms=matched_terms)
+        for evidence, matched_terms in _rank_seller_baseline_evidence(
+            run,
+            evidence_items=evidence_items,
+            query_tokens=query_tokens,
+        )[:evidence_limit]
+    )
+    reference_refs = tuple(
+        _seller_baseline_ref_from_reference(influence)
+        for influence in reference_influences[:reference_limit]
+    )
+    refs = evidence_refs + reference_refs
+    if refs:
+        return refs
+    return (_missing_seller_baseline_ref(run),)
+
+
+def build_requirements_fit_analysis(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    analyzed_at: str,
+) -> RequirementsFitAnalysis:
+    ref_ids = tuple(ref.id for ref in seller_baseline_refs)
+    finding_ids = tuple(finding.id for finding in run.source_findings)
+    non_gap_ref_ids = tuple(
+        ref.id
+        for ref in seller_baseline_refs
+        if ref.ref_type is not SellerBaselineRefType.BASELINE_GAP
+    )
+    gap_refs = tuple(
+        ref for ref in seller_baseline_refs if ref.ref_type is SellerBaselineRefType.BASELINE_GAP
+    )
+    shared_terms = _shared_requirement_terms(run, seller_baseline_refs)
+    strengths = _requirements_fit_strengths(
+        ref_ids=non_gap_ref_ids,
+        finding_ids=finding_ids,
+        shared_terms=shared_terms,
+    )
+    weaknesses = _requirements_fit_weaknesses(
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        gap_refs=gap_refs,
+        shared_terms=shared_terms,
+    )
+    qualification_risks = _requirements_fit_qualification_risks(
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        gap_refs=gap_refs,
+        has_findings=bool(run.source_findings),
+    )
+    proof_needs = _requirements_fit_proof_needs(
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        gap_refs=gap_refs,
+        shared_terms=shared_terms,
+    )
+    follow_ups = _requirements_fit_follow_ups(
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        gap_refs=gap_refs,
+    )
+    summary = (
+        f"Requirements fit analysis found {len(strengths)} strength(s), "
+        f"{len(weaknesses)} weakness(es), {len(qualification_risks)} "
+        "qualification risk(s), and "
+        f"{len(proof_needs)} proof need(s)."
+    )
+    return RequirementsFitAnalysis(
+        id=f"requirements_fit_{uuid4().hex}",
+        analyzed_at=analyzed_at,
+        summary=summary,
+        seller_baseline_ref_ids=ref_ids,
+        source_finding_ids=finding_ids,
+        selected_lenses=run.selected_lenses,
+        strengths=strengths,
+        weaknesses=weaknesses,
+        qualification_risks=qualification_risks,
+        proof_needs=proof_needs,
+        follow_up_recommendations=follow_ups,
+    )
+
+
+def _rank_seller_baseline_evidence(
+    run: CaptureResearchRun,
+    *,
+    evidence_items: tuple[EvidenceItem, ...],
+    query_tokens: set[str],
+) -> list[tuple[EvidenceItem, tuple[str, ...]]]:
+    ranked: list[tuple[int, str, EvidenceItem, tuple[str, ...]]] = []
+    for evidence in evidence_items:
+        if (
+            run.opportunity_id
+            and evidence.opportunity_id
+            and evidence.opportunity_id != run.opportunity_id
+        ):
+            continue
+        evidence_tokens = _normalized_signal_tokens(evidence.content)
+        baseline_matches = evidence_tokens & _SELLER_BASELINE_KEYWORDS
+        query_matches = evidence_tokens & query_tokens
+        if not baseline_matches and len(query_matches) < 2:
+            continue
+        matched_terms = tuple(sorted((baseline_matches | query_matches))[:8])
+        score = (len(baseline_matches) * 3) + len(query_matches)
+        if evidence.opportunity_id == run.opportunity_id:
+            score += 2
+        ranked.append((score, evidence.id, evidence, matched_terms))
+    return [
+        (evidence, matched_terms)
+        for _, _, evidence, matched_terms in sorted(
+            ranked,
+            key=lambda candidate: (-candidate[0], candidate[1]),
+        )
+    ]
+
+
+def _seller_baseline_ref_from_evidence(
+    evidence: EvidenceItem, *, matched_terms: tuple[str, ...]
+) -> SellerBaselineRef:
+    assumptions = (
+        "Accepted evidence can support seller baseline only within its stated source and review context.",
+    )
+    return SellerBaselineRef(
+        id=f"seller_baseline_evidence_{evidence.id}",
+        ref_type=SellerBaselineRefType.ACCEPTED_EVIDENCE,
+        source_label=f"Accepted Evidence {evidence.id}",
+        source_ref=evidence.id,
+        summarized_support=_compact_excerpt(evidence.content, limit=260),
+        assumptions=assumptions,
+        matched_terms=matched_terms,
+    )
+
+
+def _seller_baseline_ref_from_reference(
+    influence: ReferenceWikiInfluence,
+) -> SellerBaselineRef:
+    return SellerBaselineRef(
+        id=f"seller_baseline_reference_{_source_target_slug(influence.reference_id)}",
+        ref_type=SellerBaselineRefType.REFERENCE_WIKI_NOTE,
+        source_label=influence.title,
+        source_ref=influence.source_path,
+        summarized_support=_compact_excerpt(
+            influence.why_it_matters or influence.excerpt,
+            limit=260,
+        ),
+        assumptions=(
+            "Reference Wiki notes can guide seller baseline fit but do not replace opportunity-specific accepted evidence.",
+        ),
+        baseline_gaps=(
+            "Confirm the reference note is current and applicable to this opportunity before using it as proof.",
+        ),
+        matched_terms=influence.matched_terms,
+    )
+
+
+def _missing_seller_baseline_ref(run: CaptureResearchRun) -> SellerBaselineRef:
+    return SellerBaselineRef(
+        id=f"seller_baseline_gap_{_source_target_slug(run.research_run_id)}",
+        ref_type=SellerBaselineRefType.BASELINE_GAP,
+        source_label="Seller Capability Baseline gap",
+        source_ref=run.research_run_id,
+        summarized_support=(
+            "No accepted seller capability evidence or Reference Wiki note matched this research run."
+        ),
+        assumptions=(
+            "Ariadne should not infer seller capabilities without accepted proof or reference context.",
+        ),
+        baseline_gaps=(
+            "Add accepted evidence for relevant seller capabilities, vehicles, past performance, relationships, certifications, differentiators, constraints, or transition proof.",
+        ),
+    )
+
+
+def _shared_requirement_terms(
+    run: CaptureResearchRun,
+    refs: tuple[SellerBaselineRef, ...],
+) -> tuple[str, ...]:
+    requirement_tokens = _normalized_signal_tokens(
+        " ".join(
+            (
+                run.research_brief.research_question,
+                " ".join(run.research_brief.evidence_goals),
+                " ".join(finding.excerpt for finding in run.source_findings),
+            )
+        )
+    )
+    baseline_tokens = _normalized_signal_tokens(
+        " ".join(ref.summarized_support for ref in refs)
+    )
+    shared = (requirement_tokens & baseline_tokens) - _LOW_SIGNAL_REQUIREMENT_TERMS
+    return tuple(sorted(shared))[:8]
+
+
+def _requirements_fit_strengths(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    shared_terms: tuple[str, ...],
+) -> tuple[RequirementsFitSignal, ...]:
+    if not ref_ids:
+        return ()
+    if shared_terms:
+        summary = (
+            "Seller baseline refs overlap with customer/source signals around "
+            + ", ".join(shared_terms[:5])
+            + "."
+        )
+        confidence = 0.72
+    else:
+        summary = (
+            "Seller baseline refs are available for comparison, but exact requirement overlap still needs reviewer confirmation."
+        )
+        confidence = 0.56
+    return (
+        _requirements_fit_signal(
+            "strength",
+            summary,
+            ref_ids=ref_ids,
+            finding_ids=finding_ids,
+            assumptions=(
+                "Deterministic term overlap is a fit signal, not a final qualification decision.",
+            ),
+            confidence=confidence,
+        ),
+    )
+
+
+def _requirements_fit_weaknesses(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    gap_refs: tuple[SellerBaselineRef, ...],
+    shared_terms: tuple[str, ...],
+) -> tuple[RequirementsFitSignal, ...]:
+    if gap_refs:
+        return tuple(
+            _requirements_fit_signal(
+                "weakness",
+                gap,
+                ref_ids=(gap_ref.id,),
+                finding_ids=finding_ids,
+                assumptions=gap_ref.assumptions,
+                confidence=0.82,
+            )
+            for gap_ref in gap_refs
+            for gap in gap_ref.baseline_gaps
+        )
+    if not shared_terms:
+        return (
+            _requirements_fit_signal(
+                "weakness",
+                "Available seller baseline refs do not yet show direct proof against the collected customer/source signals.",
+                ref_ids=ref_ids,
+                finding_ids=finding_ids,
+                assumptions=(
+                    "The baseline may still fit, but Ariadne has not found explicit linked proof yet.",
+                ),
+                confidence=0.64,
+            ),
+        )
+    return ()
+
+
+def _requirements_fit_qualification_risks(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    gap_refs: tuple[SellerBaselineRef, ...],
+    has_findings: bool,
+) -> tuple[RequirementsFitSignal, ...]:
+    risks: list[RequirementsFitSignal] = []
+    if gap_refs:
+        risks.append(
+            _requirements_fit_signal(
+                "risk",
+                "Qualification risk: the run lacks enough accepted seller proof to support a confident fit position.",
+                ref_ids=ref_ids,
+                finding_ids=finding_ids,
+                assumptions=(
+                    "Capture decisions should stay tentative until seller proof is accepted or attached.",
+                ),
+                confidence=0.78,
+            )
+        )
+    if not has_findings:
+        risks.append(
+            _requirements_fit_signal(
+                "risk",
+                "Qualification risk: requirements fit is based on the brief and baseline refs before source findings are collected.",
+                ref_ids=ref_ids,
+                assumptions=(
+                    "Run Web Source Collection or attach source-profile evidence before relying on this analysis.",
+                ),
+                confidence=0.68,
+            )
+        )
+    return tuple(risks)
+
+
+def _requirements_fit_proof_needs(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    gap_refs: tuple[SellerBaselineRef, ...],
+    shared_terms: tuple[str, ...],
+) -> tuple[RequirementsFitSignal, ...]:
+    if gap_refs:
+        return (
+            _requirements_fit_signal(
+                "proof_need",
+                "Collect or accept seller proof for the baseline gaps before promoting fit claims.",
+                ref_ids=ref_ids,
+                finding_ids=finding_ids,
+                assumptions=("Proof needs should route to Evidence, Packet, or Action Plan review.",),
+                confidence=0.84,
+            ),
+        )
+    if shared_terms:
+        return (
+            _requirements_fit_signal(
+                "proof_need",
+                "Attach stronger proof artifacts that connect seller baseline refs to the identified customer/source terms.",
+                ref_ids=ref_ids,
+                finding_ids=finding_ids,
+                assumptions=("Current fit support is directional until proof is linked to exact requirements.",),
+                confidence=0.66,
+            ),
+        )
+    return ()
+
+
+def _requirements_fit_follow_ups(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    gap_refs: tuple[SellerBaselineRef, ...],
+) -> tuple[RequirementsFitSignal, ...]:
+    if gap_refs:
+        summary = (
+            "Ask the user for seller capability, vehicle, past-performance, relationship, certification, differentiator, or constraint evidence."
+        )
+    else:
+        summary = (
+            "Review the fit analysis and route strongest proof needs into Evidence, Packet, Action Plan, or Risk Register candidates."
+        )
+    return (
+        _requirements_fit_signal(
+            "follow_up",
+            summary,
+            ref_ids=ref_ids,
+            finding_ids=finding_ids,
+            assumptions=("Follow-up recommendations remain reviewable and do not write trusted downstream records.",),
+            confidence=0.74,
+        ),
+    )
+
+
+def _requirements_fit_signal(
+    kind: str,
+    summary: str,
+    *,
+    ref_ids: tuple[str, ...] = (),
+    finding_ids: tuple[str, ...] = (),
+    assumptions: tuple[str, ...] = (),
+    confidence: float,
+) -> RequirementsFitSignal:
+    return RequirementsFitSignal(
+        id=f"requirements_fit_{kind}_{uuid4().hex[:8]}",
+        summary=summary,
+        supporting_seller_baseline_ref_ids=ref_ids,
+        supporting_source_finding_ids=finding_ids,
+        assumptions=assumptions,
+        confidence=confidence,
+    )
+
+
+def _requirements_fit_insight_candidates(
+    analysis: RequirementsFitAnalysis,
+) -> tuple[dict[str, object], ...]:
+    candidates: list[dict[str, object]] = []
+    for candidate_type, target_workflow, signals in (
+        ("requirements_fit_strength", "evidence", analysis.strengths),
+        ("requirements_fit_weakness", "packet", analysis.weaknesses),
+        ("requirements_fit_qualification_risk", "risk_register", analysis.qualification_risks),
+        ("requirements_fit_proof_need", "action_plan", analysis.proof_needs),
+        ("requirements_fit_follow_up", "action_plan", analysis.follow_up_recommendations),
+    ):
+        for signal in signals:
+            candidates.append(
+                {
+                    "id": f"insight_candidate_{signal.id}",
+                    "candidate_type": candidate_type,
+                    "target_workflow": target_workflow,
+                    "title": signal.summary,
+                    "summary": signal.summary,
+                    "review_state": "pending_review",
+                    "supporting_seller_baseline_ref_ids": signal.supporting_seller_baseline_ref_ids,
+                    "supporting_source_finding_ids": signal.supporting_source_finding_ids,
+                    "autonomy_tier": "review_required",
+                    "requirements_fit_analysis_id": analysis.id,
+                }
+            )
+    return tuple(candidates)
+
+
+def _requirements_fit_summary_view(analysis: RequirementsFitAnalysis) -> str:
+    return (
+        f"{analysis.summary} Trusted downstream writes remain review-gated; "
+        "seller-baseline refs and source findings must be reviewed before promotion."
+    )
+
+
+def _normalized_signal_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) > 2 and token not in _LOW_SIGNAL_REQUIREMENT_TERMS
+    }
 
 
 def _validate_source_provider_run_request(

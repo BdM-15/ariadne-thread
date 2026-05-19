@@ -8,7 +8,7 @@ from ariadne.capture_research import (
     WebSourceCollectionRecord,
 )
 from ariadne.document_intake import DocumentIntakeStore
-from ariadne.evidence import LocalEvidenceStore
+from ariadne.evidence import LocalEvidenceStore, create_source_evidence
 from ariadne.federal_data import FederalDataInitializeRunnerResult
 from ariadne.local_admin_model import (
     LocalAdminDraftAssist,
@@ -2481,6 +2481,97 @@ def test_fake_web_source_collection_api_and_shell_show_findings(tmp_path) -> Non
     assert "Fake adapter test data is not live source-provider success." in (
         shell_response.text
     )
+
+
+def test_requirements_fit_api_and_shell_show_seller_baseline_refs(
+    tmp_path,
+) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    (reference_root / "seller-baseline.md").write_text(
+        "---\n"
+        "title: Seller Baseline Proof\n"
+        "---\n\n"
+        "# Seller Baseline Proof\n\n"
+        "Seller transition proof, cyber modernization capability, and vehicle experience.\n",
+        encoding="utf-8",
+    )
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_seller_baseline",
+            content=(
+                "Accepted seller evidence: transition past performance, cyber "
+                "modernization capability, and contract vehicle proof."
+            ),
+            source_ref="accepted seller proof note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research customer transition modernization needs.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research", "competitive_positioning"],
+            "source_targets": ["public agency modernization page"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Compare transition need against seller proof."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+
+    fit_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    assert fit_response.status_code == 200
+    run = fit_response.json()["run"]
+    assert run["status"] == "needs_review"
+    assert [ref["ref_type"] for ref in run["seller_baseline_refs"]] == [
+        "accepted_evidence",
+        "reference_wiki_note",
+    ]
+    assert run["seller_baseline_refs"][0]["source_ref"] == (
+        "ev_runtime_seller_baseline"
+    )
+    assert run["requirements_fit_analysis"]["strengths"]
+    assert run["requirements_fit_analysis"]["proof_needs"]
+    assert run["insight_candidates"]
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in run["insight_candidates"]
+    )
+    assert "trusted_output_written" not in fit_response.text
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Seller Capability Baseline" in shell_response.text
+    assert "Accepted Evidence ev_runtime_seller_baseline" in shell_response.text
+    assert "Seller Baseline Proof" in shell_response.text
+    assert "Requirements Fit Analysis" in shell_response.text
+    assert "Strengths" in shell_response.text
+    assert "Proof needs" in shell_response.text
+    assert "Reviewable outputs only" in shell_response.text
 
 
 def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path) -> None:

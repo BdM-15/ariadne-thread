@@ -13,6 +13,7 @@ from ariadne.capture_research import (
     SourceProviderSmokeRunnerResult,
     SourceProfileRef,
     SourceProfileType,
+    SellerBaselineRefType,
     SourceFinding,
     WebSourceCollectionRecord,
     build_source_provider_registry,
@@ -20,9 +21,12 @@ from ariadne.capture_research import (
     create_source_context_research_run,
     create_user_prompted_research_run,
     run_approved_source_provider_collection,
+    run_requirements_fit_analysis,
     run_source_provider_smoke_check,
     run_web_source_collection,
 )
+from ariadne.evidence import create_source_evidence
+from ariadne.reference_wiki import ReferenceInfluenceType, ReferenceWikiInfluence
 
 
 class _ProviderFixtureAdapter:
@@ -548,3 +552,145 @@ def test_fake_web_source_collection_persists_records_and_findings(tmp_path) -> N
         first_finding.source_limitations
     )
     assert "live_firecrawl" not in reloaded.model_dump_json()
+
+
+def test_requirements_fit_attaches_seller_baseline_refs_and_candidates(
+    tmp_path,
+) -> None:
+    run = create_user_prompted_research_run(
+        "Research customer transition and modernization requirements.",
+        opportunity_id="opp_aflcmc_recompete",
+        selected_lenses=(
+            CaptureResearchLens.CUSTOMER_RESEARCH,
+            CaptureResearchLens.COMPETITIVE_POSITIONING,
+        ),
+        source_targets=("public agency modernization page",),
+        source_limits=("public_web_only",),
+        evidence_goals=("Compare customer transition needs with seller proof.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(
+        run.model_copy(
+            update={
+                "source_findings": (
+                    _requirements_fit_source_finding(
+                        "Customer requires transition proof and cyber modernization support."
+                    ),
+                ),
+            }
+        )
+    )
+    evidence = create_source_evidence(
+        evidence_id="ev_seller_transition_proof",
+        content=(
+            "Seller capability evidence: Air Force transition past performance, "
+            "cyber modernization capability, and relevant contract vehicle proof."
+        ),
+        source_ref="accepted seller capability note",
+        opportunity_id="opp_aflcmc_recompete",
+    )
+    reference = ReferenceWikiInfluence(
+        title="Project Ariadne seller baseline",
+        reference_id="seller/baseline",
+        source_path="seller/baseline.md",
+        excerpt="Reference note about transition and modernization proof.",
+        why_it_matters="Shows reusable seller proof for transition and modernization.",
+        influence_type=ReferenceInfluenceType.DOMAIN_INTEL,
+        score=8.0,
+        matched_terms=("transition", "modernization"),
+    )
+
+    analyzed = run_requirements_fit_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        evidence_items=(evidence,),
+        reference_influences=(reference,),
+        analyzed_at="2026-05-18T12:10:00+00:00",
+    )
+
+    assert analyzed.status is CaptureResearchRunStatus.NEEDS_REVIEW
+    assert [ref.ref_type for ref in analyzed.seller_baseline_refs] == [
+        SellerBaselineRefType.ACCEPTED_EVIDENCE,
+        SellerBaselineRefType.REFERENCE_WIKI_NOTE,
+    ]
+    assert analyzed.seller_baseline_refs[0].source_ref == "ev_seller_transition_proof"
+    assert analyzed.seller_baseline_refs[0].summarized_support
+    assert analyzed.seller_baseline_refs[0].assumptions
+    assert analyzed.seller_baseline_refs[1].baseline_gaps
+    assert analyzed.requirements_fit_analysis is not None
+    analysis = analyzed.requirements_fit_analysis
+    assert analysis.strengths
+    assert analysis.proof_needs
+    assert analysis.seller_baseline_ref_ids == tuple(
+        ref.id for ref in analyzed.seller_baseline_refs
+    )
+    assert analysis.source_finding_ids == ("source_finding_customer_transition",)
+    assert analyzed.insight_candidates
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in analyzed.insight_candidates
+    )
+    assert all(
+        candidate["autonomy_tier"] == "review_required"
+        for candidate in analyzed.insight_candidates
+    )
+    dumped = analyzed.model_dump_json()
+    assert "derived_from_ids" not in dumped
+    assert "trusted_output_written" not in dumped
+
+
+def test_requirements_fit_surfaces_missing_seller_baseline_gap(tmp_path) -> None:
+    run = create_user_prompted_research_run(
+        "Research customer requirements before seller proof exists.",
+        opportunity_id="opp_new_customer",
+        selected_lenses=(CaptureResearchLens.CUSTOMER_RESEARCH,),
+        source_targets=("public customer page",),
+        source_limits=("public_web_only",),
+        evidence_goals=("Find mission needs and proof gaps.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(run)
+
+    analyzed = run_requirements_fit_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        evidence_items=(),
+        reference_influences=(),
+        analyzed_at="2026-05-18T12:10:00+00:00",
+    )
+
+    assert analyzed.seller_baseline_refs[0].ref_type is SellerBaselineRefType.BASELINE_GAP
+    assert analyzed.seller_baseline_refs[0].baseline_gaps
+    assert analyzed.requirements_fit_analysis is not None
+    analysis = analyzed.requirements_fit_analysis
+    assert not analysis.strengths
+    assert analysis.weaknesses
+    assert analysis.qualification_risks
+    assert analysis.proof_needs
+    assert {candidate["target_workflow"] for candidate in analyzed.insight_candidates} >= {
+        "action_plan",
+        "risk_register",
+    }
+
+
+def _requirements_fit_source_finding(excerpt: str) -> SourceFinding:
+    return SourceFinding(
+        id="source_finding_customer_transition",
+        source_target="public agency modernization page",
+        url="https://example.gov/modernization",
+        title="Customer modernization page",
+        source_type="fake_public_web",
+        collected_at="2026-05-18T12:05:00+00:00",
+        excerpt=excerpt,
+        confidence=0.7,
+        source_limitations=("Fake adapter test data is not live source-provider success.",),
+        source_mode=CaptureResearchSourceMode.FAKE_ADAPTER_TEST,
+        capability_provenance=CapabilityProvenance(
+            source_capability_id="fake_web_source_collection",
+            source_tool_name="collect_fake_public_sources",
+            source_package="ariadne.capture_research",
+            source_package_version="local",
+        ),
+    )

@@ -206,3 +206,8 @@ The first acceptance demo should show one opportunity or source-profile gap flow
 9. Add the Capture Research Enrichment Command Surface in the existing Command Center scaffold.
 10. Validate with `uv run ruff check src tests`, `uv run pytest -q`, and optional live provider smoke checks when configured.
 11. Update PRD/current-state docs after implementation and user review.
+
+## Implementation Trail
+
+- #54 added provider-registry Web Source Collection with provider readiness, explicit-approval smoke checks for Crawl4AI, SearXNG, SerpApi, Olostep, and Firecrawl, approved provider-backed collection, fake adapters for automated tests, and manual live validation for all configured providers.
+- #55 added Seller Capability Baseline refs on Capture Research runs using accepted evidence and Reference Wiki context, surfaced baseline assumptions and gaps, produced deterministic Requirements Fit Analysis outputs for strengths, weaknesses, qualification risks, proof needs, and follow-up recommendations, projected those outputs as reviewable insight candidates, and rendered the refs and fit analysis in the existing Command Center without creating a seller-profile editor or automatic trusted downstream writes.

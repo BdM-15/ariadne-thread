@@ -1299,7 +1299,9 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
     )
     source_refs = _render_capture_research_source_refs(run)
     findings = _render_capture_research_source_findings(run)
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    seller_baseline = _render_capture_research_seller_baseline(run)
+    requirements_fit = _render_capture_research_requirements_fit(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
 
 
 def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
@@ -1320,6 +1322,52 @@ def _render_capture_research_source_findings(run: CaptureResearchRun) -> str:
         for finding in run.source_findings
     )
     return f"""<div class="row-list"><div class="row"><strong>Source Findings</strong><span>Grouped by source target; fake adapter output is development-only.</span></div>{rows}</div>"""
+
+
+def _render_capture_research_seller_baseline(run: CaptureResearchRun) -> str:
+    if not run.seller_baseline_refs:
+        return ""
+    rows = "".join(
+        _render_capture_research_seller_baseline_ref(ref)
+        for ref in run.seller_baseline_refs
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Seller Capability Baseline</strong><span>Refs are selected from accepted evidence and Reference Wiki context; no seller-profile editor is created.</span></div>{rows}</div>"""
+
+
+def _render_capture_research_seller_baseline_ref(ref) -> str:
+    ref_type = ref.ref_type.value.replace("_", " ")
+    return f"""<div class="row"><strong>{escape(ref.source_label)}</strong><span>Type: {escape(ref_type)}</span><span>Source ref: {escape(ref.source_ref)}</span><span>{escape(ref.summarized_support)}</span><span>Assumptions: {escape(_join_or_none(ref.assumptions))}</span><span>Baseline gaps: {escape(_join_or_none(ref.baseline_gaps))}</span></div>"""
+
+
+def _render_capture_research_requirements_fit(run: CaptureResearchRun) -> str:
+    analysis = run.requirements_fit_analysis
+    if analysis is None:
+        return ""
+    groups = "".join(
+        _render_requirements_fit_signal_group(label, signals)
+        for label, signals in (
+            ("Strengths", analysis.strengths),
+            ("Weaknesses", analysis.weaknesses),
+            ("Qualification risks", analysis.qualification_risks),
+            ("Proof needs", analysis.proof_needs),
+            ("Follow-up recommendations", analysis.follow_up_recommendations),
+        )
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Requirements Fit Analysis</strong><span>{escape(analysis.summary)}</span><span>Reviewable outputs only; trusted downstream writes still require acceptance.</span></div>{groups}</div>"""
+
+
+def _render_requirements_fit_signal_group(label: str, signals: tuple[object, ...]) -> str:
+    if not signals:
+        return f"""<div class="row"><strong>{escape(label)}</strong><span>None identified yet.</span></div>"""
+    rows = "".join(
+        f"<span>{escape(signal.summary)} Confidence: {signal.confidence:.2f} Refs: {escape(_join_or_none(signal.supporting_seller_baseline_ref_ids))} Findings: {escape(_join_or_none(signal.supporting_source_finding_ids))}</span>"
+        for signal in signals
+    )
+    return f"""<div class="row"><strong>{escape(label)}</strong>{rows}</div>"""
+
+
+def _join_or_none(values: tuple[str, ...]) -> str:
+    return ", ".join(values) if values else "none"
 
 
 def _capture_research_source_profile_label(source_profile_type: str) -> str:

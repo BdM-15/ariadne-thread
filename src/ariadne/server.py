@@ -13,9 +13,13 @@ from pydantic import BaseModel, Field
 from ariadne.action_plans import ActionPlanItem
 from ariadne.artifact_assembly import (
     ArtifactAssemblyStore,
+    ArtifactBlockReviewAction,
+    ArtifactDraft,
     ArtifactSourcePackage,
     ArtifactSourcePackageSummary,
+    assemble_milestone_packet_draft,
     create_artifact_source_package_from_context,
+    review_artifact_block,
     summarize_artifact_source_package,
 )
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
@@ -56,6 +60,7 @@ from ariadne.capture_research import (
 from ariadne.command_center import (
     build_command_center_knowledge_context,
     render_capability_studio_shell,
+    render_artifact_draft_shell,
     render_command_center_shell,
     render_sam_gov_enrichment_profile_shell,
 )
@@ -280,6 +285,10 @@ class CapabilityRunListResponse(BaseModel):
 class ArtifactSourcePackageResponse(BaseModel):
     package: ArtifactSourcePackage
     summary: ArtifactSourcePackageSummary
+
+
+class ArtifactDraftResponse(BaseModel):
+    draft: ArtifactDraft
 
 
 class CapabilityRunOutputReviewRequest(BaseModel):
@@ -632,6 +641,68 @@ def create_app(
         opportunity_id: str,
     ) -> ArtifactSourcePackageResponse:
         return _create_artifact_source_package(opportunity_id, runtime_settings)
+
+    @app.post(
+        "/artifact-assembly/source-packages/{source_package_id}/milestone-packet-draft"
+    )
+    def artifact_assembly_create_milestone_packet_draft_action(
+        source_package_id: str,
+    ) -> RedirectResponse:
+        draft = _create_milestone_packet_draft(source_package_id, runtime_settings)
+        return RedirectResponse(
+            url=f"/artifact-assembly/drafts/{draft.draft_id}",
+            status_code=303,
+        )
+
+    @app.post(
+        "/api/artifact-assembly/source-packages/{source_package_id}/milestone-packet-draft"
+    )
+    def artifact_assembly_create_milestone_packet_draft(
+        source_package_id: str,
+    ) -> ArtifactDraftResponse:
+        draft = _create_milestone_packet_draft(source_package_id, runtime_settings)
+        return ArtifactDraftResponse(draft=draft)
+
+    @app.get("/artifact-assembly/drafts/{draft_id}", response_class=HTMLResponse)
+    def artifact_draft_command_surface(draft_id: str) -> str:
+        try:
+            return render_artifact_draft_shell(runtime_settings, draft_id)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Artifact draft not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/artifact-assembly/drafts/{draft_id}/blocks/{block_id}/review")
+    def artifact_draft_review_block_action(
+        draft_id: str,
+        block_id: str,
+        action: str = Form(...),
+        reviewer_notes: str = Form(""),
+        edited_body: str | None = Form(None),
+        routed_destination: str | None = Form(None),
+    ) -> RedirectResponse:
+        store = ArtifactAssemblyStore(
+            _resolve_runtime_path(runtime_settings.ariadne_artifact_assembly_dir)
+        )
+        try:
+            review_artifact_block(
+                draft_id=draft_id,
+                block_id=block_id,
+                action=ArtifactBlockReviewAction(action),
+                store=store,
+                reviewed_at=_utc_timestamp(),
+                reviewer_notes=reviewer_notes,
+                edited_body=edited_body,
+                routed_destination=routed_destination,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Artifact draft not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return RedirectResponse(
+            url=f"/artifact-assembly/drafts/{draft_id}",
+            status_code=303,
+        )
 
     @app.get(
         "/federal-data/sam-gov/enrichment-profiles/{profile_id}",
@@ -1880,6 +1951,28 @@ def _create_artifact_source_package(
         package=package,
         summary=summarize_artifact_source_package(package),
     )
+
+
+def _create_milestone_packet_draft(
+    source_package_id: str,
+    runtime_settings: RuntimeSettings,
+) -> ArtifactDraft:
+    store = ArtifactAssemblyStore(
+        _resolve_runtime_path(runtime_settings.ariadne_artifact_assembly_dir)
+    )
+    try:
+        return assemble_milestone_packet_draft(
+            source_package_id=source_package_id,
+            store=store,
+            assembled_at=_utc_timestamp(),
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Artifact source package not found",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 def _federal_data_env_for_manifest(

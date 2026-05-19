@@ -2887,11 +2887,29 @@ def test_capture_research_candidate_projection_review_api_and_shell(tmp_path) ->
     shell_response = client.get("/")
 
     assert shell_response.status_code == 200
+    assert "Live Source Readiness" in shell_response.text
+    assert "Capture Research Brief" in shell_response.text
+    assert "Trigger Context" in shell_response.text
+    assert "Source Profile refs" in shell_response.text
+    assert "Source Collection Provenance" in shell_response.text
+    assert "Source Findings" in shell_response.text
+    assert "Selected Lenses" in shell_response.text
+    assert "Seller Capability Baseline" in shell_response.text
+    assert "Research Summary View" in shell_response.text
+    assert "not a trusted source-of-truth object" in shell_response.text
     assert "Reviewable Downstream Candidates" in shell_response.text
     assert "No automatic trusted downstream writes" in shell_response.text
     assert "Price/Workload Assumptions" in shell_response.text
     assert "BCC-Ready Notes" in shell_response.text
+    assert "Accept Candidate" in shell_response.text
+    assert "Route Candidate" in shell_response.text
+    assert "Discard Candidate" in shell_response.text
     assert "Review decisions" in shell_response.text
+    assert "Related Ariadne Records" in shell_response.text
+    assert "Opportunity Knowledge Context" in shell_response.text
+    assert "PIID Profile" in shell_response.text
+    assert "Packet" in shell_response.text
+    assert "Action Plan" in shell_response.text
     assert "Trusted write: false" in shell_response.text
 
 

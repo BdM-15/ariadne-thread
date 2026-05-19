@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.19**
+**Product Requirements Document (PRD) v1.20**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -53,6 +53,7 @@
 
 - Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
+- Follow-on issue #60 tracks a standalone local-development single-startup stack after the Capture Research Enrichment epic is completed and merged to `main`. The follow-on should cover Ariadne's app runtime and selected local providers such as Crawl4AI and SearXNG, with optional Ollama readiness kept compatible with existing `OLLAMA_HOST` settings. It should not introduce Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, or broad persistent storage unless a later ADR or PRD update explicitly selects that infrastructure.
 
 **Next Build Gate**
 

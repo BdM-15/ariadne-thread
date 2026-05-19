@@ -1,5 +1,7 @@
 from ariadne.artifact_assembly import (
     ArtifactAssemblyStore,
+    ArtifactBlockReviewAction,
+    ArtifactBlockReviewState,
     ArtifactBlockSupportClassification,
     ArtifactContentBlockKind,
     ArtifactDraftReadiness,
@@ -8,6 +10,7 @@ from ariadne.artifact_assembly import (
     assemble_milestone_packet_draft,
     create_artifact_source_package_from_context,
     milestone_packet_draft_capability_contract,
+    review_artifact_block,
     summarize_artifact_source_package,
 )
 from ariadne.evidence import LocalEvidenceStore, create_source_evidence
@@ -464,3 +467,259 @@ def test_populates_packet_sections_with_source_backed_content_blocks(tmp_path) -
     )
     assert draft.renderer_readiness.renderer_invoked is False
     assert "accepted" not in draft.model_dump_json()
+
+
+def test_reviews_artifact_blocks_and_preserves_decision_history(tmp_path) -> None:
+    context = OpportunityKnowledgeContextView(
+        opportunity_id="opp-aflcmc-recompete",
+        trusted_context=KnowledgeContextSection(
+            count=1,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.EVIDENCE_ITEM,
+                    record_id="ev_transition_risk",
+                    title="Transition risk evidence",
+                    summary="Customer flagged transition risk on the recompete.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+            ),
+        ),
+        reviewable_context=KnowledgeContextSection(count=0, items=()),
+    )
+    artifact_store = ArtifactAssemblyStore(tmp_path / "artifact-assembly")
+    evidence_store = LocalEvidenceStore(tmp_path / "evidence")
+    source_package = create_artifact_source_package_from_context(
+        context=context,
+        store=artifact_store,
+        created_at="2026-05-19T20:45:00Z",
+    )
+    draft = assemble_milestone_packet_draft(
+        source_package_id=source_package.package_id,
+        store=artifact_store,
+        assembled_at="2026-05-19T21:15:00Z",
+    )
+
+    reviewed_draft = review_artifact_block(
+        draft_id=draft.draft_id,
+        block_id="opportunity_overview_narrative",
+        action=ArtifactBlockReviewAction.EDIT,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:30:00Z",
+        reviewer_notes="Tighten for gate audience.",
+        edited_body="Customer flagged transition risk; validate before gate.",
+    )
+    reviewed_draft = review_artifact_block(
+        draft_id=reviewed_draft.draft_id,
+        block_id="opportunity_overview_decision_summary",
+        action=ArtifactBlockReviewAction.ACCEPT,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:31:00Z",
+        reviewer_notes="Good enough for review packet.",
+    )
+    reviewed_draft = review_artifact_block(
+        draft_id=reviewed_draft.draft_id,
+        block_id="opportunity_overview_evidence_table",
+        action=ArtifactBlockReviewAction.DISCARD,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:32:00Z",
+        reviewer_notes="Duplicate evidence in appendix.",
+    )
+    reviewed_draft = review_artifact_block(
+        draft_id=reviewed_draft.draft_id,
+        block_id="opportunity_overview_action_list",
+        action=ArtifactBlockReviewAction.ROUTE,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:33:00Z",
+        reviewer_notes="Needs follow-up owner.",
+        routed_destination="Capture Action Plan",
+    )
+    reviewed_draft = review_artifact_block(
+        draft_id=reviewed_draft.draft_id,
+        block_id="opportunity_overview_assumption_list",
+        action=ArtifactBlockReviewAction.MARK_NEEDS_EVIDENCE,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:34:00Z",
+        reviewer_notes="Assumption needs customer validation.",
+    )
+    reviewed_draft = review_artifact_block(
+        draft_id=reviewed_draft.draft_id,
+        block_id="opportunity_overview_source_appendix",
+        action=ArtifactBlockReviewAction.EXCLUDE_FROM_EXPORT,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:35:00Z",
+        reviewer_notes="Internal provenance only.",
+    )
+
+    blocks = {
+        block.block_id: block
+        for section in reviewed_draft.sections
+        for block in section.blocks
+    }
+    edited = blocks["opportunity_overview_narrative"]
+    assert edited.review_state is ArtifactBlockReviewState.EDITED
+    assert edited.body == "Customer flagged transition risk; validate before gate."
+    assert edited.review_decisions[0].action is ArtifactBlockReviewAction.EDIT
+    assert edited.review_decisions[0].original_body.startswith("Customer flagged")
+    assert edited.review_decisions[0].revised_body == edited.body
+    assert edited.review_decisions[0].reviewer_notes == "Tighten for gate audience."
+    assert edited.review_decisions[0].source_ref_ids == ("ev_transition_risk",)
+    assert edited.review_decisions[0].autonomy_hint == "review_required"
+    assert blocks["opportunity_overview_decision_summary"].review_state is ArtifactBlockReviewState.ACCEPTED
+    assert blocks["opportunity_overview_evidence_table"].review_state is ArtifactBlockReviewState.DISCARDED
+    routed = blocks["opportunity_overview_action_list"]
+    assert routed.review_state is ArtifactBlockReviewState.ROUTED
+    assert routed.review_decisions[0].routed_destination == "Capture Action Plan"
+    assert blocks["opportunity_overview_assumption_list"].review_state is ArtifactBlockReviewState.NEEDS_EVIDENCE
+    excluded = blocks["opportunity_overview_source_appendix"]
+    assert excluded.review_state is ArtifactBlockReviewState.EXCLUDED_FROM_EXPORT
+    assert excluded.export_required is False
+    assert reviewed_draft.readiness_state is ArtifactDraftReadiness.PARTIALLY_REVIEWED
+    assert artifact_store.read_artifact_draft(draft.draft_id) == reviewed_draft
+    assert evidence_store.list() == []
+
+
+def test_reviewed_artifact_draft_reaches_export_ready_without_exporting(tmp_path) -> None:
+    context = OpportunityKnowledgeContextView(
+        opportunity_id="opp-aflcmc-recompete",
+        trusted_context=KnowledgeContextSection(
+            count=1,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.EVIDENCE_ITEM,
+                    record_id="ev_transition_risk",
+                    title="Transition risk evidence",
+                    summary="Customer flagged transition risk on the recompete.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+            ),
+        ),
+        reviewable_context=KnowledgeContextSection(count=0, items=()),
+    )
+    store = ArtifactAssemblyStore(tmp_path / "artifact-assembly")
+    source_package = create_artifact_source_package_from_context(
+        context=context,
+        store=store,
+        created_at="2026-05-19T20:45:00Z",
+    )
+    draft = assemble_milestone_packet_draft(
+        source_package_id=source_package.package_id,
+        store=store,
+        assembled_at="2026-05-19T21:15:00Z",
+    )
+
+    reviewed_draft = draft
+    for block in (
+        block for section in draft.sections for block in section.blocks
+    ):
+        action = (
+            ArtifactBlockReviewAction.EXCLUDE_FROM_EXPORT
+            if block.block_kind is ArtifactContentBlockKind.SOURCE_APPENDIX
+            else ArtifactBlockReviewAction.ACCEPT
+        )
+        reviewed_draft = review_artifact_block(
+            draft_id=reviewed_draft.draft_id,
+            block_id=block.block_id,
+            action=action,
+            store=store,
+            reviewed_at="2026-05-19T22:00:00Z",
+            reviewer_notes="Reviewed for export readiness.",
+        )
+
+    assert reviewed_draft.readiness_state is ArtifactDraftReadiness.EXPORT_READY
+    assert reviewed_draft.renderer_readiness.preview_ready is True
+    assert reviewed_draft.renderer_readiness.export_ready is True
+    assert reviewed_draft.renderer_readiness.renderer_invoked is False
+    assert reviewed_draft.renderer_readiness.export_blocking_refs == ()
+    draft_json = reviewed_draft.model_dump_json()
+    assert "exported_file" not in draft_json
+    assert "docx" not in draft_json
+    assert "pptx" not in draft_json
+    assert "xlsx" not in draft_json
+
+
+def test_reviewed_artifact_draft_with_blocking_gaps_stops_at_preview_ready(tmp_path) -> None:
+    context = OpportunityKnowledgeContextView(
+        opportunity_id="opp-aflcmc-recompete",
+        trusted_context=KnowledgeContextSection(
+            count=1,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.EVIDENCE_ITEM,
+                    record_id="ev_transition_risk",
+                    title="Transition risk evidence",
+                    summary="Customer flagged transition risk on the recompete.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+            ),
+        ),
+        reviewable_context=KnowledgeContextSection(
+            count=1,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.PACKET_FIELD_ANSWER,
+                    record_id="packet_field_answer:opp-aflcmc-recompete:primary_scope",
+                    title="Packet field: primary_scope",
+                    summary="Need validated transition scope before gate review.",
+                    trust_state=KnowledgeTrustState.REVIEWABLE,
+                    status_label="reviewable",
+                ),
+            ),
+        ),
+        gaps=(
+            KnowledgeGapSummary(
+                record_kind=KnowledgeRecordKind.PACKET_FIELD_ANSWER,
+                record_id="packet_field_answer:opp-aflcmc-recompete:primary_scope",
+                summary="Need validated transition scope before gate review.",
+                command_id="review_packet_gap",
+            ),
+        ),
+        source_limitations=(
+            KnowledgeSourceLimitation(
+                record_kind=KnowledgeRecordKind.PIID_PROFILE,
+                record_id="piid_profile_FA8650_23_C_0001",
+                summary="USAspending does not identify current transition scope.",
+            ),
+        ),
+    )
+    store = ArtifactAssemblyStore(tmp_path / "artifact-assembly")
+    source_package = create_artifact_source_package_from_context(
+        context=context,
+        store=store,
+        created_at="2026-05-19T20:45:00Z",
+    )
+    draft = assemble_milestone_packet_draft(
+        source_package_id=source_package.package_id,
+        store=store,
+        assembled_at="2026-05-19T21:15:00Z",
+    )
+
+    reviewed_draft = draft
+    for block in (
+        block for section in draft.sections for block in section.blocks
+    ):
+        action = (
+            ArtifactBlockReviewAction.MARK_NEEDS_EVIDENCE
+            if block.block_kind is ArtifactContentBlockKind.GAP_LIST
+            else ArtifactBlockReviewAction.ACCEPT
+        )
+        reviewed_draft = review_artifact_block(
+            draft_id=reviewed_draft.draft_id,
+            block_id=block.block_id,
+            action=action,
+            store=store,
+            reviewed_at="2026-05-19T22:00:00Z",
+            reviewer_notes="Reviewed with known blockers.",
+        )
+
+    assert reviewed_draft.readiness_state is ArtifactDraftReadiness.PREVIEW_READY
+    assert reviewed_draft.renderer_readiness.preview_ready is True
+    assert reviewed_draft.renderer_readiness.export_ready is False
+    assert "packet_field_answer:opp-aflcmc-recompete:primary_scope" in (
+        reviewed_draft.renderer_readiness.export_blocking_refs
+    )
+    assert "piid_profile_FA8650_23_C_0001" in (
+        reviewed_draft.renderer_readiness.export_blocking_refs
+    )

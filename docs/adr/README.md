@@ -18,3 +18,4 @@ Use concise records with this shape:
 - `0005-project-ariadne-reference-knowledge.md`: Project Ariadne public-source knowledge, including company-specific bid-qualification intel, is imported as Capture Reference Context.
 - `0006-document-intake-extraction-boundary.md`: Document Intake uses a shared Extraction Bundle before parser or retrieval engines become trusted knowledge.
 - `0007-upstream-federal-data-mcps.md`: Ariadne integrates upstream 1102tools federal data MCPs instead of creating unique Ariadne MCP servers for the same public data sources.
+- `0008-artifact-assembly-foundation.md`: Artifact capability starts with source packages, section/block drafts, and block-level review before final rendering or export.

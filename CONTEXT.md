@@ -179,6 +179,14 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Coverage View: the supporting view that shows milestone intelligence checklist coverage, evidence status, gaps, assumptions, and supporting sources.
 - Milestone Intelligence Checklist: a reusable, company-agnostic question set for gathering and validating the information needed to produce milestone decision briefing packets.
 - Managed Capture Task: an outcome-level capture task the user steers while Ariadne performs supporting collection, synthesis, artifact, and follow-up work.
+- Artifact Assembly Foundation: the foundational artifact-preparation layer that gathers trusted and reviewable Ariadne knowledge into structured, traceable artifact drafts before final rendering or export.
+- Artifact Assembly Capability: a capability module that contributes source-backed sections, tables, claims, assumptions, or review notes to an Artifact Draft without itself becoming the final renderer or source of truth.
+- Artifact Assembly Store: the narrow local-first home for Artifact Drafts, Artifact Sections, Artifact Content Blocks, source references, block review decisions, readiness state, autonomy hints, and renderer/export readiness metadata.
+- Artifact Source Package: an explicit curated input bundle for an Artifact Draft that lists the allowed Opportunity Knowledge Context, trusted and reviewable records, source refs, gaps, assumptions, limitations, and pending reviews used during artifact assembly.
+- Artifact Draft: a reviewable structured artifact package, such as a briefing section, call-plan draft, comparison chart draft, or export-ready narrative, that preserves source support, assumptions, gaps, and review state before becoming a final deliverable.
+- Artifact Section: a renderer-neutral section inside an Artifact Draft, composed of typed content blocks and tied to purpose, source support, assumptions, gaps, and review state.
+- Artifact Content Block: a typed renderer-neutral unit inside an Artifact Section, such as narrative, decision summary, evidence table, action list, risk list, assumption list, gap list, or source appendix.
+- Artifact Block Review: the human review decision to accept, edit, discard, route, or exclude an Artifact Content Block before it contributes to a reviewed artifact draft or final deliverable.
 - Artifact Export Profile: a private mapping from Ariadne artifact content into a user- or organization-specific output format.
 - Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, presentation, and visual deliverables.
 - Hermes Agent: the local-first persistent operator that coordinates skills, memory, and execution.
@@ -195,6 +203,19 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Opportunity Knowledge** can become **Reusable Capture Insight** when it remains useful beyond the original opportunity.
 - **Insight Promotion** preserves the source **Opportunity**, related **Core Capture Workstream**, freshness, confidence, sensitivity, and use context.
 - A **Capture Intelligence Workflow** can produce **Reusable Capture Insight**, a **Capture Action Plan**, an **Engagement Artifact**, or a **Milestone Decision Briefing Packet**.
+- The **Artifact Assembly Foundation** prepares **Artifact Drafts** from accepted and reviewable Ariadne knowledge before an **Artifact Renderer** turns reviewed content into exported deliverables.
+- **Artifact Assembly Capabilities** can contribute draft artifact content from knowledge, data, research, actions, and reviewable analysis, while final rendering and export remain separate responsibilities.
+- **Artifact Drafts** preserve evidence, provenance, assumptions, gaps, and review decisions so final artifacts remain traceable back to Ariadne's capture knowledge.
+- The first **Artifact Assembly Foundation** tracer should assemble a reviewable **Milestone Decision Briefing Packet** draft before building final export or visual rendering workflows.
+- **Artifact Drafts** should be section-based, and **Artifact Sections** should contain typed **Artifact Content Blocks** so future previews, DOCX exports, presentation exports, spreadsheet appendices, and visual renderers can transform the same reviewed content.
+- **Artifact Content Blocks** should move through **Artifact Block Review** independently because different blocks can have different evidence strength, audience fit, sensitivity, assumptions, and follow-up needs.
+- Accepted **Artifact Content Blocks** become reviewed artifact content for preview or export; they do not automatically become **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, **Reusable Capture Insights**, or other trusted source-of-truth records.
+- Low-risk, transactional **Artifact Block Review** decisions can later become candidates for **Graduated Autonomy** when provenance, reversibility, sensitivity, and repeated user approval patterns support it.
+- The first **Artifact Assembly Foundation** should record autonomy hints and review-decision signals on **Artifact Content Blocks**, but it should not auto-accept, auto-promote, or auto-export artifact content.
+- The **Artifact Assembly Store** owns artifact-preparation state, while the **Evidence Store**, packet records, action plans, research stores, and capability-run records remain the source of truth for the underlying knowledge.
+- **Artifact Assembly** can use AI or LLM assistance for coordination, synthesis, prioritization, and prose, but every artifact output should be captured in a deterministic, source-backed, reviewable schema with a basic non-LLM fallback path.
+- An **Artifact Source Package** should be created before draft generation so AI-assisted and deterministic assembly work from explicit, inspectable inputs rather than loose access to all available Ariadne context.
+- An **Artifact Source Package** can include trusted and reviewable context, but reviewable context must be explicitly labeled and constrained to draft, gap, assumption, limitation, or needs-review use until the relevant **Artifact Content Blocks** are reviewed.
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
 - The **Capture Command Center** should turn data into decisions and actions rather than behaving like a passive data display.

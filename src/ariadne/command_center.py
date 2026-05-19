@@ -6,6 +6,12 @@ from html import escape
 from pathlib import Path
 
 from ariadne.action_plans import CaptureActionPlan
+from ariadne.artifact_assembly import (
+    ArtifactAssemblyStore,
+    ArtifactSourcePackage,
+    ArtifactSourcePackageSummary,
+    summarize_artifact_source_package,
+)
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.capability_runs import (
     CapabilityReasoningView,
@@ -88,6 +94,13 @@ class CommandCenterKnowledgeContext:
     action_plan: CaptureActionPlan
 
 
+@dataclass(frozen=True)
+class CommandCenterArtifactSourcePackage:
+    opportunity_id: str
+    package: ArtifactSourcePackage | None
+    summary: ArtifactSourcePackageSummary | None
+
+
 def render_command_center_shell(
     settings: RuntimeSettings,
     *,
@@ -158,6 +171,11 @@ def render_command_center_shell(
         settings,
         workspace_root=root,
         demo=demo,
+    )
+    artifact_source_package = build_command_center_artifact_source_package(
+        settings,
+        workspace_root=root,
+        opportunity_id=knowledge_context.opportunity_id,
     )
 
     return f"""<!doctype html>
@@ -433,6 +451,7 @@ def render_command_center_shell(
         <p class="advanced-label">Advanced / read-only</p>
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{_capability_outputs_needing_review_count(capability_runs)}</small></a>
+          <a href="#artifact-assembly">Artifact Assembly <small>{_artifact_source_package_nav_label(artifact_source_package)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
                     <a href="#capture-research-enrichment">Capture Research <small>{len(capture_research_runs)}</small></a>
           <a href="#sam-gov-enrichment-profiles">SAM.gov Profiles <small>{len(sam_gov_profiles)}</small></a>
@@ -456,6 +475,7 @@ def render_command_center_shell(
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
         {_render_knowledge_context_panel(knowledge_context)}
+        {_render_artifact_assembly_panel(artifact_source_package)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_document_intake_demo_thread_panel(document_intake_demo)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
@@ -530,6 +550,25 @@ def build_command_center_knowledge_context(
             recommendation_store.list(opportunity_id=opportunity_id)
         ),
         action_plan=action_plan,
+    )
+
+
+def build_command_center_artifact_source_package(
+    settings: RuntimeSettings,
+    *,
+    workspace_root: Path | None = None,
+    opportunity_id: str,
+) -> CommandCenterArtifactSourcePackage:
+    root = workspace_root or Path.cwd()
+    store = ArtifactAssemblyStore(
+        _resolve_runtime_path(root, settings.ariadne_artifact_assembly_dir)
+    )
+    packages = store.list_source_packages(opportunity_id=opportunity_id)
+    package = packages[-1] if packages else None
+    return CommandCenterArtifactSourcePackage(
+        opportunity_id=opportunity_id,
+        package=package,
+        summary=(summarize_artifact_source_package(package) if package else None),
     )
 
 
@@ -889,6 +928,44 @@ def _render_knowledge_context_panel(
         <div class="detail-body">{detail_rows}</div>
       </details>
     </section>"""
+
+
+def _render_artifact_assembly_panel(
+    source_package: CommandCenterArtifactSourcePackage,
+) -> str:
+    if source_package.package is None or source_package.summary is None:
+        package_rows = (
+            "<div class=\"row\"><strong>No Artifact Source Package yet</strong>"
+            "<span>Create the first source package from Opportunity Knowledge "
+            "Context before assembling any artifact draft.</span></div>"
+        )
+        status = "not created"
+    else:
+        summary = source_package.summary
+        package_rows = f"""
+        <div class="compact-grid" aria-label="Artifact Source Package summary">
+          <div class="row"><strong>Trusted refs</strong><span>{summary.trusted_count} accepted records can support artifact claims directly.</span></div>
+          <div class="row"><strong>Reviewable refs</strong><span>{summary.reviewable_count} records are constrained to draft, gap, assumption, limitation, or needs-review use.</span></div>
+          <div class="row"><strong>Blocking signals</strong><span>{summary.gap_count} gaps, {summary.source_limitation_count} source limitations, {summary.pending_review_count} pending review refs.</span></div>
+        </div>
+        <div class="row"><strong>Artifact Source Package</strong><span class="meta-line">{escape(source_package.package.package_id)}</span><span>Source context: {escape(source_package.package.source_context)}</span></div>
+        """
+        status = "source package"
+    return f"""<section class="panel" id="artifact-assembly" aria-labelledby="artifact-assembly-heading">
+      <div class="panel-heading"><h2 id="artifact-assembly-heading">Artifact Assembly</h2><span class="status-chip cyan">{escape(status)}</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Milestone packet input boundary</strong><span>Artifact Source Packages make the allowed inputs inspectable before any draft, renderer, or export workflow runs.</span><form class="inline-form" action="/artifact-assembly/opportunities/{escape(source_package.opportunity_id)}/source-package" method="post"><button class="action-button" type="submit">Create Source Package</button></form></div>
+        {package_rows}
+      </div>
+    </section>"""
+
+
+def _artifact_source_package_nav_label(
+    source_package: CommandCenterArtifactSourcePackage,
+) -> str:
+    if source_package.summary is None:
+        return "source package"
+    return str(source_package.summary.pending_review_count)
 
 
 def _knowledge_context_health_label(

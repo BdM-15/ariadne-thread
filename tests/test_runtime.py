@@ -204,6 +204,39 @@ and ghost strategy should shape capture follow-up.
     assert draft["trusted_opportunity_knowledge_updated"] is False
 
 
+def test_artifact_source_package_api_creates_command_center_visible_summary(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_ARTIFACT_ASSEMBLY_DIR": str(tmp_path / "artifact-assembly")}
+    )
+    client = TestClient(create_app(settings))
+
+    initial_shell = client.get("/")
+    assert initial_shell.status_code == 200
+    assert "Artifact Assembly" in initial_shell.text
+
+    response = client.post(
+        "/api/artifact-assembly/opportunities/"
+        "opp-aflcmc-recompete/source-package"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"]["opportunity_id"] == "opp-aflcmc-recompete"
+    assert body["summary"]["trusted_count"] >= 1
+    assert body["summary"]["reviewable_count"] >= 1
+    assert "draft" not in body
+
+    updated_shell = client.get("/")
+    assert updated_shell.status_code == 200
+    assert "Artifact Source Package" in updated_shell.text
+    assert "Trusted refs" in updated_shell.text
+    assert "Reviewable refs" in updated_shell.text
+
+
 def test_quick_capture_source_material_api_creates_pasted_text_raw_item() -> None:
     from fastapi.testclient import TestClient
 

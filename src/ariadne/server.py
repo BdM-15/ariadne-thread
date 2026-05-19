@@ -11,6 +11,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ariadne.action_plans import ActionPlanItem
+from ariadne.artifact_assembly import (
+    ArtifactAssemblyStore,
+    ArtifactSourcePackage,
+    ArtifactSourcePackageSummary,
+    create_artifact_source_package_from_context,
+    summarize_artifact_source_package,
+)
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
 from ariadne.capability_runs import (
     CapabilityRun,
@@ -268,6 +275,11 @@ class CapabilityRunResponse(BaseModel):
 
 class CapabilityRunListResponse(BaseModel):
     runs: tuple[CapabilityRun, ...]
+
+
+class ArtifactSourcePackageResponse(BaseModel):
+    package: ArtifactSourcePackage
+    summary: ArtifactSourcePackageSummary
 
 
 class CapabilityRunOutputReviewRequest(BaseModel):
@@ -605,6 +617,21 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return RedirectResponse(url="/#knowledge-context", status_code=303)
+
+    @app.post("/artifact-assembly/opportunities/{opportunity_id}/source-package")
+    def artifact_assembly_create_source_package_action(
+        opportunity_id: str,
+    ) -> RedirectResponse:
+        _create_artifact_source_package(opportunity_id, runtime_settings)
+        return RedirectResponse(url="/#artifact-assembly", status_code=303)
+
+    @app.post(
+        "/api/artifact-assembly/opportunities/{opportunity_id}/source-package"
+    )
+    def artifact_assembly_create_source_package(
+        opportunity_id: str,
+    ) -> ArtifactSourcePackageResponse:
+        return _create_artifact_source_package(opportunity_id, runtime_settings)
 
     @app.get(
         "/federal-data/sam-gov/enrichment-profiles/{profile_id}",
@@ -1829,6 +1856,30 @@ def _resolve_runtime_path(path: Path) -> Path:
 
 def _utc_timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _create_artifact_source_package(
+    opportunity_id: str,
+    runtime_settings: RuntimeSettings,
+) -> ArtifactSourcePackageResponse:
+    knowledge_context = build_command_center_knowledge_context(
+        runtime_settings,
+        workspace_root=Path.cwd(),
+    )
+    if opportunity_id != knowledge_context.opportunity_id:
+        raise HTTPException(status_code=404, detail="Opportunity context not found")
+    store = ArtifactAssemblyStore(
+        _resolve_runtime_path(runtime_settings.ariadne_artifact_assembly_dir)
+    )
+    package = create_artifact_source_package_from_context(
+        context=knowledge_context.context,
+        store=store,
+        created_at=_utc_timestamp(),
+    )
+    return ArtifactSourcePackageResponse(
+        package=package,
+        summary=summarize_artifact_source_package(package),
+    )
 
 
 def _federal_data_env_for_manifest(

@@ -1302,7 +1302,8 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
     seller_baseline = _render_capture_research_seller_baseline(run)
     requirements_fit = _render_capture_research_requirements_fit(run)
     competitive_gap = _render_capture_research_competitive_gap(run)
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}{competitive_gap}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    lens_analyses = _render_capture_research_lens_analyses(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}{competitive_gap}{lens_analyses}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
 
 
 def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
@@ -1397,8 +1398,34 @@ def _render_competitive_gap_signal_group(label: str, signals: tuple[object, ...]
     return f"""<div class="row"><strong>{escape(label)}</strong>{rows}</div>"""
 
 
+def _render_capture_research_lens_analyses(run: CaptureResearchRun) -> str:
+    if not run.capture_lens_analyses:
+        return ""
+    rows = "".join(_render_capture_research_lens_analysis(analysis) for analysis in run.capture_lens_analyses)
+    return f"""<div class="row-list"><div class="row"><strong>Selected Capture Lens Analysis</strong><span>Price-to-win, burn-rate, workload, and engagement outputs are shown separately by lens.</span><span>Reviewable outputs only; trusted downstream writes still require acceptance.</span></div>{rows}</div>"""
+
+
+def _render_capture_research_lens_analysis(analysis) -> str:
+    lens_label = _capture_research_lens_label(analysis.lens.value)
+    signals = "".join(
+        f"<span>{escape(signal.summary)} Target: {escape(signal.target_workflow)} Review: {escape(signal.review_state)} Confidence: {signal.confidence:.2f} Refs: {escape(_join_or_none(signal.supporting_seller_baseline_ref_ids))} Findings: {escape(_join_or_none(signal.supporting_source_finding_ids))} Source profile refs: {escape(_join_or_none(signal.supporting_source_profile_refs))} Follow-up: {escape(_join_or_none(signal.follow_up_needs))} Limits: {escape(_join_or_none(signal.source_limitations))}</span>"
+        for signal in analysis.signals
+    ) or "<span>None identified yet.</span>"
+    return f"""<div class="row"><strong>{escape(lens_label)}</strong><span>{escape(analysis.summary)}</span>{signals}</div>"""
+
+
 def _join_or_none(values: tuple[str, ...]) -> str:
     return ", ".join(values) if values else "none"
+
+
+def _capture_research_lens_label(lens: str) -> str:
+    labels = {
+        "price_to_win": "Price-to-Win",
+        "burn_rate_analysis": "Burn Rate Analysis",
+        "workload_analysis": "Workload Analysis",
+        "call_plan_cro": "Call Plan CRO",
+    }
+    return labels.get(lens, lens.replace("_", " ").title())
 
 
 def _capture_research_source_profile_label(source_profile_type: str) -> str:

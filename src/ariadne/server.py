@@ -39,6 +39,7 @@ from ariadne.capture_research import (
     run_approved_source_provider_collection,
     run_competitive_gap_analysis,
     run_requirements_fit_analysis,
+    run_selected_capture_lens_analysis,
     run_source_provider_smoke_check,
     run_web_source_collection,
 )
@@ -323,6 +324,11 @@ class CaptureResearchRequirementsFitRequest(BaseModel):
 
 class CaptureResearchCompetitiveGapRequest(BaseModel):
     analyzed_at: str | None = None
+
+
+class CaptureResearchSelectedLensAnalysisRequest(BaseModel):
+    analyzed_at: str | None = None
+    selected_lenses: tuple[CaptureResearchLens, ...] | None = None
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -879,6 +885,30 @@ def create_app(
                 run=run_competitive_gap_analysis(
                     store=store,
                     research_run_id=research_run_id,
+                    analyzed_at=request.analyzed_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/selected-lens-analysis")
+    def capture_research_selected_lens_analysis(
+        research_run_id: str,
+        request: CaptureResearchSelectedLensAnalysisRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=run_selected_capture_lens_analysis(
+                    store=store,
+                    research_run_id=research_run_id,
+                    selected_lenses=request.selected_lenses,
                     analyzed_at=request.analyzed_at,
                 )
             )

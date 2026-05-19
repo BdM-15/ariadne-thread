@@ -84,6 +84,9 @@ The first store should stay narrow and product-specific:
 - `seller_baseline_refs`
 - `source_collection_records`
 - `source_findings`
+- `requirements_fit_analysis`
+- `competitive_gap_analysis`
+- `capture_lens_analyses`
 - `insight_candidates`
 - `downstream_candidates`
 - `research_summary_view`
@@ -212,3 +215,4 @@ The first acceptance demo should show one opportunity or source-profile gap flow
 - #54 added provider-registry Web Source Collection with provider readiness, explicit-approval smoke checks for Crawl4AI, SearXNG, SerpApi, Olostep, and Firecrawl, approved provider-backed collection, fake adapters for automated tests, and manual live validation for all configured providers.
 - #55 added Seller Capability Baseline refs on Capture Research runs using accepted evidence and Reference Wiki context, surfaced baseline assumptions and gaps, produced deterministic Requirements Fit Analysis outputs for strengths, weaknesses, qualification risks, proof needs, and follow-up recommendations, projected those outputs as reviewable insight candidates, and rendered the refs and fit analysis in the existing Command Center without creating a seller-profile editor or automatic trusted downstream writes.
 - #56 added Competitive Gap Analysis over Source Findings and Seller Capability Baseline refs, producing reviewable discriminator candidates, vulnerabilities, proof gaps, competitor/incumbent notes, Teaming Partner Needs, BCC-ready inputs, and follow-up recommendations. The API and Command Center expose provenance and review state while explicitly preserving the boundary that no Bidder Comparison Chart rows, scores, slides, artifacts, or trusted downstream records are generated in this slice.
+- #57 added selected capture-lens analysis for Price-to-Win Research, Burn Rate Analysis, Workload Analysis, and targeted call-plan CRO engagement improvements. The shared lens analysis seam keeps outputs separated by lens with provenance, assumptions, source limitations, follow-up needs, confidence, and review state; CRO remains limited to engagement clarity and is not used as the primary burn-rate or price-to-win lens.

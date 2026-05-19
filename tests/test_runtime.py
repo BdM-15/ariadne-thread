@@ -2661,6 +2661,110 @@ def test_competitive_gap_api_and_shell_show_bcc_ready_notes(tmp_path) -> None:
     assert "later Bidder Comparison Chart work only" in shell_response.text
 
 
+def test_selected_lens_api_and_shell_show_outputs_by_lens(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_lens_baseline",
+            content=(
+                "Accepted seller evidence: pricing discipline, staffing model, transition proof, and customer proof points."
+            ),
+            source_ref="accepted lens baseline note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research price, burn, workload, and engagement assumptions.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "source_profile_refs": [
+                {
+                    "source_profile_type": "piid_contract_intelligence_profile",
+                    "source_profile_id": "piid_profile_FAKE1234",
+                    "source_element_key": "burn_posture",
+                    "source_element_summary": "PIID profile shows net obligations, monthly burn rate, remaining value, staffing workload, and recompete timing.",
+                }
+            ],
+            "selected_lenses": [
+                "price_to_win",
+                "burn_rate_analysis",
+                "workload_analysis",
+                "call_plan_cro",
+            ],
+            "source_targets": [
+                "budget ceiling price FTE staffing workload value proof friction next action"
+            ],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find pricing, burn, workload, and engagement signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+    fit_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+    lens_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/selected-lens-analysis",
+        json={"analyzed_at": "2026-05-18T12:20:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    assert fit_response.status_code == 200
+    assert lens_response.status_code == 200
+    run = lens_response.json()["run"]
+    analyses = {analysis["lens"]: analysis for analysis in run["capture_lens_analyses"]}
+    assert set(analyses) == {
+        "price_to_win",
+        "burn_rate_analysis",
+        "workload_analysis",
+        "call_plan_cro",
+    }
+    assert analyses["price_to_win"]["signals"][0]["target_workflow"] == "price_to_win"
+    assert analyses["burn_rate_analysis"]["signals"][0]["supporting_source_profile_refs"]
+    assert analyses["workload_analysis"]["signals"][0]["supporting_source_finding_ids"]
+    assert analyses["call_plan_cro"]["signals"][0]["target_workflow"] == "call_plan"
+    assert any(
+        "not the primary burn-rate or price-to-win lens" in limitation
+        for limitation in analyses["call_plan_cro"]["signals"][0]["source_limitations"]
+    )
+    assert {candidate.get("lens") for candidate in run["insight_candidates"] if candidate.get("capture_lens_analysis_id")} == {
+        "price_to_win",
+        "burn_rate_analysis",
+        "workload_analysis",
+        "call_plan_cro",
+    }
+    assert "trusted_output_written" not in lens_response.text
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Selected Capture Lens Analysis" in shell_response.text
+    assert "Price-to-Win" in shell_response.text
+    assert "Burn Rate Analysis" in shell_response.text
+    assert "Workload Analysis" in shell_response.text
+    assert "Call Plan CRO" in shell_response.text
+    assert "outputs are shown separately by lens" in shell_response.text
+
+
 def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path) -> None:
     research_root = tmp_path / "capture-research"
     settings = RuntimeSettings.from_mapping(

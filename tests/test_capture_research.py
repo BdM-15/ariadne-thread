@@ -23,6 +23,7 @@ from ariadne.capture_research import (
     run_approved_source_provider_collection,
     run_competitive_gap_analysis,
     run_requirements_fit_analysis,
+    run_selected_capture_lens_analysis,
     run_source_provider_smoke_check,
     run_web_source_collection,
 )
@@ -785,6 +786,144 @@ def test_competitive_gap_analysis_uses_baseline_gap_when_no_seller_refs(
     assert analysis.proof_gaps
     assert analysis.teaming_partner_needs
     assert analysis.bcc_artifact_generated is False
+
+
+def test_selected_capture_lenses_keep_price_burn_workload_and_cro_separate(
+    tmp_path,
+) -> None:
+    run = create_source_context_research_run(
+        "PIID burn posture needs price, workload, and engagement interpretation.",
+        opportunity_id="opp_aflcmc_recompete",
+        source_profile_refs=(
+            SourceProfileRef(
+                source_profile_type=SourceProfileType.PIID_CONTRACT_INTELLIGENCE_PROFILE,
+                source_profile_id="piid_profile_FAKE1234",
+                source_element_key="burn_posture",
+                source_element_summary=(
+                    "PIID profile shows net obligations, monthly burn rate, remaining value, "
+                    "period of performance, staffing workload, and recompete timing."
+                ),
+            ),
+        ),
+        selected_lenses=(
+            CaptureResearchLens.PRICE_TO_WIN,
+            CaptureResearchLens.BURN_RATE_ANALYSIS,
+            CaptureResearchLens.WORKLOAD_ANALYSIS,
+            CaptureResearchLens.CALL_PLAN_CRO,
+        ),
+        source_targets=("budget ceiling price FTE staffing value proof friction next action",),
+        source_limits=("public_web_only",),
+        prompt="Research price, burn, workload, and engagement assumptions.",
+        evidence_goals=("Find pricing, burn, workload, and engagement clarity signals.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(
+        run.model_copy(
+            update={
+                "source_findings": (
+                    _requirements_fit_source_finding(
+                        "Budget ceiling and evaluated price are unclear. Source mentions FTE staffing, workload volume, value proof, call friction, and desired next action."
+                    ),
+                ),
+            }
+        )
+    )
+    evidence = create_source_evidence(
+        evidence_id="ev_seller_lens_baseline",
+        content=(
+            "Seller proof includes transition past performance, staffing model, cyber modernization, pricing discipline, and customer proof points."
+        ),
+        source_ref="accepted lens baseline note",
+        opportunity_id="opp_aflcmc_recompete",
+    )
+    fitted = run_requirements_fit_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        evidence_items=(evidence,),
+        reference_influences=(),
+        analyzed_at="2026-05-18T12:10:00+00:00",
+    )
+
+    analyzed = run_selected_capture_lens_analysis(
+        store=store,
+        research_run_id=fitted.research_run_id,
+        analyzed_at="2026-05-18T12:20:00+00:00",
+    )
+
+    analyses = {analysis.lens: analysis for analysis in analyzed.capture_lens_analyses}
+    assert set(analyses) == {
+        CaptureResearchLens.PRICE_TO_WIN,
+        CaptureResearchLens.BURN_RATE_ANALYSIS,
+        CaptureResearchLens.WORKLOAD_ANALYSIS,
+        CaptureResearchLens.CALL_PLAN_CRO,
+    }
+    price_signal = analyses[CaptureResearchLens.PRICE_TO_WIN].signals[0]
+    burn_signal = analyses[CaptureResearchLens.BURN_RATE_ANALYSIS].signals[0]
+    workload_signal = analyses[CaptureResearchLens.WORKLOAD_ANALYSIS].signals[0]
+    cro_signal = analyses[CaptureResearchLens.CALL_PLAN_CRO].signals[0]
+    assert price_signal.target_workflow == "price_to_win"
+    assert price_signal.confidence > 0.6
+    assert price_signal.source_limitations
+    assert burn_signal.supporting_source_profile_refs
+    assert "PIID" in burn_signal.source_limitations[0] or burn_signal.confidence > 0.7
+    assert workload_signal.supporting_source_finding_ids
+    assert "scope, staffing, timing, or complexity" in workload_signal.summary
+    assert cro_signal.target_workflow == "call_plan"
+    assert any("not the primary burn-rate or price-to-win lens" in limitation for limitation in cro_signal.source_limitations)
+    assert price_signal.lens is CaptureResearchLens.PRICE_TO_WIN
+    assert burn_signal.lens is CaptureResearchLens.BURN_RATE_ANALYSIS
+    assert cro_signal.lens is not CaptureResearchLens.PRICE_TO_WIN
+    lens_candidates = [
+        candidate for candidate in analyzed.insight_candidates if candidate.get("capture_lens_analysis_id")
+    ]
+    assert {candidate["lens"] for candidate in lens_candidates} == {
+        "price_to_win",
+        "burn_rate_analysis",
+        "workload_analysis",
+        "call_plan_cro",
+    }
+    assert all(candidate["review_state"] == "pending_review" for candidate in lens_candidates)
+    assert "trusted_output_written" not in analyzed.model_dump_json()
+
+
+def test_selected_capture_lens_endpoint_can_run_requested_subset(tmp_path) -> None:
+    run = create_user_prompted_research_run(
+        "Research only engagement clarity.",
+        opportunity_id="opp_customer_call",
+        selected_lenses=(CaptureResearchLens.PRICE_TO_WIN, CaptureResearchLens.CALL_PLAN_CRO),
+        source_targets=("customer meeting value proof friction next action",),
+        source_limits=("public_web_only",),
+        evidence_goals=("Find engagement clarity improvements.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(
+        run.model_copy(
+            update={
+                "source_findings": (
+                    _requirements_fit_source_finding(
+                        "Customer meeting notes show value proof friction, stakeholder objections, and unclear next action."
+                    ),
+                ),
+            }
+        )
+    )
+
+    analyzed = run_selected_capture_lens_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        selected_lenses=(CaptureResearchLens.CALL_PLAN_CRO,),
+        analyzed_at="2026-05-18T12:20:00+00:00",
+    )
+
+    assert tuple(analysis.lens for analysis in analyzed.capture_lens_analyses) == (
+        CaptureResearchLens.CALL_PLAN_CRO,
+    )
+    assert analyzed.capture_lens_analyses[0].signals[0].target_workflow == "call_plan"
+    assert all(
+        candidate.get("lens") != "price_to_win" for candidate in analyzed.insight_candidates
+    )
 
 
 def _requirements_fit_source_finding(excerpt: str) -> SourceFinding:

@@ -35,6 +35,7 @@ class CaptureResearchLens(StrEnum):
     PRODUCT_POSITIONING = "product_positioning"
     SALES_ENABLEMENT = "sales_enablement"
     PRICE_TO_WIN = "price_to_win"
+    BURN_RATE_ANALYSIS = "burn_rate_analysis"
     WORKLOAD_ANALYSIS = "workload_analysis"
     CALL_PLAN_CRO = "call_plan_cro"
 
@@ -354,6 +355,34 @@ class CompetitiveGapAnalysis(BaseModel):
     bcc_artifact_generated: bool = False
 
 
+class CaptureLensSignal(BaseModel):
+    id: str
+    lens: CaptureResearchLens
+    analysis_kind: str
+    summary: str
+    target_workflow: str
+    supporting_seller_baseline_ref_ids: tuple[str, ...] = ()
+    supporting_source_finding_ids: tuple[str, ...] = ()
+    supporting_source_profile_refs: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    source_limitations: tuple[str, ...] = ()
+    follow_up_needs: tuple[str, ...] = ()
+    confidence: float = Field(ge=0, le=1)
+    review_state: str = "pending_review"
+
+
+class CaptureLensAnalysis(BaseModel):
+    id: str
+    lens: CaptureResearchLens
+    analyzed_at: str
+    summary: str
+    seller_baseline_ref_ids: tuple[str, ...] = ()
+    source_finding_ids: tuple[str, ...] = ()
+    source_profile_refs: tuple[str, ...] = ()
+    signals: tuple[CaptureLensSignal, ...] = ()
+    review_state: str = "pending_review"
+
+
 class CaptureResearchRun(BaseModel):
     research_run_id: str
     opportunity_id: str | None = None
@@ -368,6 +397,7 @@ class CaptureResearchRun(BaseModel):
     source_findings: tuple[SourceFinding, ...] = ()
     requirements_fit_analysis: RequirementsFitAnalysis | None = None
     competitive_gap_analysis: CompetitiveGapAnalysis | None = None
+    capture_lens_analyses: tuple[CaptureLensAnalysis, ...] = ()
     insight_candidates: tuple[dict[str, object], ...] = ()
     downstream_candidates: tuple[dict[str, object], ...] = ()
     research_summary_view: str | None = None
@@ -827,6 +857,83 @@ _GAP_SIGNAL_TERMS = frozenset(
         "subcontractor",
         "teaming",
         "vehicle",
+    }
+)
+
+_PRICE_TO_WIN_TERMS = frozenset(
+    {
+        "award",
+        "budget",
+        "burn",
+        "ceiling",
+        "cost",
+        "funding",
+        "lpta",
+        "margin",
+        "obligation",
+        "price",
+        "pricing",
+        "rate",
+        "rates",
+        "spend",
+        "value",
+    }
+)
+
+_BURN_RATE_TERMS = frozenset(
+    {
+        "burn",
+        "daily",
+        "deobligation",
+        "funding",
+        "monthly",
+        "obligation",
+        "obligations",
+        "option",
+        "period",
+        "pop",
+        "remaining",
+        "spend",
+        "velocity",
+    }
+)
+
+_WORKLOAD_SIGNAL_TERMS = frozenset(
+    {
+        "complexity",
+        "fte",
+        "hours",
+        "labor",
+        "operations",
+        "scope",
+        "sites",
+        "staff",
+        "staffing",
+        "team",
+        "tickets",
+        "timing",
+        "transition",
+        "users",
+        "volume",
+        "workload",
+    }
+)
+
+_ENGAGEMENT_CRO_TERMS = frozenset(
+    {
+        "action",
+        "call",
+        "clarity",
+        "customer",
+        "differentiator",
+        "engagement",
+        "friction",
+        "meeting",
+        "next",
+        "objection",
+        "proof",
+        "stakeholder",
+        "value",
     }
 )
 
@@ -1494,6 +1601,44 @@ def run_competitive_gap_analysis(
     return store.write(updated)
 
 
+def run_selected_capture_lens_analysis(
+    *,
+    store: CaptureResearchStore,
+    research_run_id: str,
+    selected_lenses: tuple[CaptureResearchLens, ...] | None = None,
+    analyzed_at: str | None = None,
+) -> CaptureResearchRun:
+    timestamp = analyzed_at or datetime.now(UTC).isoformat()
+    run = store.read(research_run_id)
+    baseline_refs = run.seller_baseline_refs or (_missing_seller_baseline_ref(run),)
+    analyses = build_selected_capture_lens_analyses(
+        run,
+        seller_baseline_refs=baseline_refs,
+        selected_lenses=selected_lenses or run.selected_lenses,
+        analyzed_at=timestamp,
+    )
+    if not analyses:
+        raise ValueError("No supported capture research lenses selected for analysis")
+    analyzed_lenses = {analysis.lens for analysis in analyses}
+    prior_analyses = tuple(
+        analysis
+        for analysis in run.capture_lens_analyses
+        if analysis.lens not in analyzed_lenses
+    )
+    insight_candidates = _capture_lens_insight_candidates(analyses)
+    updated = run.model_copy(
+        update={
+            "status": CaptureResearchRunStatus.NEEDS_REVIEW,
+            "seller_baseline_refs": baseline_refs,
+            "capture_lens_analyses": prior_analyses + analyses,
+            "insight_candidates": run.insight_candidates + insight_candidates,
+            "research_summary_view": _capture_lens_summary_view(analyses),
+            "updated_at": timestamp,
+        }
+    )
+    return store.write(updated)
+
+
 def select_seller_baseline_refs(
     run: CaptureResearchRun,
     *,
@@ -1644,6 +1789,302 @@ def build_competitive_gap_analysis(
         teaming_partner_needs=teaming_needs,
         bcc_ready_notes=bcc_notes,
         follow_up_recommendations=follow_ups,
+    )
+
+
+def build_selected_capture_lens_analyses(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    selected_lenses: tuple[CaptureResearchLens, ...],
+    analyzed_at: str,
+) -> tuple[CaptureLensAnalysis, ...]:
+    analyses: list[CaptureLensAnalysis] = []
+    unique_lenses = tuple(dict.fromkeys(selected_lenses))
+    for lens in unique_lenses:
+        if lens is CaptureResearchLens.PRICE_TO_WIN:
+            analyses.append(
+                _build_price_to_win_analysis(
+                    run,
+                    seller_baseline_refs=seller_baseline_refs,
+                    analyzed_at=analyzed_at,
+                )
+            )
+        elif lens is CaptureResearchLens.BURN_RATE_ANALYSIS:
+            analyses.append(
+                _build_burn_rate_analysis(
+                    run,
+                    seller_baseline_refs=seller_baseline_refs,
+                    analyzed_at=analyzed_at,
+                )
+            )
+        elif lens is CaptureResearchLens.WORKLOAD_ANALYSIS:
+            analyses.append(
+                _build_workload_analysis(
+                    run,
+                    seller_baseline_refs=seller_baseline_refs,
+                    analyzed_at=analyzed_at,
+                )
+            )
+        elif lens is CaptureResearchLens.CALL_PLAN_CRO:
+            analyses.append(
+                _build_call_plan_cro_analysis(
+                    run,
+                    seller_baseline_refs=seller_baseline_refs,
+                    analyzed_at=analyzed_at,
+                )
+            )
+    return tuple(analyses)
+
+
+def _build_price_to_win_analysis(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    analyzed_at: str,
+) -> CaptureLensAnalysis:
+    ref_ids = tuple(ref.id for ref in seller_baseline_refs)
+    finding_ids = _source_finding_ids_with_terms(run.source_findings, _PRICE_TO_WIN_TERMS)
+    profile_refs = _source_profile_refs_with_terms(run.source_profile_refs, _PRICE_TO_WIN_TERMS)
+    matched_terms = _matched_lens_terms(run, seller_baseline_refs, _PRICE_TO_WIN_TERMS)
+    limitations = _capture_lens_source_limitations(run)
+    if not profile_refs:
+        limitations += ("No deterministic budget, ceiling, obligation, or PIID profile context is attached yet.",)
+    if matched_terms:
+        summary = (
+            "Price-to-Win Research assumption: current context contains pricing signals around "
+            + ", ".join(matched_terms[:6])
+            + "."
+        )
+    else:
+        summary = "Price-to-Win Research assumption: pricing posture is under-sourced and needs deterministic budget or award context."
+    signal = _capture_lens_signal(
+        lens=CaptureResearchLens.PRICE_TO_WIN,
+        analysis_kind="price_to_win_assumption",
+        summary=summary,
+        target_workflow="price_to_win",
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        profile_refs=profile_refs,
+        assumptions=(
+            "Pricing strategy assumptions are reviewable planning inputs, not final bid-price guidance.",
+        ),
+        source_limitations=limitations,
+        follow_up_needs=(
+            "Pull deterministic award value, ceiling, funding, and incumbent obligation context before using this for pricing decisions.",
+        ),
+        confidence=0.72 if matched_terms or profile_refs else 0.46,
+    )
+    return _capture_lens_analysis(
+        lens=CaptureResearchLens.PRICE_TO_WIN,
+        analyzed_at=analyzed_at,
+        seller_baseline_ref_ids=ref_ids,
+        source_finding_ids=finding_ids,
+        source_profile_refs=profile_refs,
+        signals=(signal,),
+        summary="Price-to-Win Research produced 1 reviewable pricing strategy assumption.",
+    )
+
+
+def _build_burn_rate_analysis(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    analyzed_at: str,
+) -> CaptureLensAnalysis:
+    ref_ids = tuple(ref.id for ref in seller_baseline_refs)
+    finding_ids = _source_finding_ids_with_terms(run.source_findings, _BURN_RATE_TERMS)
+    profile_refs = _source_profile_refs_with_terms(run.source_profile_refs, _BURN_RATE_TERMS)
+    piid_profile_refs = tuple(
+        _source_profile_ref_key(ref)
+        for ref in run.source_profile_refs
+        if ref.source_profile_type is SourceProfileType.PIID_CONTRACT_INTELLIGENCE_PROFILE
+    )
+    if piid_profile_refs:
+        profile_refs = tuple(dict.fromkeys(profile_refs + piid_profile_refs))
+    matched_terms = _matched_lens_terms(run, seller_baseline_refs, _BURN_RATE_TERMS)
+    limitations = _capture_lens_source_limitations(run)
+    if not piid_profile_refs:
+        limitations += ("No PIID Contract Intelligence Profile is attached; burn-rate posture remains a research assumption.",)
+    summary = (
+        "Burn Rate Analysis: deterministic profile context and Source Findings suggest funding, timing, or recompete implications"
+        if matched_terms or piid_profile_refs
+        else "Burn Rate Analysis: no usable obligation, spend, or period-of-performance signal is attached yet"
+    )
+    if matched_terms:
+        summary += " around " + ", ".join(matched_terms[:6])
+    summary += "."
+    signal = _capture_lens_signal(
+        lens=CaptureResearchLens.BURN_RATE_ANALYSIS,
+        analysis_kind="burn_rate_implication",
+        summary=summary,
+        target_workflow="price_to_win",
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        profile_refs=profile_refs,
+        assumptions=(
+            "Burn-rate signals are directional until checked against USAspending obligation history and period-of-performance dates.",
+        ),
+        source_limitations=limitations,
+        follow_up_needs=(
+            "Review PIID burn posture, remaining value, transaction cadence, and funding stability before shaping price-to-win or workload assumptions.",
+        ),
+        confidence=0.76 if piid_profile_refs else 0.48,
+    )
+    return _capture_lens_analysis(
+        lens=CaptureResearchLens.BURN_RATE_ANALYSIS,
+        analyzed_at=analyzed_at,
+        seller_baseline_ref_ids=ref_ids,
+        source_finding_ids=finding_ids,
+        source_profile_refs=profile_refs,
+        signals=(signal,),
+        summary="Burn Rate Analysis produced 1 reviewable funding, timing, or recompete implication.",
+    )
+
+
+def _build_workload_analysis(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    analyzed_at: str,
+) -> CaptureLensAnalysis:
+    ref_ids = tuple(ref.id for ref in seller_baseline_refs)
+    finding_ids = _source_finding_ids_with_terms(run.source_findings, _WORKLOAD_SIGNAL_TERMS)
+    profile_refs = _source_profile_refs_with_terms(run.source_profile_refs, _WORKLOAD_SIGNAL_TERMS)
+    matched_terms = _matched_lens_terms(run, seller_baseline_refs, _WORKLOAD_SIGNAL_TERMS)
+    limitations = _capture_lens_source_limitations(run)
+    if matched_terms:
+        summary = (
+            "Workload Analysis assumption: current sources indicate scope, staffing, timing, or complexity drivers around "
+            + ", ".join(matched_terms[:6])
+            + "."
+        )
+    else:
+        summary = "Workload Analysis assumption: current sources do not yet quantify scope, staffing, timing, or operational complexity."
+    signal = _capture_lens_signal(
+        lens=CaptureResearchLens.WORKLOAD_ANALYSIS,
+        analysis_kind="workload_implication",
+        summary=summary,
+        target_workflow="action_plan",
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        profile_refs=profile_refs,
+        assumptions=(
+            "Workload implications are assumptions until validated against solicitation, incumbent, or customer-provided workload data.",
+        ),
+        source_limitations=limitations,
+        follow_up_needs=(
+            "Collect scope volumes, staffing model clues, transition timing, sites, users, tickets, or service-level expectations.",
+        ),
+        confidence=0.7 if matched_terms else 0.45,
+    )
+    return _capture_lens_analysis(
+        lens=CaptureResearchLens.WORKLOAD_ANALYSIS,
+        analyzed_at=analyzed_at,
+        seller_baseline_ref_ids=ref_ids,
+        source_finding_ids=finding_ids,
+        source_profile_refs=profile_refs,
+        signals=(signal,),
+        summary="Workload Analysis produced 1 reviewable scope, staffing, timing, or complexity implication.",
+    )
+
+
+def _build_call_plan_cro_analysis(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    analyzed_at: str,
+) -> CaptureLensAnalysis:
+    ref_ids = tuple(ref.id for ref in seller_baseline_refs)
+    finding_ids = _source_finding_ids_with_terms(run.source_findings, _ENGAGEMENT_CRO_TERMS)
+    profile_refs = _source_profile_refs_with_terms(run.source_profile_refs, _ENGAGEMENT_CRO_TERMS)
+    matched_terms = _matched_lens_terms(run, seller_baseline_refs, _ENGAGEMENT_CRO_TERMS)
+    limitations = _capture_lens_source_limitations(run) + (
+        "CRO is limited to call-plan and customer-engagement clarity; it is not the primary burn-rate or price-to-win lens.",
+    )
+    summary = (
+        "Targeted CRO-style engagement improvement: sharpen value, proof, friction, and next-action clarity"
+    )
+    if matched_terms:
+        summary += " around " + ", ".join(matched_terms[:6])
+    summary += "."
+    signal = _capture_lens_signal(
+        lens=CaptureResearchLens.CALL_PLAN_CRO,
+        analysis_kind="engagement_clarity_improvement",
+        summary=summary,
+        target_workflow="call_plan",
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        profile_refs=profile_refs,
+        assumptions=(
+            "Engagement improvements should become call-plan prompts or proof requests, not broad marketing automation.",
+        ),
+        source_limitations=limitations,
+        follow_up_needs=(
+            "Prepare sharper call-plan questions, proof points, objections, and desired next action before customer engagement.",
+        ),
+        confidence=0.68 if matched_terms or seller_baseline_refs else 0.44,
+    )
+    return _capture_lens_analysis(
+        lens=CaptureResearchLens.CALL_PLAN_CRO,
+        analyzed_at=analyzed_at,
+        seller_baseline_ref_ids=ref_ids,
+        source_finding_ids=finding_ids,
+        source_profile_refs=profile_refs,
+        signals=(signal,),
+        summary="Targeted CRO-style engagement analysis produced 1 reviewable call-plan clarity improvement.",
+    )
+
+
+def _capture_lens_analysis(
+    *,
+    lens: CaptureResearchLens,
+    analyzed_at: str,
+    summary: str,
+    seller_baseline_ref_ids: tuple[str, ...],
+    source_finding_ids: tuple[str, ...],
+    source_profile_refs: tuple[str, ...],
+    signals: tuple[CaptureLensSignal, ...],
+) -> CaptureLensAnalysis:
+    return CaptureLensAnalysis(
+        id=f"capture_lens_{lens.value}_{uuid4().hex}",
+        lens=lens,
+        analyzed_at=analyzed_at,
+        summary=summary,
+        seller_baseline_ref_ids=seller_baseline_ref_ids,
+        source_finding_ids=source_finding_ids,
+        source_profile_refs=source_profile_refs,
+        signals=signals,
+    )
+
+
+def _capture_lens_signal(
+    *,
+    lens: CaptureResearchLens,
+    analysis_kind: str,
+    summary: str,
+    target_workflow: str,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    profile_refs: tuple[str, ...],
+    assumptions: tuple[str, ...],
+    source_limitations: tuple[str, ...],
+    follow_up_needs: tuple[str, ...],
+    confidence: float,
+) -> CaptureLensSignal:
+    return CaptureLensSignal(
+        id=f"capture_lens_{lens.value}_{analysis_kind}_{uuid4().hex[:8]}",
+        lens=lens,
+        analysis_kind=analysis_kind,
+        summary=summary,
+        target_workflow=target_workflow,
+        supporting_seller_baseline_ref_ids=ref_ids,
+        supporting_source_finding_ids=finding_ids,
+        supporting_source_profile_refs=profile_refs,
+        assumptions=assumptions,
+        source_limitations=source_limitations,
+        follow_up_needs=follow_up_needs,
+        confidence=confidence,
     )
 
 
@@ -1928,6 +2369,70 @@ def _source_findings_have_terms(
         _normalized_signal_tokens(f"{finding.title} {finding.excerpt}") & terms
         for finding in source_findings
     )
+
+
+def _source_finding_ids_with_terms(
+    source_findings: tuple[SourceFinding, ...], terms: frozenset[str]
+) -> tuple[str, ...]:
+    matching_ids = tuple(
+        finding.id
+        for finding in source_findings
+        if _normalized_signal_tokens(f"{finding.title} {finding.excerpt}") & terms
+    )
+    if matching_ids:
+        return matching_ids
+    return tuple(finding.id for finding in source_findings)
+
+
+def _source_profile_refs_with_terms(
+    source_profile_refs: tuple[SourceProfileRef, ...], terms: frozenset[str]
+) -> tuple[str, ...]:
+    return tuple(
+        _source_profile_ref_key(ref)
+        for ref in source_profile_refs
+        if _normalized_signal_tokens(
+            f"{ref.source_profile_type.value} {ref.source_element_key} {ref.source_element_summary}"
+        )
+        & terms
+    )
+
+
+def _source_profile_ref_key(ref: SourceProfileRef) -> str:
+    return f"{ref.source_profile_type.value}:{ref.source_profile_id}:{ref.source_element_key}"
+
+
+def _matched_lens_terms(
+    run: CaptureResearchRun,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    terms: frozenset[str],
+) -> tuple[str, ...]:
+    context = " ".join(
+        (
+            run.research_brief.research_question,
+            " ".join(run.research_brief.known_pivots),
+            " ".join(run.research_brief.evidence_goals),
+            " ".join(run.research_brief.source_targets),
+            " ".join(ref.source_element_summary for ref in run.source_profile_refs),
+            " ".join(finding.excerpt for finding in run.source_findings),
+            " ".join(ref.summarized_support for ref in seller_baseline_refs),
+            " ".join(gap for ref in seller_baseline_refs for gap in ref.baseline_gaps),
+        )
+    )
+    return tuple(sorted(_normalized_signal_tokens(context) & terms))
+
+
+def _capture_lens_source_limitations(run: CaptureResearchRun) -> tuple[str, ...]:
+    limitations = tuple(
+        dict.fromkeys(
+            run.research_brief.source_limits
+            + tuple(
+                limitation
+                for finding in run.source_findings
+                for limitation in finding.source_limitations
+            )
+        )
+    )
+    return limitations or ("No source limitations were recorded for this run.",)
 
 
 def _seller_baseline_ref_from_evidence(
@@ -2252,6 +2757,34 @@ def _competitive_gap_insight_candidates(
     return tuple(candidates)
 
 
+def _capture_lens_insight_candidates(
+    analyses: tuple[CaptureLensAnalysis, ...]
+) -> tuple[dict[str, object], ...]:
+    candidates: list[dict[str, object]] = []
+    for analysis in analyses:
+        for signal in analysis.signals:
+            candidates.append(
+                {
+                    "id": f"insight_candidate_{signal.id}",
+                    "candidate_type": f"capture_lens_{signal.lens.value}",
+                    "target_workflow": signal.target_workflow,
+                    "title": signal.summary,
+                    "summary": signal.summary,
+                    "review_state": signal.review_state,
+                    "supporting_seller_baseline_ref_ids": signal.supporting_seller_baseline_ref_ids,
+                    "supporting_source_finding_ids": signal.supporting_source_finding_ids,
+                    "supporting_source_profile_refs": signal.supporting_source_profile_refs,
+                    "autonomy_tier": "review_required",
+                    "capture_lens_analysis_id": analysis.id,
+                    "lens": signal.lens.value,
+                    "analysis_kind": signal.analysis_kind,
+                    "source_limitations": signal.source_limitations,
+                    "follow_up_needs": signal.follow_up_needs,
+                }
+            )
+    return tuple(candidates)
+
+
 def _requirements_fit_summary_view(analysis: RequirementsFitAnalysis) -> str:
     return (
         f"{analysis.summary} Trusted downstream writes remain review-gated; "
@@ -2263,6 +2796,15 @@ def _competitive_gap_summary_view(analysis: CompetitiveGapAnalysis) -> str:
     return (
         f"{analysis.summary} BCC-ready notes are inputs for later Bidder Comparison Chart work only; "
         "no BCC artifact, row, or slide is generated. Trusted downstream writes remain review-gated."
+    )
+
+
+def _capture_lens_summary_view(analyses: tuple[CaptureLensAnalysis, ...]) -> str:
+    lens_names = ", ".join(analysis.lens.value.replace("_", " ") for analysis in analyses)
+    signal_count = sum(len(analysis.signals) for analysis in analyses)
+    return (
+        f"Selected capture lens analysis ran for {lens_names}, producing {signal_count} "
+        "reviewable signal(s). Price-to-win, burn-rate, workload, and engagement outputs stay separated by lens; trusted downstream writes remain review-gated."
     )
 
 

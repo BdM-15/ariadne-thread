@@ -21,14 +21,19 @@ from ariadne.capability_runs import (
     run_local_admin_model_readiness_probe,
 )
 from ariadne.capture_research import (
+    ApprovedWebSourceCollectionAdapter,
     CaptureResearchLens,
     CaptureResearchRun,
     CaptureResearchRunStatus,
     CaptureResearchStore,
     FakeWebSourceCollectionAdapter,
+    SourceProviderRegistry,
     SourceProfileRef,
+    build_source_provider_registry,
+    create_source_provider_adapter,
     create_source_context_research_run,
     create_user_prompted_research_run,
+    run_approved_source_provider_collection,
     run_web_source_collection,
 )
 from ariadne.command_center import (
@@ -281,7 +286,17 @@ class CaptureResearchRunListResponse(BaseModel):
     runs: tuple[CaptureResearchRun, ...]
 
 
+class CaptureResearchSourceProviderResponse(BaseModel):
+    registry: SourceProviderRegistry
+
+
 class CaptureResearchFakeCollectionRequest(BaseModel):
+    collected_at: str | None = None
+
+
+class CaptureResearchSourceProviderCollectionRequest(BaseModel):
+    approved: bool = False
+    provider_ids: tuple[str, ...] = ()
     collected_at: str | None = None
 
 
@@ -441,6 +456,7 @@ def create_app(
     sam_gov_attachment_fetcher: SamGovAttachmentFetcher | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
     local_admin_model_client: LocalAdminModelClient | None = None,
+    source_provider_adapter: ApprovedWebSourceCollectionAdapter | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -686,6 +702,14 @@ def create_app(
             runs=tuple(store.list(opportunity_id=opportunity_id, status=status))
         )
 
+    @app.get("/api/capture-research/source-providers")
+    def capture_research_source_providers() -> CaptureResearchSourceProviderResponse:
+        return CaptureResearchSourceProviderResponse(
+            registry=build_source_provider_registry(
+                runtime_settings.capture_research_source_env
+            )
+        )
+
     @app.get("/api/capture-research/runs/{research_run_id}")
     def capture_research_run_detail(
         research_run_id: str,
@@ -695,6 +719,41 @@ def create_app(
         )
         try:
             return CaptureResearchRunResponse(run=store.read(research_run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/source-provider-collection")
+    def capture_research_source_provider_collection(
+        research_run_id: str,
+        request: CaptureResearchSourceProviderCollectionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        registry = build_source_provider_registry(
+            runtime_settings.capture_research_source_env
+        )
+        try:
+            adapter = source_provider_adapter or create_source_provider_adapter(
+                env=runtime_settings.capture_research_source_env,
+                registry=registry,
+                provider_ids=request.provider_ids,
+            )
+            return CaptureResearchRunResponse(
+                run=run_approved_source_provider_collection(
+                    store=store,
+                    research_run_id=research_run_id,
+                    registry=registry,
+                    adapter=adapter,
+                    approved=request.approved,
+                    provider_ids=request.provider_ids,
+                    collected_at=request.collected_at,
+                )
+            )
         except FileNotFoundError as error:
             raise HTTPException(
                 status_code=404, detail="Capture Research run not found"

@@ -1,4 +1,10 @@
 from ariadne.config import RuntimeSettings
+from ariadne.capture_research import (
+    CapabilityProvenance,
+    CaptureResearchSourceMode,
+    SourceFinding,
+    WebSourceCollectionRecord,
+)
 from ariadne.document_intake import DocumentIntakeStore
 from ariadne.evidence import LocalEvidenceStore
 from ariadne.federal_data import FederalDataInitializeRunnerResult
@@ -20,6 +26,55 @@ from ariadne.sam_gov_profiles import (
 )
 from ariadne.server import create_app
 from ariadne.usaspending import USAspendingMcpToolResult
+
+
+class _RuntimeProviderFixtureAdapter:
+    source_mode = CaptureResearchSourceMode.LIVE_OLOSTEP
+    provider_ids = ("serpapi_live", "olostep_live")
+
+    def collect(
+        self,
+        run,
+        *,
+        collected_at: str,
+    ) -> tuple[tuple[WebSourceCollectionRecord, ...], tuple[SourceFinding, ...]]:
+        provenance = CapabilityProvenance(
+            source_capability_id="serpapi_live+olostep_live",
+            source_tool_name="collect_provider_backed_public_sources",
+            source_package="ariadne.capture_research",
+            source_package_version="local",
+        )
+        limitations = (
+            "SerpApi supplies search discovery; Olostep supplies crawl/extraction fallback.",
+            "Automated test uses injected provider fixture data.",
+        )
+        finding = SourceFinding(
+            id="source_finding_runtime_fixture_1",
+            source_target=run.research_brief.source_targets[0],
+            url="https://example.test/provider-result",
+            title="Provider-backed fixture finding",
+            source_type="provider_backed_public_web",
+            collected_at=collected_at,
+            excerpt="Provider-backed fixture excerpt.",
+            confidence=0.74,
+            source_limitations=limitations,
+            source_mode=self.source_mode,
+            capability_provenance=provenance,
+            provider_ids=self.provider_ids,
+            approval_basis=run.research_brief.approval_basis,
+        )
+        record = WebSourceCollectionRecord(
+            id="web_collection_runtime_fixture_1",
+            source_target=finding.source_target,
+            source_mode=self.source_mode,
+            collected_at=collected_at,
+            capability_provenance=provenance,
+            source_limitations=limitations,
+            finding_ids=(finding.id,),
+            provider_ids=self.provider_ids,
+            approval_basis=run.research_brief.approval_basis,
+        )
+        return (record,), (finding,)
 
 
 def test_quick_capture_reference_influences_api_exposes_wiki_matches(tmp_path) -> None:
@@ -2403,6 +2458,121 @@ def test_fake_web_source_collection_api_and_shell_show_findings(tmp_path) -> Non
     assert "Fake adapter test data is not live source-provider success." in (
         shell_response.text
     )
+
+
+def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+            "OLOSTEP_API_KEY": "olostep-secret",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).get(
+        "/api/capture-research/source-providers"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["registry"]["quality_status"] == "full_ready"
+    assert body["registry"]["recommended_provider_ids"] == [
+        "serpapi_live",
+        "olostep_live",
+    ]
+    assert "serpapi-secret" not in response.text
+    assert "olostep-secret" not in response.text
+    assert "SERPAPI_API_KEY" in response.text
+    assert "OLOSTEP_API_KEY" in response.text
+
+
+def test_source_provider_collection_api_requires_approval(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+            "OLOSTEP_API_KEY": "olostep-secret",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(settings, source_provider_adapter=_RuntimeProviderFixtureAdapter())
+    )
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research public customer context.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["https://example.gov/program-office"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find customer and incumbent signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/source-provider-collection",
+        json={"approved": False},
+    )
+
+    assert collect_response.status_code == 400
+    assert "requires explicit approval" in collect_response.text
+
+
+def test_source_provider_collection_api_records_provider_findings(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+            "OLOSTEP_API_KEY": "olostep-secret",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(settings, source_provider_adapter=_RuntimeProviderFixtureAdapter())
+    )
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research public customer context.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["https://example.gov/program-office"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find customer and incumbent signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/source-provider-collection",
+        json={"approved": True, "collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    run = collect_response.json()["run"]
+    assert run["status"] == "needs_review"
+    assert run["source_collection_records"][0]["source_mode"] == "live_olostep"
+    assert run["source_collection_records"][0]["provider_ids"] == [
+        "serpapi_live",
+        "olostep_live",
+    ]
+    assert run["source_findings"][0]["url"] == "https://example.test/provider-result"
+    assert run["source_findings"][0]["capability_provenance"][
+        "source_capability_id"
+    ] == "serpapi_live+olostep_live"
+    assert "serpapi-secret" not in collect_response.text
+    assert "olostep-secret" not in collect_response.text
 
 
 def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:

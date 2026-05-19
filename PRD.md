@@ -171,11 +171,11 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 | 1102tools/federal-contracting-mcps            | Hardened public federal data MCPs for USAspending, SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov                       | https://github.com/1102tools/federal-contracting-mcps   |
 | 1102tools/federal-contracting-skills          | Government contracting deliverables (IGCE, SOW/PWS, market research)                                                                                       | https://github.com/1102tools/federal-contracting-skills |
 | coreyhaines31/marketingskills                 | Vendored workspace skills for value propositions, positioning, messaging, customer research, competitor profiling, sales enablement, pricing, and CRO      | https://github.com/coreyhaines31/marketingskills        |
-| Crawl4AI                                      | Primary free/local page crawling and LLM-ready extraction provider for Capture Research Web Source Collection                                                | https://github.com/unclecode/crawl4ai                   |
-| SearXNG                                       | Primary free/local search discovery provider for Capture Research Web Source Collection                                                                      | https://github.com/searxng/searxng                      |
-| SerpApi                                       | Optional API-backed SERP/search provider for Capture Research fallback discovery                                                                             | https://serpapi.com                                     |
-| Olostep                                       | Optional API-backed search, scraping, and crawling provider for Capture Research fallback collection                                                         | https://www.olostep.com                                 |
-| Firecrawl                                     | Optional paid/later research and scraping provider if its quality is worth the spend                                                                          | https://github.com/mendableai/firecrawl                 |
+| Crawl4AI                                      | Primary free/local page crawling and LLM-ready extraction provider for Capture Research Web Source Collection                                              | https://github.com/unclecode/crawl4ai                   |
+| SearXNG                                       | Primary free/local search discovery provider for Capture Research Web Source Collection                                                                    | https://github.com/searxng/searxng                      |
+| SerpApi                                       | Optional API-backed SERP/search provider for Capture Research fallback discovery                                                                           | https://serpapi.com                                     |
+| Olostep                                       | Optional API-backed search, scraping, and crawling provider for Capture Research fallback collection                                                       | https://www.olostep.com                                 |
+| Firecrawl                                     | Optional paid/later research and scraping provider if its quality is worth the spend                                                                       | https://github.com/mendableai/firecrawl                 |
 
 ---
 
@@ -226,6 +226,8 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - Olostep: optional API-backed search, scraping, and crawling fallback. Add your existing key to private `.env` as `OLOSTEP_API_KEY`.
 - Firecrawl: optional paid/later provider if quality justifies spend. Add `FIRECRAWL_API_KEY` only when deliberately using Firecrawl credits.
 - Vendor free tiers and quotas can change; Ariadne should record provider identity, approval basis, source limits, and budget/free-tier assumptions instead of assuming any one provider remains free forever.
+- Provider readiness is exposed at `GET /api/capture-research/source-providers`; it reports provider IDs, source modes, status, missing env-var names, and quality status without returning API keys or base URL values.
+- Manual live smoke runs should create a Capture Research Run with bounded public source targets, then call `POST /api/capture-research/runs/{research_run_id}/source-provider-collection` with explicit approval. Automated tests use injected fake provider clients and must not consume SerpApi, Olostep, Firecrawl, or local crawler quota.
 
 ### Capture Research Data APIs
 

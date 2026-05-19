@@ -103,7 +103,7 @@ Live source-provider behavior is part of the first build, but it should be delib
 - The run must have bounded source targets from the Capture Research Brief, such as explicit public URLs, public domains, or public search targets.
 - Each live run must record collection time, source target, capability identity, source mode, approval basis, and source limitations.
 - Tests and CI use fake source-collection adapters.
-- Live validation can be a separate local/manual check when the relevant local service or private key is configured.
+- Live validation is a separate local/manual check when the relevant local service or private key is configured: inspect `GET /api/capture-research/source-providers`, create a bounded Capture Research Run, then call `POST /api/capture-research/runs/{research_run_id}/source-provider-collection` with explicit approval.
 - Restricted or logged-in platforms such as LinkedIn or X should not be crawled through hidden credential handling, paywall bypass, or anti-bot bypass. First build should use public pages or user-provided exports/notes/screenshots; future User-Mediated Source Access can explore browser-mediated access with explicit user control.
 - Grokipedia or similar public reference sources may be included as source targets when relevant, with provenance and limitations.
 

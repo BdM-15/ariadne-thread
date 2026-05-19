@@ -1,5 +1,6 @@
 from ariadne.artifact_assembly import (
     ArtifactAssemblyStore,
+    ArtifactBlockSupportClassification,
     ArtifactContentBlockKind,
     ArtifactDraftReadiness,
     ArtifactDraftType,
@@ -336,3 +337,130 @@ def test_milestone_packet_draft_contract_is_capability_contribution_boundary() -
     assert contract.third_party_installation_required is False
     assert contract.skill_chain_execution_required is False
     assert contract.renderer_execution_allowed is False
+
+
+def test_populates_packet_sections_with_source_backed_content_blocks(tmp_path) -> None:
+    context = OpportunityKnowledgeContextView(
+        opportunity_id="opp-aflcmc-recompete",
+        trusted_context=KnowledgeContextSection(
+            count=3,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.EVIDENCE_ITEM,
+                    record_id="ev_transition_risk",
+                    title="Transition risk evidence",
+                    summary="Customer flagged transition risk on the recompete.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.ACTION_PLAN_ITEM,
+                    record_id="action_validate_scope",
+                    title="Validate transition scope",
+                    summary="Confirm transition workload with customer before gate.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.CAPABILITY_RUN_OUTPUT,
+                    record_id="capability_output_requirements_fit",
+                    title="Requirements fit output",
+                    summary="Capability run found strong incumbent-transition fit.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+            ),
+        ),
+        reviewable_context=KnowledgeContextSection(
+            count=3,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.PACKET_FIELD_ANSWER,
+                    record_id="packet_field_answer:opp-aflcmc-recompete:primary_scope",
+                    title="Packet field: primary_scope",
+                    summary="Need validated transition scope before gate review.",
+                    trust_state=KnowledgeTrustState.REVIEWABLE,
+                    status_label="reviewable",
+                ),
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.PIID_PROFILE,
+                    record_id="piid_profile_FA8650_23_C_0001",
+                    title="PIID profile",
+                    summary="USAspending suggests recompete timing but not final scope.",
+                    trust_state=KnowledgeTrustState.REVIEWABLE,
+                    status_label="source limitation",
+                ),
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.SAM_GOV_PROFILE,
+                    record_id="sam_profile_aflcmc_transition",
+                    title="SAM.gov profile",
+                    summary="SAM.gov discovery found likely related notice.",
+                    trust_state=KnowledgeTrustState.REVIEWABLE,
+                    status_label="reviewable",
+                ),
+            ),
+        ),
+        gaps=(
+            KnowledgeGapSummary(
+                record_kind=KnowledgeRecordKind.PACKET_FIELD_ANSWER,
+                record_id="packet_field_answer:opp-aflcmc-recompete:primary_scope",
+                summary="Need validated transition scope before gate review.",
+                command_id="review_packet_gap",
+            ),
+        ),
+        source_limitations=(
+            KnowledgeSourceLimitation(
+                record_kind=KnowledgeRecordKind.PIID_PROFILE,
+                record_id="piid_profile_FA8650_23_C_0001",
+                summary="USAspending does not identify current transition scope.",
+            ),
+        ),
+    )
+    store = ArtifactAssemblyStore(tmp_path / "artifact-assembly")
+    source_package = create_artifact_source_package_from_context(
+        context=context,
+        store=store,
+        created_at="2026-05-19T20:45:00Z",
+        assumptions=("Transition workload remains comparable until customer validates scope.",),
+    )
+
+    draft = assemble_milestone_packet_draft(
+        source_package_id=source_package.package_id,
+        store=store,
+        assembled_at="2026-05-19T21:15:00Z",
+    )
+
+    overview = draft.sections[0]
+    blocks_by_kind = {block.block_kind: block for block in overview.blocks}
+    assert set(blocks_by_kind) >= {
+        ArtifactContentBlockKind.NARRATIVE,
+        ArtifactContentBlockKind.DECISION_SUMMARY,
+        ArtifactContentBlockKind.EVIDENCE_TABLE,
+        ArtifactContentBlockKind.ACTION_LIST,
+        ArtifactContentBlockKind.ASSUMPTION_LIST,
+        ArtifactContentBlockKind.GAP_LIST,
+        ArtifactContentBlockKind.SOURCE_APPENDIX,
+    }
+    evidence_table = blocks_by_kind[ArtifactContentBlockKind.EVIDENCE_TABLE]
+    assert evidence_table.support_classification is ArtifactBlockSupportClassification.TRUSTED_SUPPORT
+    assert evidence_table.source_ref_ids == (
+        "ev_transition_risk",
+        "action_validate_scope",
+        "capability_output_requirements_fit",
+    )
+    assert evidence_table.reviewable_ref_ids == ()
+    assert evidence_table.content_data["rows"][0]["record_kind"] == "evidence_item"
+    source_appendix = blocks_by_kind[ArtifactContentBlockKind.SOURCE_APPENDIX]
+    assert source_appendix.support_classification is ArtifactBlockSupportClassification.MIXED_SUPPORT
+    assert "packet_field_answer:opp-aflcmc-recompete:primary_scope" in source_appendix.reviewable_ref_ids
+    assert "sam_profile_aflcmc_transition" in source_appendix.reviewable_ref_ids
+    gap_list = blocks_by_kind[ArtifactContentBlockKind.GAP_LIST]
+    assert gap_list.support_classification is ArtifactBlockSupportClassification.NEEDS_REVIEW
+    assert gap_list.gap_ref_ids == ("packet_field_answer:opp-aflcmc-recompete:primary_scope",)
+    assert gap_list.source_limitation_ref_ids == ("piid_profile_FA8650_23_C_0001",)
+    assumption_list = blocks_by_kind[ArtifactContentBlockKind.ASSUMPTION_LIST]
+    assert assumption_list.assumptions == (
+        "Transition workload remains comparable until customer validates scope.",
+    )
+    assert draft.renderer_readiness.renderer_invoked is False
+    assert "accepted" not in draft.model_dump_json()

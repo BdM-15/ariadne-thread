@@ -204,6 +204,95 @@ and ghost strategy should shape capture follow-up.
     assert draft["trusted_opportunity_knowledge_updated"] is False
 
 
+def test_artifact_source_package_api_creates_command_center_visible_summary(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_ARTIFACT_ASSEMBLY_DIR": str(tmp_path / "artifact-assembly")}
+    )
+    client = TestClient(create_app(settings))
+
+    initial_shell = client.get("/")
+    assert initial_shell.status_code == 200
+    assert "Artifact Assembly" in initial_shell.text
+
+    response = client.post(
+        "/api/artifact-assembly/opportunities/"
+        "opp-aflcmc-recompete/source-package"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"]["opportunity_id"] == "opp-aflcmc-recompete"
+    assert body["summary"]["trusted_count"] >= 1
+    assert body["summary"]["reviewable_count"] >= 1
+    assert "draft" not in body
+
+    updated_shell = client.get("/")
+    assert updated_shell.status_code == 200
+    assert "Artifact Source Package" in updated_shell.text
+    assert "Trusted refs" in updated_shell.text
+    assert "Reviewable refs" in updated_shell.text
+
+
+def test_artifact_draft_command_surface_supports_block_review(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_ARTIFACT_ASSEMBLY_DIR": str(tmp_path / "artifact-assembly")}
+    )
+    client = TestClient(create_app(settings))
+    package_response = client.post(
+        "/api/artifact-assembly/opportunities/"
+        "opp-aflcmc-recompete/source-package"
+    )
+    package_id = package_response.json()["package"]["package_id"]
+
+    draft_response = client.post(
+        f"/api/artifact-assembly/source-packages/{package_id}/milestone-packet-draft"
+    )
+
+    assert draft_response.status_code == 200
+    draft = draft_response.json()["draft"]
+    assert draft["readiness_state"] == "needs_review"
+    draft_id = draft["draft_id"]
+    shell = client.get(f"/artifact-assembly/drafts/{draft_id}")
+    assert shell.status_code == 200
+    assert "Artifact Draft Command Surface" in shell.text
+    assert "Milestone Decision Briefing Packet" in shell.text
+    assert "Artifact Source Package" in shell.text
+    assert "Artifact Content Blocks" in shell.text
+    assert "Trusted support" in shell.text
+    assert "Reviewable refs" in shell.text
+    assert "Preview readiness" in shell.text
+    assert "Export readiness" in shell.text
+    assert "Knowledge Context" in shell.text
+    assert "Capture Action Plan" in shell.text
+    assert "Capture Research" in shell.text
+    assert "Capability Run" in shell.text
+    assert "DOCX preview" not in shell.text
+
+    review_response = client.post(
+        f"/artifact-assembly/drafts/{draft_id}/blocks/"
+        "opportunity_overview_narrative/review",
+        data={
+            "action": "accept",
+            "reviewer_notes": "Reviewed from command surface.",
+        },
+        follow_redirects=False,
+    )
+
+    assert review_response.status_code == 303
+    reviewed_shell = client.get(f"/artifact-assembly/drafts/{draft_id}")
+    assert reviewed_shell.status_code == 200
+    assert "Accepted" in reviewed_shell.text
+    assert "partially reviewed" in reviewed_shell.text.lower()
+
+
 def test_quick_capture_source_material_api_creates_pasted_text_raw_item() -> None:
     from fastapi.testclient import TestClient
 

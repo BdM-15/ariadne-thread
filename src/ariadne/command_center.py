@@ -6,6 +6,16 @@ from html import escape
 from pathlib import Path
 
 from ariadne.action_plans import CaptureActionPlan
+from ariadne.artifact_assembly import (
+    ArtifactBlockReviewAction,
+    ArtifactAssemblyStore,
+    ArtifactContentBlock,
+    ArtifactDraft,
+    ArtifactSection,
+    ArtifactSourcePackage,
+    ArtifactSourcePackageSummary,
+    summarize_artifact_source_package,
+)
 from ariadne.capabilities import CapabilityCatalog
 from ariadne.capability_runs import (
     CapabilityReasoningView,
@@ -88,6 +98,14 @@ class CommandCenterKnowledgeContext:
     action_plan: CaptureActionPlan
 
 
+@dataclass(frozen=True)
+class CommandCenterArtifactSourcePackage:
+    opportunity_id: str
+    package: ArtifactSourcePackage | None
+    summary: ArtifactSourcePackageSummary | None
+    draft: ArtifactDraft | None
+
+
 def render_command_center_shell(
     settings: RuntimeSettings,
     *,
@@ -158,6 +176,11 @@ def render_command_center_shell(
         settings,
         workspace_root=root,
         demo=demo,
+    )
+    artifact_source_package = build_command_center_artifact_source_package(
+        settings,
+        workspace_root=root,
+        opportunity_id=knowledge_context.opportunity_id,
     )
 
     return f"""<!doctype html>
@@ -433,6 +456,7 @@ def render_command_center_shell(
         <p class="advanced-label">Advanced / read-only</p>
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{_capability_outputs_needing_review_count(capability_runs)}</small></a>
+          <a href="#artifact-assembly">Artifact Assembly <small>{_artifact_source_package_nav_label(artifact_source_package)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
                     <a href="#capture-research-enrichment">Capture Research <small>{len(capture_research_runs)}</small></a>
           <a href="#sam-gov-enrichment-profiles">SAM.gov Profiles <small>{len(sam_gov_profiles)}</small></a>
@@ -456,6 +480,7 @@ def render_command_center_shell(
       <div class="surface-grid">
         {_render_opportunity_panel(opportunity)}
         {_render_knowledge_context_panel(knowledge_context)}
+        {_render_artifact_assembly_panel(artifact_source_package)}
         {_render_quick_capture_panel(quick_capture, capture_review, reference_influences, pasted_capture, pasted_review, uploaded_capture, uploaded_review, unsupported_upload.intake_candidate)}
         {_render_document_intake_demo_thread_panel(document_intake_demo)}
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
@@ -531,6 +556,91 @@ def build_command_center_knowledge_context(
         ),
         action_plan=action_plan,
     )
+
+
+def build_command_center_artifact_source_package(
+    settings: RuntimeSettings,
+    *,
+    workspace_root: Path | None = None,
+    opportunity_id: str,
+) -> CommandCenterArtifactSourcePackage:
+    root = workspace_root or Path.cwd()
+    store = ArtifactAssemblyStore(
+        _resolve_runtime_path(root, settings.ariadne_artifact_assembly_dir)
+    )
+    packages = store.list_source_packages(opportunity_id=opportunity_id)
+    drafts = store.list_artifact_drafts(opportunity_id=opportunity_id)
+    package = packages[-1] if packages else None
+    return CommandCenterArtifactSourcePackage(
+        opportunity_id=opportunity_id,
+        package=package,
+        summary=(summarize_artifact_source_package(package) if package else None),
+        draft=(drafts[-1] if drafts else None),
+    )
+
+
+def render_artifact_draft_shell(
+    settings: RuntimeSettings,
+    draft_id: str,
+    *,
+    workspace_root: Path | None = None,
+) -> str:
+    root = workspace_root or Path.cwd()
+    store = ArtifactAssemblyStore(
+    _resolve_runtime_path(root, settings.ariadne_artifact_assembly_dir)
+    )
+    draft = store.read_artifact_draft(draft_id)
+    package = store.read_source_package(draft.source_package_id)
+    summary = summarize_artifact_source_package(package)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Artifact Draft Command Surface</title>
+    <style>
+        :root {{ color-scheme: dark; --bg: #020617; --surface: #0f172a; --surface-strong: #111c31; --edge: #334155; --edge-soft: #243244; --text: #f8fafc; --muted: #b6c4d6; --cyan: #22d3ee; --amber: #fbbf24; --focus: #fbbf24; }}
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; min-height: 100dvh; overflow-x: hidden; font-family: Arial, Helvetica, sans-serif; background: var(--bg); color: var(--text); }}
+        a {{ color: inherit; }}
+        a:focus-visible, button:focus-visible {{ outline: 3px solid var(--focus); outline-offset: 3px; }}
+        .shell {{ width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 42px; }}
+        .topbar {{ display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }}
+        .eyebrow {{ margin: 0 0 6px; color: var(--cyan); text-transform: uppercase; letter-spacing: 0; font-size: 0.78rem; font-weight: 800; }}
+        h1 {{ margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); }}
+        h2 {{ margin: 0; font-size: 1.05rem; }}
+        .back-link, .action-button {{ min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid rgba(34, 211, 238, 0.45); background: rgba(34, 211, 238, 0.12); color: var(--text); padding: 10px 12px; font-weight: 800; text-decoration: none; cursor: pointer; }}
+        .action-button.secondary {{ border-color: var(--edge); background: #0b1220; color: var(--muted); }}
+        .metric-grid, .surface-grid, .compact-grid {{ display: grid; gap: 12px; }}
+        .metric-grid {{ grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 12px; }}
+        .surface-grid {{ grid-template-columns: 1fr; }}
+        .compact-grid {{ grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }}
+        .panel, .metric, .row {{ border: 1px solid var(--edge-soft); border-radius: 8px; background: var(--surface); }}
+        .panel {{ padding: 16px; }}
+        .metric, .row {{ padding: 12px; }}
+        .panel-heading {{ display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }}
+        .row-list {{ display: grid; gap: 8px; }}
+        .row {{ display: grid; gap: 6px; background: var(--surface-strong); }}
+        .row span, .metric span {{ color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }}
+        .status-chip {{ display: inline-flex; align-items: center; min-height: 30px; padding: 5px 8px; border: 1px solid var(--edge); border-radius: 8px; color: var(--muted); background: #0b1220; font-size: 0.78rem; font-weight: 800; white-space: nowrap; }}
+        .status-chip.amber {{ border-color: rgba(251,191,36,.55); color: var(--amber); background: rgba(251,191,36,.1); }}
+        .status-chip.cyan {{ border-color: rgba(34,211,238,.55); color: var(--cyan); background: rgba(34,211,238,.1); }}
+        .inline-form {{ display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
+        @media (max-width: 760px) {{ .topbar {{ display: block; }} .back-link {{ margin-top: 12px; }} }}
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <div class="topbar"><div><p class="eyebrow">Artifact Draft Command Surface</p><h1>Milestone Decision Briefing Packet</h1></div><a class="back-link" href="/#artifact-assembly">Back to Command Center</a></div>
+        {_render_artifact_draft_metrics(draft, summary)}
+        <div class="surface-grid">
+            {_render_artifact_draft_source_panel(draft, summary)}
+            {_render_artifact_draft_links_panel()}
+            {_render_artifact_draft_sections(draft)}
+        </div>
+    </main>
+</body>
+</html>"""
 
 
 def _knowledge_context_opportunity_id(thread: QuickCaptureDemoThread) -> str:
@@ -890,6 +1000,152 @@ def _render_knowledge_context_panel(
       </details>
     </section>"""
 
+
+def _render_artifact_assembly_panel(
+    source_package: CommandCenterArtifactSourcePackage,
+) -> str:
+    if source_package.package is None or source_package.summary is None:
+        package_rows = (
+            "<div class=\"row\"><strong>No Artifact Source Package yet</strong>"
+            "<span>Create the first source package from Opportunity Knowledge "
+            "Context before assembling any artifact draft.</span></div>"
+        )
+        status = "not created"
+    else:
+        summary = source_package.summary
+        draft_link = (
+            "<a class=\"link-row\" href=\"/artifact-assembly/drafts/"
+            f"{escape(source_package.draft.draft_id)}\">Open Artifact Draft</a>"
+            if source_package.draft
+            else "<span>No Artifact Draft assembled yet.</span>"
+        )
+        draft_form_action = (
+            "/artifact-assembly/source-packages/"
+            f"{escape(source_package.package.package_id)}/milestone-packet-draft"
+        )
+        package_rows = f"""
+        <div class="compact-grid" aria-label="Artifact Source Package summary">
+          <div class="row"><strong>Trusted refs</strong><span>{summary.trusted_count} accepted records can support artifact claims directly.</span></div>
+          <div class="row"><strong>Reviewable refs</strong><span>{summary.reviewable_count} records are constrained to draft, gap, assumption, limitation, or needs-review use.</span></div>
+          <div class="row"><strong>Blocking signals</strong><span>{summary.gap_count} gaps, {summary.source_limitation_count} source limitations, {summary.pending_review_count} pending review refs.</span></div>
+        </div>
+        <div class="row"><strong>Artifact Source Package</strong><span class="meta-line">{escape(source_package.package.package_id)}</span><span>Source context: {escape(source_package.package.source_context)}</span><form class="inline-form" action="{draft_form_action}" method="post"><button class="action-button" type="submit">Create Draft</button></form>{draft_link}</div>
+        """
+        status = "source package"
+    return f"""<section class="panel" id="artifact-assembly" aria-labelledby="artifact-assembly-heading">
+      <div class="panel-heading"><h2 id="artifact-assembly-heading">Artifact Assembly</h2><span class="status-chip cyan">{escape(status)}</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Milestone packet input boundary</strong><span>Artifact Source Packages make the allowed inputs inspectable before any draft, renderer, or export workflow runs.</span><form class="inline-form" action="/artifact-assembly/opportunities/{escape(source_package.opportunity_id)}/source-package" method="post"><button class="action-button" type="submit">Create Source Package</button></form></div>
+        {package_rows}
+      </div>
+    </section>"""
+
+
+def _artifact_source_package_nav_label(
+    source_package: CommandCenterArtifactSourcePackage,
+) -> str:
+    if source_package.summary is None:
+        return "source package"
+    return str(source_package.summary.pending_review_count)
+
+
+
+def _render_artifact_draft_metrics(
+    draft: ArtifactDraft,
+    summary: ArtifactSourcePackageSummary,
+) -> str:
+    reviewed_blocks = sum(
+        block.review_state.value != "pending"
+        for section in draft.sections
+        for block in section.blocks
+    )
+    total_blocks = sum(len(section.blocks) for section in draft.sections)
+    readiness = escape(draft.readiness_state.value.replace("_", " "))
+    preview_state = "ready" if draft.renderer_readiness.preview_ready else "blocked"
+    export_state = "ready" if draft.renderer_readiness.export_ready else "blocked"
+    return f"""<section class="metric-grid" aria-label="Artifact Draft metrics">
+      <div class="metric"><span>Draft readiness</span><strong>{readiness}</strong></div>
+      <div class="metric"><span>Artifact Content Blocks</span><strong>{reviewed_blocks} of {total_blocks} reviewed</strong></div>
+      <div class="metric"><span>Preview readiness</span><strong>{preview_state}</strong></div>
+      <div class="metric"><span>Export readiness</span><strong>{export_state}</strong></div>
+      <div class="metric"><span>Trusted support</span><strong>{summary.trusted_count}</strong></div>
+      <div class="metric"><span>Reviewable refs</span><strong>{summary.reviewable_count}</strong></div>
+    </section>"""
+
+
+def _render_artifact_draft_source_panel(
+        draft: ArtifactDraft,
+        summary: ArtifactSourcePackageSummary,
+) -> str:
+        return f"""<section class="panel" aria-labelledby="artifact-source-heading">
+            <div class="panel-heading"><h2 id="artifact-source-heading">Artifact Source Package</h2><span class="status-chip cyan">{escape(draft.source_package_id)}</span></div>
+            <div class="compact-grid">
+                <div class="row"><strong>Trusted refs</strong><span>{summary.trusted_count} trusted inputs.</span></div>
+                <div class="row"><strong>Reviewable refs</strong><span>{summary.reviewable_count} reviewable inputs kept separate from trusted support.</span></div>
+                <div class="row"><strong>Gaps and limitations</strong><span>{summary.gap_count} gaps, {summary.source_limitation_count} source limitations, {summary.assumption_count} assumptions.</span></div>
+            </div>
+        </section>"""
+
+
+def _render_artifact_draft_links_panel() -> str:
+        return """<section class="panel" aria-labelledby="artifact-links-heading">
+            <div class="panel-heading"><h2 id="artifact-links-heading">Related records</h2><span class="status-chip cyan">links</span></div>
+            <div class="compact-grid">
+                <a class="row" href="/#knowledge-context"><strong>Knowledge Context</strong><span>Opportunity source refs and gaps.</span></a>
+                <a class="row" href="/packets/review"><strong>Living Briefing Packet</strong><span>Packet review workspace.</span></a>
+                <a class="row" href="/#action-plan"><strong>Capture Action Plan</strong><span>Action refs when present.</span></a>
+                <a class="row" href="/#capture-research-enrichment"><strong>Capture Research</strong><span>Research refs when present.</span></a>
+                <a class="row" href="/capability-studio"><strong>Capability Run</strong><span>Capability output refs when present.</span></a>
+            </div>
+        </section>"""
+
+
+def _render_artifact_draft_sections(draft: ArtifactDraft) -> str:
+    sections = "".join(
+        _render_artifact_draft_section(section, draft_id=draft.draft_id)
+        for section in draft.sections
+    )
+    readiness = escape(draft.readiness_state.value.replace("_", " "))
+    return f"""<section class="panel" aria-labelledby="artifact-blocks-heading">
+      <div class="panel-heading"><h2 id="artifact-blocks-heading">Artifact Content Blocks</h2><span class="status-chip amber">{readiness}</span></div>
+      <div class="row-list">{sections}</div>
+    </section>"""
+
+
+def _render_artifact_draft_section(
+    section: ArtifactSection,
+    *,
+    draft_id: str,
+) -> str:
+    blocks = "".join(
+        _render_artifact_block(block, draft_id=draft_id) for block in section.blocks
+    )
+    return f"""<div class="row"><strong>{escape(section.title)}</strong><span>{escape(section.purpose)}</span><div class="row-list">{blocks}</div></div>"""
+
+
+def _render_artifact_block(block: ArtifactContentBlock, *, draft_id: str) -> str:
+    review_forms = "".join(
+        _render_artifact_block_review_form(draft_id, block, action)
+        for action in ArtifactBlockReviewAction
+    )
+    assumptions = _join_or_none(block.assumptions)
+    gaps = _join_or_none((*block.gap_ref_ids, *block.source_limitation_ref_ids))
+    state = block.review_state.value.replace("_", " ").title()
+    support = block.support_classification.value.replace("_", " ")
+    return f"""<div class="row"><strong>{escape(block.title)}</strong><span>{escape(block.body)}</span><span>Support label: {escape(support)} - Review state: {escape(state)}</span><span>Trusted support: {escape(_join_or_none(block.source_ref_ids))}</span><span>Reviewable refs: {escape(_join_or_none(block.reviewable_ref_ids))}</span><span>Assumptions: {escape(assumptions)}</span><span>Gaps and source limitations: {escape(gaps)}</span><div class="inline-form" aria-label="Review actions for {escape(block.block_id)}">{review_forms}</div></div>"""
+
+
+def _render_artifact_block_review_form(
+    draft_id: str,
+    block: ArtifactContentBlock,
+    action: ArtifactBlockReviewAction,
+) -> str:
+    label = action.value.replace("_", " ").title()
+    action_url = (
+        f"/artifact-assembly/drafts/{escape(draft_id)}/blocks/"
+        f"{escape(block.block_id)}/review"
+    )
+    return f"""<form class="inline-form" action="{action_url}" method="post"><input type="hidden" name="action" value="{escape(action.value)}"><input type="hidden" name="reviewer_notes" value="Reviewed from Artifact Draft Command Surface."><input type="hidden" name="edited_body" value="{escape(block.body)}"><input type="hidden" name="routed_destination" value="Capture Action Plan"><button class="action-button secondary" type="submit">{escape(label)}</button></form>"""
 
 def _knowledge_context_health_label(
     context: OpportunityKnowledgeContextView,

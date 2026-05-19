@@ -326,6 +326,34 @@ class RequirementsFitAnalysis(BaseModel):
     follow_up_recommendations: tuple[RequirementsFitSignal, ...] = ()
 
 
+class CompetitiveGapSignal(BaseModel):
+    id: str
+    summary: str
+    supporting_seller_baseline_ref_ids: tuple[str, ...] = ()
+    supporting_source_finding_ids: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    confidence: float = Field(ge=0, le=1)
+    review_state: str = "pending_review"
+    bcc_ready_input: bool = False
+
+
+class CompetitiveGapAnalysis(BaseModel):
+    id: str
+    analyzed_at: str
+    summary: str
+    seller_baseline_ref_ids: tuple[str, ...]
+    source_finding_ids: tuple[str, ...] = ()
+    selected_lenses: tuple[CaptureResearchLens, ...]
+    discriminator_candidates: tuple[CompetitiveGapSignal, ...] = ()
+    vulnerabilities: tuple[CompetitiveGapSignal, ...] = ()
+    proof_gaps: tuple[CompetitiveGapSignal, ...] = ()
+    competitor_incumbent_notes: tuple[CompetitiveGapSignal, ...] = ()
+    teaming_partner_needs: tuple[CompetitiveGapSignal, ...] = ()
+    bcc_ready_notes: tuple[CompetitiveGapSignal, ...] = ()
+    follow_up_recommendations: tuple[CompetitiveGapSignal, ...] = ()
+    bcc_artifact_generated: bool = False
+
+
 class CaptureResearchRun(BaseModel):
     research_run_id: str
     opportunity_id: str | None = None
@@ -339,6 +367,7 @@ class CaptureResearchRun(BaseModel):
     source_collection_records: tuple[WebSourceCollectionRecord, ...] = ()
     source_findings: tuple[SourceFinding, ...] = ()
     requirements_fit_analysis: RequirementsFitAnalysis | None = None
+    competitive_gap_analysis: CompetitiveGapAnalysis | None = None
     insight_candidates: tuple[dict[str, object], ...] = ()
     downstream_candidates: tuple[dict[str, object], ...] = ()
     research_summary_view: str | None = None
@@ -769,6 +798,35 @@ _LOW_SIGNAL_REQUIREMENT_TERMS = frozenset(
         "the",
         "this",
         "with",
+    }
+)
+
+_COMPETITIVE_SIGNAL_TERMS = frozenset(
+    {
+        "awardee",
+        "competitor",
+        "contractor",
+        "incumbent",
+        "prime",
+        "subcontractor",
+        "teaming",
+        "vendor",
+    }
+)
+
+_GAP_SIGNAL_TERMS = frozenset(
+    {
+        "certification",
+        "clearance",
+        "constraint",
+        "coverage",
+        "gap",
+        "gaps",
+        "partner",
+        "staffing",
+        "subcontractor",
+        "teaming",
+        "vehicle",
     }
 )
 
@@ -1408,6 +1466,34 @@ def run_requirements_fit_analysis(
     return store.write(updated)
 
 
+def run_competitive_gap_analysis(
+    *,
+    store: CaptureResearchStore,
+    research_run_id: str,
+    analyzed_at: str | None = None,
+) -> CaptureResearchRun:
+    timestamp = analyzed_at or datetime.now(UTC).isoformat()
+    run = store.read(research_run_id)
+    baseline_refs = run.seller_baseline_refs or (_missing_seller_baseline_ref(run),)
+    analysis = build_competitive_gap_analysis(
+        run,
+        seller_baseline_refs=baseline_refs,
+        analyzed_at=timestamp,
+    )
+    insight_candidates = _competitive_gap_insight_candidates(analysis)
+    updated = run.model_copy(
+        update={
+            "status": CaptureResearchRunStatus.NEEDS_REVIEW,
+            "seller_baseline_refs": baseline_refs,
+            "competitive_gap_analysis": analysis,
+            "insight_candidates": run.insight_candidates + insight_candidates,
+            "research_summary_view": _competitive_gap_summary_view(analysis),
+            "updated_at": timestamp,
+        }
+    )
+    return store.write(updated)
+
+
 def select_seller_baseline_refs(
     run: CaptureResearchRun,
     *,
@@ -1501,6 +1587,66 @@ def build_requirements_fit_analysis(
     )
 
 
+def build_competitive_gap_analysis(
+    run: CaptureResearchRun,
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    analyzed_at: str,
+) -> CompetitiveGapAnalysis:
+    ref_ids = tuple(ref.id for ref in seller_baseline_refs)
+    finding_ids = tuple(finding.id for finding in run.source_findings)
+    competitor_notes = _competitive_incumbent_notes(run.source_findings)
+    discriminators = _competitive_discriminator_candidates(
+        seller_baseline_refs=seller_baseline_refs,
+        source_finding_ids=finding_ids,
+    )
+    vulnerabilities = _competitive_vulnerabilities(
+        seller_baseline_refs=seller_baseline_refs,
+        source_findings=run.source_findings,
+    )
+    proof_gaps = _competitive_proof_gaps(
+        seller_baseline_refs=seller_baseline_refs,
+        source_finding_ids=finding_ids,
+    )
+    teaming_needs = _competitive_teaming_partner_needs(
+        seller_baseline_refs=seller_baseline_refs,
+        source_findings=run.source_findings,
+    )
+    bcc_notes = _competitive_bcc_ready_notes(
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        discriminators=discriminators,
+        vulnerabilities=vulnerabilities,
+        competitor_notes=competitor_notes,
+    )
+    follow_ups = _competitive_follow_ups(
+        ref_ids=ref_ids,
+        finding_ids=finding_ids,
+        proof_gaps=proof_gaps,
+        teaming_needs=teaming_needs,
+    )
+    summary = (
+        f"Competitive gap analysis found {len(discriminators)} discriminator candidate(s), "
+        f"{len(vulnerabilities)} vulnerabilit(y/ies), {len(competitor_notes)} "
+        f"competitor/incumbent note(s), and {len(teaming_needs)} teaming need(s)."
+    )
+    return CompetitiveGapAnalysis(
+        id=f"competitive_gap_{uuid4().hex}",
+        analyzed_at=analyzed_at,
+        summary=summary,
+        seller_baseline_ref_ids=ref_ids,
+        source_finding_ids=finding_ids,
+        selected_lenses=run.selected_lenses,
+        discriminator_candidates=discriminators,
+        vulnerabilities=vulnerabilities,
+        proof_gaps=proof_gaps,
+        competitor_incumbent_notes=competitor_notes,
+        teaming_partner_needs=teaming_needs,
+        bcc_ready_notes=bcc_notes,
+        follow_up_recommendations=follow_ups,
+    )
+
+
 def _rank_seller_baseline_evidence(
     run: CaptureResearchRun,
     *,
@@ -1532,6 +1678,256 @@ def _rank_seller_baseline_evidence(
             key=lambda candidate: (-candidate[0], candidate[1]),
         )
     ]
+
+
+def _competitive_discriminator_candidates(
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    source_finding_ids: tuple[str, ...],
+) -> tuple[CompetitiveGapSignal, ...]:
+    refs = tuple(
+        ref
+        for ref in seller_baseline_refs
+        if ref.ref_type is not SellerBaselineRefType.BASELINE_GAP
+    )
+    if not refs:
+        return ()
+    terms = tuple(
+        sorted(
+            {
+                term
+                for ref in refs
+                for term in ref.matched_terms
+                if term in _SELLER_BASELINE_KEYWORDS or term in _GAP_SIGNAL_TERMS
+            }
+        )
+    )[:6]
+    summary = "Seller baseline may support discriminator claims"
+    if terms:
+        summary += " around " + ", ".join(terms) + "."
+    else:
+        summary += ", but reviewer must connect proof to customer hot buttons."
+    return (
+        _competitive_gap_signal(
+            "discriminator",
+            summary,
+            ref_ids=tuple(ref.id for ref in refs),
+            finding_ids=source_finding_ids,
+            assumptions=(
+                "Discriminators remain candidates until reviewer confirms relevance, uniqueness, and proof strength.",
+            ),
+            confidence=0.68 if terms else 0.55,
+        ),
+    )
+
+
+def _competitive_vulnerabilities(
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    source_findings: tuple[SourceFinding, ...],
+) -> tuple[CompetitiveGapSignal, ...]:
+    vulnerabilities: list[CompetitiveGapSignal] = []
+    finding_ids = tuple(finding.id for finding in source_findings)
+    for ref in seller_baseline_refs:
+        for gap in ref.baseline_gaps:
+            vulnerabilities.append(
+                _competitive_gap_signal(
+                    "vulnerability",
+                    "Competitive vulnerability: " + gap,
+                    ref_ids=(ref.id,),
+                    finding_ids=finding_ids,
+                    assumptions=ref.assumptions,
+                    confidence=0.78,
+                )
+            )
+    if _source_findings_have_terms(source_findings, _COMPETITIVE_SIGNAL_TERMS):
+        vulnerabilities.append(
+            _competitive_gap_signal(
+                "vulnerability",
+                "Competitor or incumbent signals require proof-backed positioning before using seller fit claims.",
+                ref_ids=tuple(ref.id for ref in seller_baseline_refs),
+                finding_ids=finding_ids,
+                assumptions=(
+                    "Public-source competitor signals are directional until reviewed against customer evidence.",
+                ),
+                confidence=0.7,
+            )
+        )
+    return tuple(vulnerabilities)
+
+
+def _competitive_proof_gaps(
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    source_finding_ids: tuple[str, ...],
+) -> tuple[CompetitiveGapSignal, ...]:
+    proof_gaps: list[CompetitiveGapSignal] = []
+    if any(ref.ref_type is SellerBaselineRefType.BASELINE_GAP for ref in seller_baseline_refs):
+        proof_gaps.append(
+            _competitive_gap_signal(
+                "proof_gap",
+                "Seller proof gap blocks confident competitive positioning against incumbent or competitor alternatives.",
+                ref_ids=tuple(ref.id for ref in seller_baseline_refs),
+                finding_ids=source_finding_ids,
+                assumptions=("Proof gap should route to Evidence or Action Plan review before BCC use.",),
+                confidence=0.82,
+            )
+        )
+    elif seller_baseline_refs:
+        proof_gaps.append(
+            _competitive_gap_signal(
+                "proof_gap",
+                "Attach sharper proof artifacts before promoting discriminator or vulnerability claims.",
+                ref_ids=tuple(ref.id for ref in seller_baseline_refs),
+                finding_ids=source_finding_ids,
+                assumptions=("Baseline refs support analysis but may not yet be evaluator-ready proof.",),
+                confidence=0.62,
+            )
+        )
+    return tuple(proof_gaps)
+
+
+def _competitive_incumbent_notes(
+    source_findings: tuple[SourceFinding, ...]
+) -> tuple[CompetitiveGapSignal, ...]:
+    notes: list[CompetitiveGapSignal] = []
+    for finding in source_findings:
+        tokens = _normalized_signal_tokens(f"{finding.title} {finding.excerpt}")
+        matched_terms = tuple(sorted(tokens & _COMPETITIVE_SIGNAL_TERMS))
+        if not matched_terms:
+            continue
+        notes.append(
+            _competitive_gap_signal(
+                "competitor_note",
+                "Public source suggests competitor/incumbent signal around "
+                + ", ".join(matched_terms)
+                + f": {finding.title}.",
+                finding_ids=(finding.id,),
+                assumptions=(
+                    "Competitor/incumbent note is a reviewable signal, not confirmed competitive intelligence.",
+                ),
+                confidence=min(0.85, max(0.55, finding.confidence)),
+            )
+        )
+    if notes:
+        return tuple(notes)
+    if source_findings:
+        return (
+            _competitive_gap_signal(
+                "competitor_note",
+                "No explicit competitor or incumbent signal found in current Source Findings.",
+                finding_ids=tuple(finding.id for finding in source_findings),
+                assumptions=("Run targeted competitor/incumbent research before BCC preparation.",),
+                confidence=0.5,
+            ),
+        )
+    return ()
+
+
+def _competitive_teaming_partner_needs(
+    *,
+    seller_baseline_refs: tuple[SellerBaselineRef, ...],
+    source_findings: tuple[SourceFinding, ...],
+) -> tuple[CompetitiveGapSignal, ...]:
+    finding_ids = tuple(finding.id for finding in source_findings)
+    source_has_gap = _source_findings_have_terms(source_findings, _GAP_SIGNAL_TERMS)
+    baseline_has_gap = any(ref.baseline_gaps for ref in seller_baseline_refs)
+    if not source_has_gap and not baseline_has_gap:
+        return ()
+    return (
+        _competitive_gap_signal(
+            "teaming_need",
+            "Teaming Partner Need: investigate partner coverage for capability, vehicle, staffing, certification, or customer-access gaps before competitive positioning hardens.",
+            ref_ids=tuple(ref.id for ref in seller_baseline_refs),
+            finding_ids=finding_ids,
+            assumptions=(
+                "Teaming need is a candidate route; reviewer must confirm gap size and partner strategy.",
+            ),
+            confidence=0.72,
+        ),
+    )
+
+
+def _competitive_bcc_ready_notes(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    discriminators: tuple[CompetitiveGapSignal, ...],
+    vulnerabilities: tuple[CompetitiveGapSignal, ...],
+    competitor_notes: tuple[CompetitiveGapSignal, ...],
+) -> tuple[CompetitiveGapSignal, ...]:
+    if not (discriminators or vulnerabilities or competitor_notes):
+        return ()
+    return (
+        _competitive_gap_signal(
+            "bcc_ready_note",
+            "BCC-ready input only: use these discriminator, vulnerability, and competitor/incumbent signals as evidence candidates for later Bidder Comparison Chart work; no BCC row, slide, or artifact is generated.",
+            ref_ids=ref_ids,
+            finding_ids=finding_ids,
+            assumptions=(
+                "Later BCC artifact work must re-check evidence, scoring criteria, and reviewer decisions.",
+            ),
+            confidence=0.76,
+            bcc_ready_input=True,
+        ),
+    )
+
+
+def _competitive_follow_ups(
+    *,
+    ref_ids: tuple[str, ...],
+    finding_ids: tuple[str, ...],
+    proof_gaps: tuple[CompetitiveGapSignal, ...],
+    teaming_needs: tuple[CompetitiveGapSignal, ...],
+) -> tuple[CompetitiveGapSignal, ...]:
+    recommendations = [
+        "Review competitive signals, confirm proof strength, then route accepted needs to Evidence, Action Plan, Risk Register, or Call Plan workflows."
+    ]
+    if proof_gaps:
+        recommendations.append("Collect evaluator-ready proof for discriminator and vulnerability claims.")
+    if teaming_needs:
+        recommendations.append("Open teaming research for unresolved capability, vehicle, staffing, certification, or access gaps.")
+    return tuple(
+        _competitive_gap_signal(
+            "follow_up",
+            recommendation,
+            ref_ids=ref_ids,
+            finding_ids=finding_ids,
+            assumptions=("Follow-up remains review-gated and does not create downstream records automatically.",),
+            confidence=0.74,
+        )
+        for recommendation in recommendations
+    )
+
+
+def _competitive_gap_signal(
+    kind: str,
+    summary: str,
+    *,
+    ref_ids: tuple[str, ...] = (),
+    finding_ids: tuple[str, ...] = (),
+    assumptions: tuple[str, ...] = (),
+    confidence: float,
+    bcc_ready_input: bool = False,
+) -> CompetitiveGapSignal:
+    return CompetitiveGapSignal(
+        id=f"competitive_gap_{kind}_{uuid4().hex[:8]}",
+        summary=summary,
+        supporting_seller_baseline_ref_ids=ref_ids,
+        supporting_source_finding_ids=finding_ids,
+        assumptions=assumptions,
+        confidence=confidence,
+        bcc_ready_input=bcc_ready_input,
+    )
+
+
+def _source_findings_have_terms(
+    source_findings: tuple[SourceFinding, ...], terms: frozenset[str]
+) -> bool:
+    return any(
+        _normalized_signal_tokens(f"{finding.title} {finding.excerpt}") & terms
+        for finding in source_findings
+    )
 
 
 def _seller_baseline_ref_from_evidence(
@@ -1823,10 +2219,50 @@ def _requirements_fit_insight_candidates(
     return tuple(candidates)
 
 
+def _competitive_gap_insight_candidates(
+    analysis: CompetitiveGapAnalysis,
+) -> tuple[dict[str, object], ...]:
+    candidates: list[dict[str, object]] = []
+    for candidate_type, target_workflow, signals in (
+        ("competitive_gap_discriminator", "evidence", analysis.discriminator_candidates),
+        ("competitive_gap_vulnerability", "risk_register", analysis.vulnerabilities),
+        ("competitive_gap_proof_gap", "action_plan", analysis.proof_gaps),
+        ("competitive_gap_competitor_note", "packet", analysis.competitor_incumbent_notes),
+        ("competitive_gap_teaming_need", "action_plan", analysis.teaming_partner_needs),
+        ("competitive_gap_bcc_ready_note", "bcc_ready_input", analysis.bcc_ready_notes),
+        ("competitive_gap_follow_up", "action_plan", analysis.follow_up_recommendations),
+    ):
+        for signal in signals:
+            candidates.append(
+                {
+                    "id": f"insight_candidate_{signal.id}",
+                    "candidate_type": candidate_type,
+                    "target_workflow": target_workflow,
+                    "title": signal.summary,
+                    "summary": signal.summary,
+                    "review_state": signal.review_state,
+                    "supporting_seller_baseline_ref_ids": signal.supporting_seller_baseline_ref_ids,
+                    "supporting_source_finding_ids": signal.supporting_source_finding_ids,
+                    "autonomy_tier": "review_required",
+                    "competitive_gap_analysis_id": analysis.id,
+                    "bcc_ready_input": signal.bcc_ready_input,
+                    "bcc_artifact_generated": False,
+                }
+            )
+    return tuple(candidates)
+
+
 def _requirements_fit_summary_view(analysis: RequirementsFitAnalysis) -> str:
     return (
         f"{analysis.summary} Trusted downstream writes remain review-gated; "
         "seller-baseline refs and source findings must be reviewed before promotion."
+    )
+
+
+def _competitive_gap_summary_view(analysis: CompetitiveGapAnalysis) -> str:
+    return (
+        f"{analysis.summary} BCC-ready notes are inputs for later Bidder Comparison Chart work only; "
+        "no BCC artifact, row, or slide is generated. Trusted downstream writes remain review-gated."
     )
 
 

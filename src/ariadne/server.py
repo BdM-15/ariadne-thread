@@ -37,6 +37,7 @@ from ariadne.capture_research import (
     create_source_context_research_run,
     create_user_prompted_research_run,
     run_approved_source_provider_collection,
+    run_competitive_gap_analysis,
     run_requirements_fit_analysis,
     run_source_provider_smoke_check,
     run_web_source_collection,
@@ -318,6 +319,10 @@ class CaptureResearchSourceProviderCollectionRequest(BaseModel):
 class CaptureResearchRequirementsFitRequest(BaseModel):
     analyzed_at: str | None = None
     reference_limit: int = Field(default=5, ge=0, le=10)
+
+
+class CaptureResearchCompetitiveGapRequest(BaseModel):
+    analyzed_at: str | None = None
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -851,6 +856,29 @@ def create_app(
                     research_run_id=research_run_id,
                     evidence_items=tuple(evidence_store.list()),
                     reference_influences=reference_influences,
+                    analyzed_at=request.analyzed_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/competitive-gap-analysis")
+    def capture_research_competitive_gap_analysis(
+        research_run_id: str,
+        request: CaptureResearchCompetitiveGapRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=run_competitive_gap_analysis(
+                    store=store,
+                    research_run_id=research_run_id,
                     analyzed_at=request.analyzed_at,
                 )
             )

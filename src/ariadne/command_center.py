@@ -1301,7 +1301,8 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
     findings = _render_capture_research_source_findings(run)
     seller_baseline = _render_capture_research_seller_baseline(run)
     requirements_fit = _render_capture_research_requirements_fit(run)
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    competitive_gap = _render_capture_research_competitive_gap(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}{competitive_gap}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
 
 
 def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
@@ -1361,6 +1362,36 @@ def _render_requirements_fit_signal_group(label: str, signals: tuple[object, ...
         return f"""<div class="row"><strong>{escape(label)}</strong><span>None identified yet.</span></div>"""
     rows = "".join(
         f"<span>{escape(signal.summary)} Confidence: {signal.confidence:.2f} Refs: {escape(_join_or_none(signal.supporting_seller_baseline_ref_ids))} Findings: {escape(_join_or_none(signal.supporting_source_finding_ids))}</span>"
+        for signal in signals
+    )
+    return f"""<div class="row"><strong>{escape(label)}</strong>{rows}</div>"""
+
+
+def _render_capture_research_competitive_gap(run: CaptureResearchRun) -> str:
+    analysis = run.competitive_gap_analysis
+    if analysis is None:
+        return ""
+    groups = "".join(
+        _render_competitive_gap_signal_group(label, signals)
+        for label, signals in (
+            ("Discriminator candidates", analysis.discriminator_candidates),
+            ("Vulnerabilities", analysis.vulnerabilities),
+            ("Proof gaps", analysis.proof_gaps),
+            ("Competitor/incumbent notes", analysis.competitor_incumbent_notes),
+            ("Teaming Partner Needs", analysis.teaming_partner_needs),
+            ("BCC-ready notes", analysis.bcc_ready_notes),
+            ("Mitigation and follow-up recommendations", analysis.follow_up_recommendations),
+        )
+    )
+    artifact_state = "No BCC artifact generated" if not analysis.bcc_artifact_generated else "BCC artifact generated"
+    return f"""<div class="row-list"><div class="row"><strong>Competitive Gap Analysis</strong><span>{escape(analysis.summary)}</span><span>{escape(artifact_state)}; BCC-ready notes are inputs for later Bidder Comparison Chart work only.</span><span>Reviewable outputs only; trusted downstream writes still require acceptance.</span></div>{groups}</div>"""
+
+
+def _render_competitive_gap_signal_group(label: str, signals: tuple[object, ...]) -> str:
+    if not signals:
+        return f"""<div class="row"><strong>{escape(label)}</strong><span>None identified yet.</span></div>"""
+    rows = "".join(
+        f"<span>{escape(signal.summary)} Review: {escape(signal.review_state)} Confidence: {signal.confidence:.2f} BCC-ready input: {escape(str(signal.bcc_ready_input).lower())} Refs: {escape(_join_or_none(signal.supporting_seller_baseline_ref_ids))} Findings: {escape(_join_or_none(signal.supporting_source_finding_ids))}</span>"
         for signal in signals
     )
     return f"""<div class="row"><strong>{escape(label)}</strong>{rows}</div>"""

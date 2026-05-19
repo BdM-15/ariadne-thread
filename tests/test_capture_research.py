@@ -21,6 +21,7 @@ from ariadne.capture_research import (
     create_source_context_research_run,
     create_user_prompted_research_run,
     run_approved_source_provider_collection,
+    run_competitive_gap_analysis,
     run_requirements_fit_analysis,
     run_source_provider_smoke_check,
     run_web_source_collection,
@@ -673,6 +674,117 @@ def test_requirements_fit_surfaces_missing_seller_baseline_gap(tmp_path) -> None
         "action_plan",
         "risk_register",
     }
+
+
+def test_competitive_gap_analysis_creates_bcc_ready_reviewable_signals(
+    tmp_path,
+) -> None:
+    run = create_user_prompted_research_run(
+        "Research incumbent posture and seller competitive gaps.",
+        opportunity_id="opp_aflcmc_recompete",
+        selected_lenses=(CaptureResearchLens.COMPETITIVE_POSITIONING,),
+        source_targets=("public incumbent profile",),
+        source_limits=("public_web_only",),
+        evidence_goals=("Find incumbent signals, proof gaps, and teaming needs.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(
+        run.model_copy(
+            update={
+                "source_findings": (
+                    _requirements_fit_source_finding(
+                        "Incumbent vendor highlights cyber staffing, vehicle coverage, transition proof, and partner depth. Customer needs cloud migration support."
+                    ),
+                ),
+            }
+        )
+    )
+    evidence = create_source_evidence(
+        evidence_id="ev_seller_competitive_baseline",
+        content=(
+            "Seller capability evidence: transition past performance, cyber modernization capability, vehicle proof, and staffing constraints."
+        ),
+        source_ref="accepted competitive baseline note",
+        opportunity_id="opp_aflcmc_recompete",
+    )
+    fitted = run_requirements_fit_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        evidence_items=(evidence,),
+        reference_influences=(),
+        analyzed_at="2026-05-18T12:10:00+00:00",
+    )
+
+    analyzed = run_competitive_gap_analysis(
+        store=store,
+        research_run_id=fitted.research_run_id,
+        analyzed_at="2026-05-18T12:15:00+00:00",
+    )
+
+    assert analyzed.competitive_gap_analysis is not None
+    analysis = analyzed.competitive_gap_analysis
+    assert analysis.discriminator_candidates
+    assert analysis.vulnerabilities
+    assert analysis.proof_gaps
+    assert analysis.competitor_incumbent_notes
+    assert analysis.teaming_partner_needs
+    assert analysis.bcc_ready_notes
+    assert all(note.bcc_ready_input for note in analysis.bcc_ready_notes)
+    assert analysis.bcc_artifact_generated is False
+    assert "Bidder Comparison Chart" in analysis.bcc_ready_notes[0].summary
+    assert "row" in analysis.bcc_ready_notes[0].summary
+    assert "artifact" in analysis.bcc_ready_notes[0].summary
+    assert {candidate["candidate_type"] for candidate in analyzed.insight_candidates} >= {
+        "competitive_gap_discriminator",
+        "competitive_gap_teaming_need",
+        "competitive_gap_bcc_ready_note",
+    }
+    bcc_candidates = [
+        candidate
+        for candidate in analyzed.insight_candidates
+        if candidate["candidate_type"] == "competitive_gap_bcc_ready_note"
+    ]
+    assert bcc_candidates[0]["target_workflow"] == "bcc_ready_input"
+    assert bcc_candidates[0]["bcc_ready_input"] is True
+    assert bcc_candidates[0]["bcc_artifact_generated"] is False
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in analyzed.insight_candidates
+    )
+    dumped = analyzed.model_dump_json()
+    assert "bcc_artifact" not in dumped.lower().replace("bcc_artifact_generated", "")
+
+
+def test_competitive_gap_analysis_uses_baseline_gap_when_no_seller_refs(
+    tmp_path,
+) -> None:
+    run = create_user_prompted_research_run(
+        "Research competitor without seller baseline.",
+        opportunity_id="opp_new_customer",
+        selected_lenses=(CaptureResearchLens.COMPETITIVE_POSITIONING,),
+        source_targets=("public competitor page",),
+        source_limits=("public_web_only",),
+        evidence_goals=("Find competitor and teaming gaps.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(run)
+
+    analyzed = run_competitive_gap_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        analyzed_at="2026-05-18T12:15:00+00:00",
+    )
+
+    assert analyzed.seller_baseline_refs[0].ref_type is SellerBaselineRefType.BASELINE_GAP
+    assert analyzed.competitive_gap_analysis is not None
+    analysis = analyzed.competitive_gap_analysis
+    assert not analysis.discriminator_candidates
+    assert analysis.vulnerabilities
+    assert analysis.proof_gaps
+    assert analysis.teaming_partner_needs
+    assert analysis.bcc_artifact_generated is False
 
 
 def _requirements_fit_source_finding(excerpt: str) -> SourceFinding:

@@ -2574,6 +2574,93 @@ def test_requirements_fit_api_and_shell_show_seller_baseline_refs(
     assert "Reviewable outputs only" in shell_response.text
 
 
+def test_competitive_gap_api_and_shell_show_bcc_ready_notes(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_competitive_baseline",
+            content=(
+                "Accepted seller evidence: transition past performance, cyber "
+                "modernization capability, vehicle proof, and staffing constraints."
+            ),
+            source_ref="accepted competitive baseline note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research incumbent competitive posture.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["competitive_positioning"],
+            "source_targets": ["incumbent vendor cyber staffing vehicle partner profile"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find competitor notes and BCC-ready inputs."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+    fit_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+
+    gap_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/competitive-gap-analysis",
+        json={"analyzed_at": "2026-05-18T12:15:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    assert fit_response.status_code == 200
+    assert gap_response.status_code == 200
+    run = gap_response.json()["run"]
+    analysis = run["competitive_gap_analysis"]
+    assert analysis["discriminator_candidates"]
+    assert analysis["vulnerabilities"]
+    assert analysis["competitor_incumbent_notes"]
+    assert analysis["teaming_partner_needs"]
+    assert analysis["bcc_ready_notes"]
+    assert analysis["bcc_ready_notes"][0]["bcc_ready_input"] is True
+    assert analysis["bcc_artifact_generated"] is False
+    assert any(
+        candidate["candidate_type"] == "competitive_gap_bcc_ready_note"
+        and candidate["target_workflow"] == "bcc_ready_input"
+        and candidate["bcc_artifact_generated"] is False
+        for candidate in run["insight_candidates"]
+    )
+    assert "bcc_rows" not in run
+    assert "bcc_slides" not in run
+    assert "bcc_artifact" not in run
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Competitive Gap Analysis" in shell_response.text
+    assert "Discriminator candidates" in shell_response.text
+    assert "Competitor/incumbent notes" in shell_response.text
+    assert "Teaming Partner Needs" in shell_response.text
+    assert "BCC-ready notes" in shell_response.text
+    assert "No BCC artifact generated" in shell_response.text
+    assert "later Bidder Comparison Chart work only" in shell_response.text
+
+
 def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path) -> None:
     research_root = tmp_path / "capture-research"
     settings = RuntimeSettings.from_mapping(

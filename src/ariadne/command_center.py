@@ -1298,7 +1298,8 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
         else "No source collection has run for this brief."
     )
     source_refs = _render_capture_research_source_refs(run)
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span><span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    findings = _render_capture_research_source_findings(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
 
 
 def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
@@ -1309,6 +1310,16 @@ def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
         for ref in run.source_profile_refs
     )
     return f"""<div class="row-list"><div class="row"><strong>Source Profile refs</strong>{refs}</div></div>"""
+
+
+def _render_capture_research_source_findings(run: CaptureResearchRun) -> str:
+    if not run.source_findings:
+        return ""
+    rows = "".join(
+        f"<div class=\"row\"><strong>{escape(finding.source_target)}</strong><span>{escape(finding.title)}</span><span>{escape(finding.url)}</span><span>Source mode: {escape(finding.source_mode.value.replace("_", " "))}</span><span>Confidence: {finding.confidence:.2f}</span><span>{escape("; ".join(finding.source_limitations))}</span><span>Provenance: {escape(finding.capability_provenance.source_capability_id)} - {escape(finding.capability_provenance.source_tool_name)}</span></div>"
+        for finding in run.source_findings
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Source Findings</strong><span>Grouped by source target; fake adapter output is development-only.</span></div>{rows}</div>"""
 
 
 def _capture_research_source_profile_label(source_profile_type: str) -> str:

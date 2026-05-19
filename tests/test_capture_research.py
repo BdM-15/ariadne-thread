@@ -2,10 +2,13 @@ from ariadne.capture_research import (
     CaptureResearchLens,
     CaptureResearchRunStatus,
     CaptureResearchStore,
+    CaptureResearchSourceMode,
+    FakeWebSourceCollectionAdapter,
     SourceProfileRef,
     SourceProfileType,
     create_source_context_research_run,
     create_user_prompted_research_run,
+    run_web_source_collection,
 )
 
 
@@ -108,3 +111,55 @@ def test_creates_source_profile_research_run_with_refs_not_snapshots(tmp_path) -
     assert "entity_matches" not in dumped
     assert "opportunity_records" not in dumped
     assert "attachment_metadata" not in dumped
+
+
+def test_fake_web_source_collection_persists_records_and_findings(tmp_path) -> None:
+    run = create_user_prompted_research_run(
+        "Research public customer and incumbent context.",
+        opportunity_id="opp_aflcmc_recompete",
+        selected_lenses=(CaptureResearchLens.CUSTOMER_RESEARCH,),
+        source_targets=("public agency pages", "public award notices"),
+        source_limits=("public_web_only",),
+        evidence_goals=("Find customer and incumbent signals.",),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(run)
+
+    collected = run_web_source_collection(
+        store=store,
+        research_run_id=run.research_run_id,
+        adapter=FakeWebSourceCollectionAdapter(),
+        collected_at="2026-05-18T12:05:00+00:00",
+    )
+    reloaded = store.read(run.research_run_id)
+
+    assert collected == reloaded
+    assert reloaded.status is CaptureResearchRunStatus.NEEDS_REVIEW
+    assert [record.source_target for record in reloaded.source_collection_records] == [
+        "public agency pages",
+        "public award notices",
+    ]
+    assert all(
+        record.source_mode is CaptureResearchSourceMode.FAKE_ADAPTER_TEST
+        for record in reloaded.source_collection_records
+    )
+    assert len(reloaded.source_findings) == 2
+    first_finding = reloaded.source_findings[0]
+    assert first_finding.source_target == "public agency pages"
+    assert first_finding.url == "fake://capture-research/public-agency-pages"
+    assert first_finding.title == "Fake source finding for public agency pages"
+    assert first_finding.source_type == "fake_public_web"
+    assert first_finding.collected_at == "2026-05-18T12:05:00+00:00"
+    assert first_finding.confidence == 0.42
+    assert first_finding.source_mode is CaptureResearchSourceMode.FAKE_ADAPTER_TEST
+    assert first_finding.capability_provenance.source_capability_id == (
+        "fake_web_source_collection"
+    )
+    assert first_finding.capability_provenance.source_tool_name == (
+        "collect_fake_public_sources"
+    )
+    assert "Fake adapter test data is not live Firecrawl source success." in (
+        first_finding.source_limitations
+    )
+    assert "live_firecrawl" not in reloaded.model_dump_json()

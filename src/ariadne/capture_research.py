@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
@@ -27,6 +28,11 @@ class CaptureResearchLens(StrEnum):
     PRICE_TO_WIN = "price_to_win"
     WORKLOAD_ANALYSIS = "workload_analysis"
     CALL_PLAN_CRO = "call_plan_cro"
+
+
+class CaptureResearchSourceMode(StrEnum):
+    FAKE_ADAPTER_TEST = "fake_adapter_test"
+    LIVE_FIRECRAWL = "live_firecrawl"
 
 
 class SourceProfileType(StrEnum):
@@ -100,6 +106,37 @@ class CaptureResearchBrief(BaseModel):
         return self
 
 
+class CapabilityProvenance(BaseModel):
+    source_capability_id: str
+    source_tool_name: str
+    source_package: str
+    source_package_version: str
+
+
+class WebSourceCollectionRecord(BaseModel):
+    id: str
+    source_target: str
+    source_mode: CaptureResearchSourceMode
+    collected_at: str
+    capability_provenance: CapabilityProvenance
+    source_limitations: tuple[str, ...]
+    finding_ids: tuple[str, ...]
+
+
+class SourceFinding(BaseModel):
+    id: str
+    source_target: str
+    url: str
+    title: str
+    source_type: str
+    collected_at: str
+    excerpt: str
+    confidence: float = Field(ge=0, le=1)
+    source_limitations: tuple[str, ...]
+    source_mode: CaptureResearchSourceMode
+    capability_provenance: CapabilityProvenance
+
+
 class CaptureResearchRun(BaseModel):
     research_run_id: str
     opportunity_id: str | None = None
@@ -110,8 +147,8 @@ class CaptureResearchRun(BaseModel):
     selected_lenses: tuple[CaptureResearchLens, ...]
     source_profile_refs: tuple[SourceProfileRef, ...] = ()
     seller_baseline_refs: tuple[str, ...] = ()
-    source_collection_records: tuple[dict[str, object], ...] = ()
-    source_findings: tuple[dict[str, object], ...] = ()
+    source_collection_records: tuple[WebSourceCollectionRecord, ...] = ()
+    source_findings: tuple[SourceFinding, ...] = ()
     insight_candidates: tuple[dict[str, object], ...] = ()
     downstream_candidates: tuple[dict[str, object], ...] = ()
     research_summary_view: str | None = None
@@ -161,6 +198,107 @@ class CaptureResearchStore:
         if not research_run_id or research_run_id != Path(research_run_id).name:
             raise ValueError("research_run_id must be a file-safe identifier")
         return self.root / f"{research_run_id}.json"
+
+
+class WebSourceCollectionAdapter(Protocol):
+    def collect(
+        self,
+        run: CaptureResearchRun,
+        *,
+        collected_at: str,
+    ) -> tuple[tuple[WebSourceCollectionRecord, ...], tuple[SourceFinding, ...]]: ...
+
+
+class FakeWebSourceCollectionAdapter:
+    source_mode = CaptureResearchSourceMode.FAKE_ADAPTER_TEST
+
+    def collect(
+        self,
+        run: CaptureResearchRun,
+        *,
+        collected_at: str,
+    ) -> tuple[tuple[WebSourceCollectionRecord, ...], tuple[SourceFinding, ...]]:
+        provenance = CapabilityProvenance(
+            source_capability_id="fake_web_source_collection",
+            source_tool_name="collect_fake_public_sources",
+            source_package="ariadne.capture_research",
+            source_package_version="local",
+        )
+        limitations = (
+            "Fake adapter test data is not live Firecrawl source success.",
+            "No live network request was made.",
+        )
+        findings = tuple(
+            _fake_source_finding(
+                source_target,
+                collected_at=collected_at,
+                provenance=provenance,
+                limitations=limitations,
+            )
+            for source_target in run.research_brief.source_targets
+        )
+        records = tuple(
+            WebSourceCollectionRecord(
+                id=f"web_collection_{uuid4().hex}",
+                source_target=finding.source_target,
+                source_mode=self.source_mode,
+                collected_at=collected_at,
+                capability_provenance=provenance,
+                source_limitations=limitations,
+                finding_ids=(finding.id,),
+            )
+            for finding in findings
+        )
+        return records, findings
+
+
+def run_web_source_collection(
+    *,
+    store: CaptureResearchStore,
+    research_run_id: str,
+    adapter: WebSourceCollectionAdapter,
+    collected_at: str | None = None,
+) -> CaptureResearchRun:
+    timestamp = collected_at or datetime.now(UTC).isoformat()
+    run = store.read(research_run_id)
+    records, findings = adapter.collect(run, collected_at=timestamp)
+    updated = run.model_copy(
+        update={
+            "status": CaptureResearchRunStatus.NEEDS_REVIEW,
+            "source_collection_records": run.source_collection_records + records,
+            "source_findings": run.source_findings + findings,
+            "updated_at": timestamp,
+        }
+    )
+    return store.write(updated)
+
+
+def _fake_source_finding(
+    source_target: str,
+    *,
+    collected_at: str,
+    provenance: CapabilityProvenance,
+    limitations: tuple[str, ...],
+) -> SourceFinding:
+    source_slug = _source_target_slug(source_target)
+    return SourceFinding(
+        id=f"source_finding_{uuid4().hex}",
+        source_target=source_target,
+        url=f"fake://capture-research/{source_slug}",
+        title=f"Fake source finding for {source_target}",
+        source_type="fake_public_web",
+        collected_at=collected_at,
+        excerpt=f"Fake public-source excerpt for {source_target}.",
+        confidence=0.42,
+        source_limitations=limitations,
+        source_mode=CaptureResearchSourceMode.FAKE_ADAPTER_TEST,
+        capability_provenance=provenance,
+    )
+
+
+def _source_target_slug(source_target: str) -> str:
+    slug = "-".join(source_target.strip().lower().split())
+    return slug or "unknown-target"
 
 
 def create_user_prompted_research_run(

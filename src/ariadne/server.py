@@ -25,9 +25,11 @@ from ariadne.capture_research import (
     CaptureResearchRun,
     CaptureResearchRunStatus,
     CaptureResearchStore,
+    FakeWebSourceCollectionAdapter,
     SourceProfileRef,
     create_source_context_research_run,
     create_user_prompted_research_run,
+    run_web_source_collection,
 )
 from ariadne.command_center import (
     build_command_center_knowledge_context,
@@ -277,6 +279,10 @@ class CaptureResearchRunResponse(BaseModel):
 
 class CaptureResearchRunListResponse(BaseModel):
     runs: tuple[CaptureResearchRun, ...]
+
+
+class CaptureResearchFakeCollectionRequest(BaseModel):
+    collected_at: str | None = None
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -689,6 +695,30 @@ def create_app(
         )
         try:
             return CaptureResearchRunResponse(run=store.read(research_run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/fake-web-source-collection")
+    def capture_research_fake_web_source_collection(
+        research_run_id: str,
+        request: CaptureResearchFakeCollectionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=run_web_source_collection(
+                    store=store,
+                    research_run_id=research_run_id,
+                    adapter=FakeWebSourceCollectionAdapter(),
+                    collected_at=request.collected_at,
+                )
+            )
         except FileNotFoundError as error:
             raise HTTPException(
                 status_code=404, detail="Capture Research run not found"

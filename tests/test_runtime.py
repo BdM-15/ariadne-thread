@@ -2341,6 +2341,70 @@ def test_capture_research_api_and_shell_show_source_profile_refs(tmp_path) -> No
     assert "sam_profile_PROJECT_PHOENIX" in shell_response.text
 
 
+def test_fake_web_source_collection_api_and_shell_show_findings(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research public customer and incumbent context.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["public agency pages", "public award notices"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find customer and incumbent signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    run = collect_response.json()["run"]
+    assert run["status"] == "needs_review"
+    assert [record["source_target"] for record in run["source_collection_records"]] == [
+        "public agency pages",
+        "public award notices",
+    ]
+    assert all(
+        record["source_mode"] == "fake_adapter_test"
+        for record in run["source_collection_records"]
+    )
+    assert len(run["source_findings"]) == 2
+    assert run["source_findings"][0]["url"] == (
+        "fake://capture-research/public-agency-pages"
+    )
+    assert run["source_findings"][0]["source_mode"] == "fake_adapter_test"
+    assert run["source_findings"][0]["capability_provenance"][
+        "source_capability_id"
+    ] == "fake_web_source_collection"
+    assert "Fake adapter test data is not live Firecrawl source success." in (
+        run["source_findings"][0]["source_limitations"]
+    )
+    assert "live_firecrawl" not in collect_response.text
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Source collection records: 2" in shell_response.text
+    assert "public agency pages" in shell_response.text
+    assert "Fake source finding for public agency pages" in shell_response.text
+    assert "fake://capture-research/public-agency-pages" in shell_response.text
+    assert "fake adapter test" in shell_response.text
+    assert "Fake adapter test data is not live Firecrawl source success." in (
+        shell_response.text
+    )
+
+
 def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:
     run_root = tmp_path / "capability-runs"
     settings = RuntimeSettings.from_mapping(

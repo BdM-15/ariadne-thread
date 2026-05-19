@@ -4,7 +4,7 @@ from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ariadne.packets import CanonicalPacketSection
 from ariadne.structured_knowledge import (
@@ -48,6 +48,13 @@ class ArtifactContentBlockKind(StrEnum):
     ASSUMPTION_LIST = "assumption_list"
     GAP_LIST = "gap_list"
     SOURCE_APPENDIX = "source_appendix"
+
+
+class ArtifactBlockSupportClassification(StrEnum):
+    TRUSTED_SUPPORT = "trusted_support"
+    NEEDS_REVIEW = "needs_review"
+    MIXED_SUPPORT = "mixed_support"
+    ASSUMPTION = "assumption"
 
 
 class ArtifactBlockReviewState(StrEnum):
@@ -129,6 +136,11 @@ class ArtifactContentBlock(BaseModel):
     reviewable_ref_ids: tuple[str, ...] = ()
     gap_ref_ids: tuple[str, ...] = ()
     source_limitation_ref_ids: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    support_classification: ArtifactBlockSupportClassification = (
+        ArtifactBlockSupportClassification.NEEDS_REVIEW
+    )
+    content_data: dict[str, object] = Field(default_factory=dict)
     review_state: ArtifactBlockReviewState = ArtifactBlockReviewState.PENDING
     autonomy_hint: str = "review_required"
     export_required: bool = True
@@ -256,10 +268,12 @@ def create_artifact_source_package_from_context(
     context: OpportunityKnowledgeContextView,
     store: ArtifactAssemblyStore,
     created_at: str,
+    assumptions: tuple[str, ...] = (),
 ) -> ArtifactSourcePackage:
     package = build_artifact_source_package_from_context(
         context=context,
         created_at=created_at,
+        assumptions=assumptions,
     )
     return store.write_source_package(package)
 
@@ -268,6 +282,7 @@ def build_artifact_source_package_from_context(
     *,
     context: OpportunityKnowledgeContextView,
     created_at: str,
+    assumptions: tuple[str, ...] = (),
 ) -> ArtifactSourcePackage:
     trusted_refs = tuple(
         _source_ref(item, allowed_use=ArtifactSourceUse.DIRECT_SUPPORT)
@@ -288,6 +303,7 @@ def build_artifact_source_package_from_context(
         trusted_refs=trusted_refs,
         reviewable_refs=reviewable_refs,
         gap_refs=gap_refs,
+        assumptions=assumptions,
         source_limitations=source_limitations,
         pending_review_refs=_pending_review_refs(
             reviewable_refs=reviewable_refs,
@@ -439,18 +455,171 @@ def _milestone_packet_sections(
             title=section.value.replace("_", " ").title(),
             purpose=f"Reviewable shell for {section.value.replace('_', ' ')}.",
             source_ref_ids=source_ref_ids,
-            blocks=(
-                ArtifactContentBlock(
-                    block_id=f"{section.value}_narrative",
-                    block_kind=ArtifactContentBlockKind.NARRATIVE,
-                    title=f"{section.value.replace('_', ' ').title()} narrative shell",
-                    body="Draft shell created from explicit Artifact Source Package.",
-                    source_ref_ids=source_ref_ids,
-                    reviewable_ref_ids=reviewable_ref_ids,
-                    gap_ref_ids=gap_ref_ids,
-                    source_limitation_ref_ids=source_limitation_ref_ids,
-                ),
+            blocks=_section_blocks(
+                section=section,
+                source_package=source_package,
+                source_ref_ids=source_ref_ids,
+                reviewable_ref_ids=reviewable_ref_ids,
+                gap_ref_ids=gap_ref_ids,
+                source_limitation_ref_ids=source_limitation_ref_ids,
             ),
         )
         for section in CanonicalPacketSection
     )
+
+
+def _section_blocks(
+    *,
+    section: CanonicalPacketSection,
+    source_package: ArtifactSourcePackage,
+    source_ref_ids: tuple[str, ...],
+    reviewable_ref_ids: tuple[str, ...],
+    gap_ref_ids: tuple[str, ...],
+    source_limitation_ref_ids: tuple[str, ...],
+) -> tuple[ArtifactContentBlock, ...]:
+    section_title = section.value.replace("_", " ").title()
+    return (
+        ArtifactContentBlock(
+            block_id=f"{section.value}_narrative",
+            block_kind=ArtifactContentBlockKind.NARRATIVE,
+            title=f"{section_title} narrative",
+            body=_joined_summaries(source_package.trusted_refs),
+            source_ref_ids=source_ref_ids,
+            support_classification=ArtifactBlockSupportClassification.TRUSTED_SUPPORT,
+            content_data={"format": "narrative", "section": section.value},
+        ),
+        ArtifactContentBlock(
+            block_id=f"{section.value}_decision_summary",
+            block_kind=ArtifactContentBlockKind.DECISION_SUMMARY,
+            title=f"{section_title} decision summary",
+            body="Review trusted support and reviewable signals before gate decision.",
+            source_ref_ids=source_ref_ids,
+            reviewable_ref_ids=reviewable_ref_ids,
+            support_classification=ArtifactBlockSupportClassification.MIXED_SUPPORT,
+            content_data={"format": "summary", "section": section.value},
+        ),
+        ArtifactContentBlock(
+            block_id=f"{section.value}_evidence_table",
+            block_kind=ArtifactContentBlockKind.EVIDENCE_TABLE,
+            title=f"{section_title} trusted support",
+            body=f"{len(source_package.trusted_refs)} trusted refs available.",
+            source_ref_ids=source_ref_ids,
+            support_classification=ArtifactBlockSupportClassification.TRUSTED_SUPPORT,
+            content_data={"rows": _source_rows(source_package.trusted_refs)},
+        ),
+        ArtifactContentBlock(
+            block_id=f"{section.value}_action_list",
+            block_kind=ArtifactContentBlockKind.ACTION_LIST,
+            title=f"{section_title} action refs",
+            body="Action refs remain source-backed draft inputs.",
+            source_ref_ids=_source_ref_ids_by_kind(
+                source_package.trusted_refs,
+                KnowledgeRecordKind.ACTION_PLAN_ITEM,
+            ),
+            support_classification=ArtifactBlockSupportClassification.TRUSTED_SUPPORT,
+            content_data={
+                "items": _source_rows_by_kind(
+                    source_package.trusted_refs,
+                    KnowledgeRecordKind.ACTION_PLAN_ITEM,
+                )
+            },
+        ),
+        ArtifactContentBlock(
+            block_id=f"{section.value}_assumption_list",
+            block_kind=ArtifactContentBlockKind.ASSUMPTION_LIST,
+            title=f"{section_title} assumptions",
+            body="Assumptions need explicit review before export readiness.",
+            assumptions=source_package.assumptions,
+            support_classification=ArtifactBlockSupportClassification.ASSUMPTION,
+            content_data={"items": list(source_package.assumptions)},
+        ),
+        ArtifactContentBlock(
+            block_id=f"{section.value}_gap_list",
+            block_kind=ArtifactContentBlockKind.GAP_LIST,
+            title=f"{section_title} gaps and limitations",
+            body="Open gaps and limitations block export readiness.",
+            gap_ref_ids=gap_ref_ids,
+            source_limitation_ref_ids=source_limitation_ref_ids,
+            support_classification=ArtifactBlockSupportClassification.NEEDS_REVIEW,
+            content_data={
+                "gaps": _gap_rows(source_package.gap_refs),
+                "source_limitations": _limitation_rows(source_package.source_limitations),
+            },
+        ),
+        ArtifactContentBlock(
+            block_id=f"{section.value}_source_appendix",
+            block_kind=ArtifactContentBlockKind.SOURCE_APPENDIX,
+            title=f"{section_title} source appendix",
+            body="Trusted and reviewable refs are separated for artifact review.",
+            source_ref_ids=source_ref_ids,
+            reviewable_ref_ids=reviewable_ref_ids,
+            gap_ref_ids=gap_ref_ids,
+            source_limitation_ref_ids=source_limitation_ref_ids,
+            support_classification=ArtifactBlockSupportClassification.MIXED_SUPPORT,
+            content_data={
+                "trusted_refs": _source_rows(source_package.trusted_refs),
+                "reviewable_refs": _source_rows(source_package.reviewable_refs),
+            },
+        ),
+    )
+
+
+def _joined_summaries(refs: tuple[ArtifactSourceRef, ...]) -> str:
+    if not refs:
+        return "No trusted source refs available."
+    return " ".join(ref.summary for ref in refs)
+
+
+def _source_rows(refs: tuple[ArtifactSourceRef, ...]) -> list[dict[str, str]]:
+    return [
+        {
+            "record_kind": ref.record_kind.value,
+            "record_id": ref.record_id,
+            "title": ref.title,
+            "summary": ref.summary,
+            "trust_state": ref.trust_state.value,
+            "allowed_use": ref.allowed_use.value,
+        }
+        for ref in refs
+    ]
+
+
+def _source_ref_ids_by_kind(
+    refs: tuple[ArtifactSourceRef, ...],
+    record_kind: KnowledgeRecordKind,
+) -> tuple[str, ...]:
+    return tuple(ref.record_id for ref in refs if ref.record_kind is record_kind)
+
+
+def _source_rows_by_kind(
+    refs: tuple[ArtifactSourceRef, ...],
+    record_kind: KnowledgeRecordKind,
+) -> list[dict[str, str]]:
+    return _source_rows(tuple(ref for ref in refs if ref.record_kind is record_kind))
+
+
+def _gap_rows(refs: tuple[ArtifactGapRef, ...]) -> list[dict[str, str]]:
+    return [
+        {
+            "record_kind": ref.record_kind.value,
+            "record_id": ref.record_id,
+            "summary": ref.summary,
+            "command_id": ref.command_id,
+            "allowed_use": ref.allowed_use.value,
+        }
+        for ref in refs
+    ]
+
+
+def _limitation_rows(
+    refs: tuple[ArtifactSourceLimitationRef, ...],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "record_kind": ref.record_kind.value,
+            "record_id": ref.record_id,
+            "summary": ref.summary,
+            "allowed_use": ref.allowed_use.value,
+        }
+        for ref in refs
+    ]

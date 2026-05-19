@@ -12,7 +12,7 @@ Purpose: prepare the next conversation to choose the vertical epic after the com
 - USAspending is the first product-integrated federal data source, with PIID lookup/history adapter behavior, persisted PIID Contract Intelligence Profiles, burn posture, vehicle context, deterministic pivots, source-limit gaps, review-gated candidates, Hermes-observable events, and a Command Center demo surface.
 - SAM.gov is the second product-integrated federal data source, with persisted SAM.gov Enrichment Profiles, Entity Record, Known Opportunity, Opportunity Discovery, and Attachment Intake lanes, source-mode provenance, explicit download approval, Document Intake provenance, saved command surfaces, and review-gated candidates.
 - Capability Run Foundation adds a local Capability Run Store, deterministic Capability Catalog validation runs, optional Local Admin Model readiness probe runs, reviewable Capability Run Outputs, output review decisions without trusted downstream writes, Capability Studio run history/detail/Capability Reasoning Views, and Command Center launch/review entry points.
-- BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, parser integrations, artifact rendering, Hermes runtime, graph visualization, and advanced capability workflows remain deferred until selected through a fresh documented slice.
+- BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, provider-backed web enrichment, parser integrations, artifact rendering, Hermes runtime, graph visualization, and advanced capability workflows remain deferred until selected through a fresh documented slice.
 
 ## Session Inputs
 

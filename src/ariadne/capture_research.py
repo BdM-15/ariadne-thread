@@ -32,6 +32,10 @@ class CaptureResearchLens(StrEnum):
 
 class CaptureResearchSourceMode(StrEnum):
     FAKE_ADAPTER_TEST = "fake_adapter_test"
+    LOCAL_CRAWL4AI = "local_crawl4ai"
+    LOCAL_SEARXNG = "local_searxng"
+    LIVE_SERPAPI = "live_serpapi"
+    LIVE_OLOSTEP = "live_olostep"
     LIVE_FIRECRAWL = "live_firecrawl"
 
 
@@ -225,7 +229,7 @@ class FakeWebSourceCollectionAdapter:
             source_package_version="local",
         )
         limitations = (
-            "Fake adapter test data is not live Firecrawl source success.",
+            "Fake adapter test data is not live source-provider success.",
             "No live network request was made.",
         )
         findings = tuple(

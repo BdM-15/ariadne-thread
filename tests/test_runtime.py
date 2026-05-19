@@ -2387,7 +2387,7 @@ def test_fake_web_source_collection_api_and_shell_show_findings(tmp_path) -> Non
     assert run["source_findings"][0]["capability_provenance"][
         "source_capability_id"
     ] == "fake_web_source_collection"
-    assert "Fake adapter test data is not live Firecrawl source success." in (
+    assert "Fake adapter test data is not live source-provider success." in (
         run["source_findings"][0]["source_limitations"]
     )
     assert "live_firecrawl" not in collect_response.text
@@ -2400,7 +2400,7 @@ def test_fake_web_source_collection_api_and_shell_show_findings(tmp_path) -> Non
     assert "Fake source finding for public agency pages" in shell_response.text
     assert "fake://capture-research/public-agency-pages" in shell_response.text
     assert "fake adapter test" in shell_response.text
-    assert "Fake adapter test data is not live Firecrawl source success." in (
+    assert "Fake adapter test data is not live source-provider success." in (
         shell_response.text
     )
 
@@ -3163,7 +3163,7 @@ def test_sam_gov_command_surface_api_summarizes_four_lane_profile(tmp_path) -> N
         profile["attachment_intake_lane"]["attachments"][0]["intake_record_id"]
     ]
     assert (
-        "Firecrawl/Web Enrichment Support implementation deferred."
+        "Provider-backed Web Enrichment Support implementation deferred."
         in (summary["explicit_deferrals"])
     )
     assert len(calls) == call_count
@@ -3203,7 +3203,7 @@ def test_sam_gov_profile_command_surface_page_shows_four_lane_workflow(
     assert "Call Plan" in response.text
     assert "Follow-up Route" in response.text
     assert "Trusted writes: none" in response.text
-    assert "Firecrawl/Web Enrichment Support deferred" in response.text
+    assert "Provider-backed Web Enrichment Support deferred" in response.text
     assert "Specialized Solicitation Parser deferred" in response.text
     assert "Project Theseus parser integration deferred" in response.text
     assert "Artifact export deferred" in response.text

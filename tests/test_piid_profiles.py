@@ -472,7 +472,7 @@ def test_profile_recommends_enrichment_routes_from_populated_pivots_only() -> No
         PiidEnrichmentRouteType.SAM_GOV_ENTITY,
         PiidEnrichmentRouteType.SAM_GOV_OPPORTUNITY,
         PiidEnrichmentRouteType.BLS_GSA_PRICING_CONTEXT,
-        PiidEnrichmentRouteType.FIRECRAWL_WEB_ENRICHMENT,
+        PiidEnrichmentRouteType.WEB_SOURCE_COLLECTION,
         PiidEnrichmentRouteType.SUBAWARD_PROFILE,
         PiidEnrichmentRouteType.COMPETITOR_PROFILE,
         PiidEnrichmentRouteType.CUSTOMER_PROFILE,

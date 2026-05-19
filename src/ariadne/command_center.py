@@ -1273,7 +1273,7 @@ def _render_capture_research_enrichment_panel(
     runs: tuple[CaptureResearchRun, ...],
 ) -> str:
     if not runs:
-        rows = """<div class="row"><strong>No Capture Research runs yet</strong><span>Create one through POST /api/capture-research/runs with a bounded prompt, selected lenses, source targets, and source limits.</span><span>Page render reads persisted research runs only and does not start Firecrawl or other source collection.</span></div>"""
+        rows = """<div class="row"><strong>No Capture Research runs yet</strong><span>Create one through POST /api/capture-research/runs with a bounded prompt, selected lenses, source targets, and source limits.</span><span>Page render reads persisted research runs only and does not start live source-provider collection.</span></div>"""
     else:
         rows = "".join(_render_capture_research_run_row(run) for run in runs[-3:])
     return f"""<section class="panel" id="capture-research-enrichment" aria-labelledby="capture-research-enrichment-heading">
@@ -1566,8 +1566,8 @@ def _sam_gov_workflow_label(workflow: str) -> str:
 
 def _sam_gov_deferral_label(deferral: str) -> str:
     return deferral.removesuffix(".").replace(
-        "Firecrawl/Web Enrichment Support implementation deferred",
-        "Firecrawl/Web Enrichment Support deferred",
+        "Provider-backed Web Enrichment Support implementation deferred",
+        "Provider-backed Web Enrichment Support deferred",
     )
 
 

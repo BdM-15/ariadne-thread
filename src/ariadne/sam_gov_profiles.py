@@ -1074,7 +1074,7 @@ def record_sam_gov_attachment_download_failure(
 
 
 _SAM_GOV_COMMAND_SURFACE_DEFERRALS = (
-    "Firecrawl/Web Enrichment Support implementation deferred.",
+    "Provider-backed Web Enrichment Support implementation deferred.",
     "Specialized Solicitation Parser deferred behind Document Intake.",
     "Project Theseus parser integration deferred.",
     "Artifact export deferred until Artifact Renderer work exists.",

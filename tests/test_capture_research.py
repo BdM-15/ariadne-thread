@@ -159,7 +159,7 @@ def test_fake_web_source_collection_persists_records_and_findings(tmp_path) -> N
     assert first_finding.capability_provenance.source_tool_name == (
         "collect_fake_public_sources"
     )
-    assert "Fake adapter test data is not live Firecrawl source success." in (
+    assert "Fake adapter test data is not live source-provider success." in (
         first_finding.source_limitations
     )
     assert "live_firecrawl" not in reloaded.model_dump_json()

@@ -1303,7 +1303,8 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
     requirements_fit = _render_capture_research_requirements_fit(run)
     competitive_gap = _render_capture_research_competitive_gap(run)
     lens_analyses = _render_capture_research_lens_analyses(run)
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}{competitive_gap}{lens_analyses}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    downstream_candidates = _render_capture_research_downstream_candidates(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}{competitive_gap}{lens_analyses}{downstream_candidates}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
 
 
 def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
@@ -1412,6 +1413,49 @@ def _render_capture_research_lens_analysis(analysis) -> str:
         for signal in analysis.signals
     ) or "<span>None identified yet.</span>"
     return f"""<div class="row"><strong>{escape(lens_label)}</strong><span>{escape(analysis.summary)}</span>{signals}</div>"""
+
+
+def _render_capture_research_downstream_candidates(run: CaptureResearchRun) -> str:
+    if not run.downstream_candidates:
+        return ""
+    groups: dict[str, list[dict[str, object]]] = {}
+    for candidate in run.downstream_candidates:
+        label = str(candidate.get("candidate_group_label", "Ungrouped"))
+        groups.setdefault(label, []).append(candidate)
+    group_rows = "".join(
+        _render_capture_research_candidate_group(label, candidates)
+        for label, candidates in sorted(groups.items())
+    )
+    decision_rows = _render_capture_research_review_decisions(run)
+    total_count = len(run.downstream_candidates)
+    return f"""<div class="row-list"><div class="row"><strong>Reviewable Downstream Candidates</strong><span>{total_count} candidate(s) grouped by destination. No automatic trusted downstream writes.</span><span>Use accept, discard, or route review decisions; decisions preserve run, brief, trigger, finding, lens, and baseline provenance.</span></div>{group_rows}{decision_rows}</div>"""
+
+
+def _render_capture_research_candidate_group(
+    label: str, candidates: list[dict[str, object]]
+) -> str:
+    state_counts: dict[str, int] = {}
+    for candidate in candidates:
+        state = str(candidate.get("review_state", "pending_review"))
+        state_counts[state] = state_counts.get(state, 0) + 1
+    state_summary = ", ".join(
+        f"{state.replace('_', ' ')}: {count}" for state, count in sorted(state_counts.items())
+    )
+    rows = "".join(
+        f"<span>{escape(str(candidate.get('title', 'Untitled candidate')))} Review: {escape(str(candidate.get('review_state', 'pending_review')))} Type: {escape(str(candidate.get('candidate_type', 'unknown')))} Trusted write: {escape(str(candidate.get('trusted_output_written', False)).lower())} Findings: {escape(_join_or_none(tuple(candidate.get('supporting_source_finding_ids', ()))))} Baseline refs: {escape(_join_or_none(tuple(candidate.get('supporting_seller_baseline_ref_ids', ()))))} Lens: {escape(str(candidate.get('selected_lens') or 'none'))}</span>"
+        for candidate in candidates
+    )
+    return f"""<div class="row"><strong>{escape(label)}</strong><span>Count: {len(candidates)}; {escape(state_summary)}</span>{rows}</div>"""
+
+
+def _render_capture_research_review_decisions(run: CaptureResearchRun) -> str:
+    if not run.review_decisions:
+        return """<div class="row"><strong>Review decisions</strong><span>No candidate review decisions recorded yet.</span></div>"""
+    rows = "".join(
+        f"<span>{escape(str(decision.get('decision')))} {escape(str(decision.get('candidate_id')))} at {escape(str(decision.get('decided_at')))} Rationale: {escape(str(decision.get('reviewer_rationale')))} Trusted write: {escape(str(decision.get('trusted_output_written', False)).lower())}</span>"
+        for decision in run.review_decisions
+    )
+    return f"""<div class="row"><strong>Review decisions</strong>{rows}</div>"""
 
 
 def _join_or_none(values: tuple[str, ...]) -> str:

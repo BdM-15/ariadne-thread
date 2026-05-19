@@ -2,6 +2,7 @@ import pytest
 
 from ariadne.capture_research import (
     CapabilityProvenance,
+    CaptureResearchCandidateReviewDecisionType,
     CaptureResearchLens,
     CaptureResearchRunStatus,
     CaptureResearchStore,
@@ -20,6 +21,8 @@ from ariadne.capture_research import (
     create_source_provider_adapter,
     create_source_context_research_run,
     create_user_prompted_research_run,
+    project_capture_research_downstream_candidates,
+    record_capture_research_candidate_review_decision,
     run_approved_source_provider_collection,
     run_competitive_gap_analysis,
     run_requirements_fit_analysis,
@@ -924,6 +927,205 @@ def test_selected_capture_lens_endpoint_can_run_requested_subset(tmp_path) -> No
     assert all(
         candidate.get("lens") != "price_to_win" for candidate in analyzed.insight_candidates
     )
+
+
+def test_capture_research_projects_downstream_candidate_groups(tmp_path) -> None:
+    store, run = _prepared_capture_research_run_with_outputs(tmp_path)
+
+    projected = project_capture_research_downstream_candidates(
+        store=store,
+        research_run_id=run.research_run_id,
+        projected_at="2026-05-18T12:30:00+00:00",
+    )
+
+    destinations = {candidate["candidate_group"] for candidate in projected.downstream_candidates}
+    assert destinations >= {
+        "evidence",
+        "packet",
+        "action_plan",
+        "risk_register",
+        "call_plan",
+        "follow_up_route",
+        "price_workload",
+        "teaming",
+        "bcc_ready",
+    }
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in projected.downstream_candidates
+    )
+    assert all(
+        candidate["trusted_output_written"] is False
+        for candidate in projected.downstream_candidates
+    )
+    price_candidate = next(
+        candidate
+        for candidate in projected.downstream_candidates
+        if candidate["candidate_group"] == "price_workload"
+    )
+    assert price_candidate["provenance"]["research_run_id"] == projected.research_run_id
+    assert price_candidate["provenance"]["research_brief"]["research_question"]
+    assert price_candidate["provenance"]["trigger_context"]["summary"]
+    assert price_candidate["provenance"]["source_finding_ids"]
+    assert price_candidate["selected_lens"] in {
+        "price_to_win",
+        "burn_rate_analysis",
+        "workload_analysis",
+    }
+    assert price_candidate["supporting_seller_baseline_ref_ids"]
+    reloaded = store.read(projected.research_run_id)
+    assert reloaded.model_dump(mode="json")["downstream_candidates"] == projected.model_dump(
+        mode="json"
+    )["downstream_candidates"]
+
+
+def test_capture_research_candidate_review_decisions_preserve_provenance(
+    tmp_path,
+) -> None:
+    store, run = _prepared_capture_research_run_with_outputs(tmp_path)
+    projected = project_capture_research_downstream_candidates(
+        store=store,
+        research_run_id=run.research_run_id,
+        projected_at="2026-05-18T12:30:00+00:00",
+    )
+    evidence_candidate = next(
+        candidate
+        for candidate in projected.downstream_candidates
+        if candidate["candidate_group"] == "evidence"
+    )
+    price_candidate = next(
+        candidate
+        for candidate in projected.downstream_candidates
+        if candidate["candidate_group"] == "price_workload"
+    )
+    risk_candidate = next(
+        candidate
+        for candidate in projected.downstream_candidates
+        if candidate["candidate_group"] == "risk_register"
+    )
+
+    accepted = record_capture_research_candidate_review_decision(
+        store=store,
+        research_run_id=projected.research_run_id,
+        candidate_id=str(evidence_candidate["id"]),
+        decision=CaptureResearchCandidateReviewDecisionType.ACCEPT,
+        reviewer_rationale="Good source evidence candidate for review.",
+        decided_at="2026-05-18T12:35:00+00:00",
+    )
+    routed = record_capture_research_candidate_review_decision(
+        store=store,
+        research_run_id=projected.research_run_id,
+        candidate_id=str(price_candidate["id"]),
+        decision=CaptureResearchCandidateReviewDecisionType.ROUTE,
+        reviewer_rationale="Route pricing assumption to price review.",
+        routed_destination="Price-to-Win Review",
+        decided_at="2026-05-18T12:36:00+00:00",
+    )
+    discarded = record_capture_research_candidate_review_decision(
+        store=store,
+        research_run_id=projected.research_run_id,
+        candidate_id=str(risk_candidate["id"]),
+        decision=CaptureResearchCandidateReviewDecisionType.DISCARD,
+        reviewer_rationale="Risk is duplicate of existing note.",
+        decided_at="2026-05-18T12:37:00+00:00",
+    )
+
+    assert accepted.review_decisions[0]["decision"] == "accept"
+    assert routed.review_decisions[-1]["decision"] == "route"
+    assert routed.review_decisions[-1]["routed_destination"] == "Price-to-Win Review"
+    assert discarded.review_decisions[-1]["decision"] == "discard"
+    assert discarded.review_decisions[-1]["candidate_provenance"]["research_run_id"] == run.research_run_id
+    assert discarded.review_decisions[-1]["candidate_provenance"]["research_brief"]
+    assert discarded.review_decisions[-1]["trusted_output_written"] is False
+    states = {
+        candidate["id"]: candidate["review_state"]
+        for candidate in discarded.downstream_candidates
+    }
+    assert states[evidence_candidate["id"]] == "accepted"
+    assert states[price_candidate["id"]] == "routed"
+    assert states[risk_candidate["id"]] == "discarded"
+    assert all(
+        candidate["trusted_output_written"] is False
+        for candidate in discarded.downstream_candidates
+    )
+    with pytest.raises(ValueError, match="routed review requires routed_destination"):
+        record_capture_research_candidate_review_decision(
+            store=store,
+            research_run_id=projected.research_run_id,
+            candidate_id=str(price_candidate["id"]),
+            decision=CaptureResearchCandidateReviewDecisionType.ROUTE,
+            reviewer_rationale="Route without destination should fail.",
+        )
+    reloaded = store.read(projected.research_run_id)
+    assert reloaded.review_decisions == discarded.review_decisions
+
+
+def _prepared_capture_research_run_with_outputs(tmp_path):
+    run = create_source_context_research_run(
+        "PIID burn posture and competitor signal need routed research candidates.",
+        opportunity_id="opp_aflcmc_recompete",
+        source_profile_refs=(
+            SourceProfileRef(
+                source_profile_type=SourceProfileType.PIID_CONTRACT_INTELLIGENCE_PROFILE,
+                source_profile_id="piid_profile_FAKE1234",
+                source_element_key="burn_posture",
+                source_element_summary=(
+                    "PIID profile shows net obligations, monthly burn rate, remaining value, "
+                    "period of performance, staffing workload, and recompete timing."
+                ),
+            ),
+        ),
+        selected_lenses=(
+            CaptureResearchLens.COMPETITIVE_POSITIONING,
+            CaptureResearchLens.PRICE_TO_WIN,
+            CaptureResearchLens.BURN_RATE_ANALYSIS,
+            CaptureResearchLens.WORKLOAD_ANALYSIS,
+            CaptureResearchLens.CALL_PLAN_CRO,
+        ),
+        source_targets=("incumbent vendor budget ceiling price FTE staffing partner vehicle proof friction next action",),
+        source_limits=("public_web_only",),
+        prompt="Research downstream candidate routing.",
+        evidence_goals=("Find evidence, price, workload, teaming, BCC, and call-plan candidates."),
+        created_at="2026-05-18T12:00:00+00:00",
+    )
+    store = CaptureResearchStore(tmp_path / "capture-research")
+    store.write(
+        run.model_copy(
+            update={
+                "source_findings": (
+                    _requirements_fit_source_finding(
+                        "Incumbent vendor signals include budget ceiling, evaluated price, FTE staffing, workload volume, partner vehicle coverage gap, value proof friction, and next action."
+                    ),
+                ),
+            }
+        )
+    )
+    evidence = create_source_evidence(
+        evidence_id="ev_seller_candidate_baseline",
+        content=(
+            "Seller proof includes transition past performance, staffing model, cyber modernization, pricing discipline, and customer proof points."
+        ),
+        source_ref="accepted candidate baseline note",
+        opportunity_id="opp_aflcmc_recompete",
+    )
+    fitted = run_requirements_fit_analysis(
+        store=store,
+        research_run_id=run.research_run_id,
+        evidence_items=(evidence,),
+        reference_influences=(),
+        analyzed_at="2026-05-18T12:10:00+00:00",
+    )
+    gapped = run_competitive_gap_analysis(
+        store=store,
+        research_run_id=fitted.research_run_id,
+        analyzed_at="2026-05-18T12:15:00+00:00",
+    )
+    lensed = run_selected_capture_lens_analysis(
+        store=store,
+        research_run_id=gapped.research_run_id,
+        analyzed_at="2026-05-18T12:20:00+00:00",
+    )
+    return store, lensed
 
 
 def _requirements_fit_source_finding(excerpt: str) -> SourceFinding:

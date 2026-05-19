@@ -2765,6 +2765,136 @@ def test_selected_lens_api_and_shell_show_outputs_by_lens(tmp_path) -> None:
     assert "outputs are shown separately by lens" in shell_response.text
 
 
+def test_capture_research_candidate_projection_review_api_and_shell(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_candidate_baseline",
+            content=(
+                "Accepted seller evidence: pricing discipline, staffing model, transition proof, and customer proof points."
+            ),
+            source_ref="accepted candidate baseline note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research downstream candidate routing.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "source_profile_refs": [
+                {
+                    "source_profile_type": "piid_contract_intelligence_profile",
+                    "source_profile_id": "piid_profile_FAKE1234",
+                    "source_element_key": "burn_posture",
+                    "source_element_summary": "PIID profile shows net obligations, monthly burn rate, remaining value, staffing workload, and recompete timing.",
+                }
+            ],
+            "selected_lenses": [
+                "competitive_positioning",
+                "price_to_win",
+                "burn_rate_analysis",
+                "workload_analysis",
+                "call_plan_cro",
+            ],
+            "source_targets": [
+                "incumbent vendor budget ceiling price FTE staffing partner vehicle proof friction next action"
+            ],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find routed downstream candidates."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/competitive-gap-analysis",
+        json={"analyzed_at": "2026-05-18T12:15:00+00:00"},
+    )
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/selected-lens-analysis",
+        json={"analyzed_at": "2026-05-18T12:20:00+00:00"},
+    )
+
+    projection_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/downstream-candidates",
+        json={"projected_at": "2026-05-18T12:30:00+00:00"},
+    )
+
+    assert projection_response.status_code == 200
+    run = projection_response.json()["run"]
+    candidates = run["downstream_candidates"]
+    groups = {candidate["candidate_group"] for candidate in candidates}
+    assert groups >= {
+        "evidence",
+        "packet",
+        "risk_register",
+        "call_plan",
+        "follow_up_route",
+        "price_workload",
+        "teaming",
+        "bcc_ready",
+    }
+    assert all(candidate["trusted_output_written"] is False for candidate in candidates)
+    candidate = next(
+        item for item in candidates if item["candidate_group"] == "price_workload"
+    )
+    assert candidate["provenance"]["research_run_id"] == research_run_id
+    assert candidate["provenance"]["research_brief"]
+    assert candidate["provenance"]["trigger_context"]
+
+    review_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/downstream-candidates/{candidate['id']}/review-decisions",
+        json={
+            "decision": "route",
+            "reviewer_rationale": "Route pricing assumption to price review.",
+            "routed_destination": "Price-to-Win Review",
+            "decided_at": "2026-05-18T12:35:00+00:00",
+        },
+    )
+
+    assert review_response.status_code == 200
+    reviewed_run = review_response.json()["run"]
+    reviewed_candidate = next(
+        item for item in reviewed_run["downstream_candidates"] if item["id"] == candidate["id"]
+    )
+    assert reviewed_candidate["review_state"] == "routed"
+    assert reviewed_candidate["routed_destination"] == "Price-to-Win Review"
+    assert reviewed_candidate["trusted_output_written"] is False
+    assert reviewed_run["review_decisions"][0]["candidate_provenance"]["research_run_id"] == research_run_id
+    assert reviewed_run["review_decisions"][0]["trusted_output_written"] is False
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Reviewable Downstream Candidates" in shell_response.text
+    assert "No automatic trusted downstream writes" in shell_response.text
+    assert "Price/Workload Assumptions" in shell_response.text
+    assert "BCC-Ready Notes" in shell_response.text
+    assert "Review decisions" in shell_response.text
+    assert "Trusted write: false" in shell_response.text
+
+
 def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path) -> None:
     research_root = tmp_path / "capture-research"
     settings = RuntimeSettings.from_mapping(

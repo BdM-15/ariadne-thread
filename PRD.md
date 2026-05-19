@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.23**
+**Product Requirements Document (PRD) v1.24**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -47,10 +47,11 @@
 - `docs/architecture/knowledge-layer-foundation-plan.md` records the completed Knowledge Layer Foundation implementation trail and validation outcome. The slice preserves these boundaries: the Structured Knowledge Index remains an on-demand non-authoritative projection, the Next Action Recommendation Store stays narrow, trusted downstream writes remain human-gated, and semantic retrieval/RAG, graph visualization, Hermes runtime, parser integrations, artifact rendering, automatic action handling, broad databases, and persistent indexing remain deferred.
 - A `grill-with-docs` planning session selected **Capture Research Enrichment** as the next vertical product epic. `CONTEXT.md` now defines Capture Research Enrichment, Source Profile, Research Trigger Context, User-Prompted Research Request, Capture Research Brief, Web Source Collection, Live Source Collection Run, Source Finding, Seller Capability Baseline, Capture Research Lens, Requirements Fit Analysis, Competitive Gap Analysis, Bidder Comparison Chart, Teaming Partner Need, Price-to-Win Research, Burn Rate Analysis, Workload Analysis, Research Summary View, Capture Research Enrichment Command Surface, and related review boundaries.
 - `docs/architecture/capture-research-enrichment-plan.md` records the selected Capture Research Enrichment epic plan: provider-registry Web Source Collection with free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional recurring-free API-backed providers, Firecrawl kept optional for later paid use, fake adapters for automated tests, source-profile references rather than duplicated PIID/SAM.gov fields, bounded user-prompted research, selected marketing/capture lenses, seller baseline from accepted/reference Ariadne knowledge, reviewable source findings and insight candidates, and no LangGraph/Hermes runtime or automatic trusted downstream writes in the first slice.
-- Capture Research Enrichment implementation through issue #57 now includes bounded research-run creation, source-profile references, fake Web Source Collection, source-provider registry/readiness/smoke checks, approved provider-backed collection, Seller Capability Baseline refs from accepted evidence and Reference Wiki context, reviewable Requirements Fit Analysis outputs, reviewable Competitive Gap Analysis outputs with BCC-ready inputs, and selected capture-lens analyses for Price-to-Win Research, Burn Rate Analysis, Workload Analysis, and targeted call-plan CRO engagement improvements.
+- Capture Research Enrichment implementation through issue #58 now includes bounded research-run creation, source-profile references, fake Web Source Collection, source-provider registry/readiness/smoke checks, approved provider-backed collection, Seller Capability Baseline refs from accepted evidence and Reference Wiki context, reviewable Requirements Fit Analysis outputs, reviewable Competitive Gap Analysis outputs with BCC-ready inputs, selected capture-lens analyses, and reviewable downstream candidate projection with candidate review decisions.
 - Competitive Gap Analysis produces BCC-ready notes only as reviewable input for later Bidder Comparison Chart work. It does not generate BCC rows, scores, slides, artifacts, or trusted downstream records in this slice.
 - Selected capture-lens analysis keeps price-to-win, burn-rate, workload, and engagement outputs separated by lens, with provenance, assumptions, source limitations, follow-up needs, confidence, and review state. The targeted CRO lens is limited to call-plan and customer-engagement clarity and is not used as the primary burn-rate or price-to-win lens.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Capture Research Enrichment issue #57 progression branch, with 256 tests passing.
+- Downstream candidate projection groups Source Findings and research/lens outputs into reviewable Evidence, Packet, Action Plan, Risk Register, Call Plan, Follow-Up Route, Price/Workload Assumptions, Teaming Partner Needs, and BCC-Ready Notes candidates. Accept, discard, and route decisions update review state and preserve run, brief, trigger, source-finding, selected-lens, source-profile, and seller-baseline provenance without creating trusted downstream records.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Capture Research Enrichment issue #58 progression branch, with 259 tests passing.
 
 **Still Deferred**
 
@@ -252,6 +253,12 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - Selected lens analysis is exposed through `POST /api/capture-research/runs/{research_run_id}/selected-lens-analysis`. The request may use the run's selected lenses or supply a supported subset.
 - Price-to-win outputs produce pricing strategy assumptions, confidence, source limitations, and follow-up needs. Burn-rate outputs connect PIID/source-profile context and source findings to funding, timing, recompete, and price/workload implications. Workload outputs connect scope, staffing, timing, funding, and operational complexity assumptions to reviewable follow-up. Call-plan CRO outputs sharpen value, proof, friction, objection, and next-action clarity for customer engagement only.
 - All selected lens outputs remain reviewable insight candidates. They do not write trusted Evidence, Packet, Action Plan, Risk Register, Call Plan, price, workload, or artifact records without explicit downstream review.
+
+### Capture Research Reviewable Candidate Projection
+
+- Reviewable downstream candidate projection is exposed through `POST /api/capture-research/runs/{research_run_id}/downstream-candidates`. It prepares grouped candidates for Evidence, Packet, Action Plan, Risk Register, Call Plan, Follow-Up Route, Price/Workload Assumptions, Teaming Partner Needs, and BCC-Ready Notes from Source Findings and generated insight candidates.
+- Candidate review decisions are exposed through `POST /api/capture-research/runs/{research_run_id}/downstream-candidates/{candidate_id}/review-decisions` with `accept`, `discard`, and `route` decisions, reviewer rationale, decided timestamp, and routed destination when routing.
+- Candidate review decisions preserve provenance to the Capture Research run, research brief, trigger context, Source Findings, Source Profile refs, selected lens, supporting Seller Capability Baseline refs, and source insight candidate. They update candidate review state only; they do not create trusted downstream records automatically.
 
 ### Capture Research Data APIs
 

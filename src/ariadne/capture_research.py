@@ -383,6 +383,19 @@ class CaptureLensAnalysis(BaseModel):
     review_state: str = "pending_review"
 
 
+class CaptureResearchCandidateReviewState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ACCEPTED = "accepted"
+    DISCARDED = "discarded"
+    ROUTED = "routed"
+
+
+class CaptureResearchCandidateReviewDecisionType(StrEnum):
+    ACCEPT = "accept"
+    DISCARD = "discard"
+    ROUTE = "route"
+
+
 class CaptureResearchRun(BaseModel):
     research_run_id: str
     opportunity_id: str | None = None
@@ -1639,6 +1652,72 @@ def run_selected_capture_lens_analysis(
     return store.write(updated)
 
 
+def project_capture_research_downstream_candidates(
+    *,
+    store: CaptureResearchStore,
+    research_run_id: str,
+    projected_at: str | None = None,
+) -> CaptureResearchRun:
+    timestamp = projected_at or datetime.now(UTC).isoformat()
+    run = store.read(research_run_id)
+    candidates = build_capture_research_downstream_candidates(run, projected_at=timestamp)
+    updated = run.model_copy(
+        update={
+            "status": CaptureResearchRunStatus.NEEDS_REVIEW,
+            "downstream_candidates": candidates,
+            "research_summary_view": _downstream_candidate_summary_view(candidates),
+            "updated_at": timestamp,
+        }
+    )
+    return store.write(updated)
+
+
+def record_capture_research_candidate_review_decision(
+    *,
+    store: CaptureResearchStore,
+    research_run_id: str,
+    candidate_id: str,
+    decision: CaptureResearchCandidateReviewDecisionType,
+    reviewer_rationale: str,
+    decided_at: str | None = None,
+    routed_destination: str | None = None,
+) -> CaptureResearchRun:
+    if not reviewer_rationale.strip():
+        raise ValueError("reviewer_rationale is required")
+    if decision is CaptureResearchCandidateReviewDecisionType.ROUTE and not routed_destination:
+        raise ValueError("routed review requires routed_destination")
+    timestamp = decided_at or datetime.now(UTC).isoformat()
+    run = store.read(research_run_id)
+    candidate = _find_downstream_candidate(run.downstream_candidates, candidate_id)
+    review_state = _candidate_review_state_from_decision(decision)
+    decision_record = {
+        "id": f"capture_research_review_{uuid4().hex}",
+        "candidate_id": candidate_id,
+        "decision": decision.value,
+        "review_state": review_state.value,
+        "reviewer_rationale": reviewer_rationale.strip(),
+        "decided_at": timestamp,
+        "routed_destination": routed_destination,
+        "trusted_output_written": False,
+        "candidate_provenance": candidate.get("provenance", {}),
+    }
+    updated_candidates = tuple(
+        _with_candidate_review(candidate_item, decision_record)
+        if candidate_item.get("id") == candidate_id
+        else candidate_item
+        for candidate_item in run.downstream_candidates
+    )
+    updated = run.model_copy(
+        update={
+            "downstream_candidates": updated_candidates,
+            "review_decisions": run.review_decisions + (decision_record,),
+            "research_summary_view": _downstream_candidate_summary_view(updated_candidates),
+            "updated_at": timestamp,
+        }
+    )
+    return store.write(updated)
+
+
 def select_seller_baseline_refs(
     run: CaptureResearchRun,
     *,
@@ -2085,6 +2164,206 @@ def _capture_lens_signal(
         source_limitations=source_limitations,
         follow_up_needs=follow_up_needs,
         confidence=confidence,
+    )
+
+
+def build_capture_research_downstream_candidates(
+    run: CaptureResearchRun, *, projected_at: str
+) -> tuple[dict[str, object], ...]:
+    candidates: list[dict[str, object]] = []
+    for finding in run.source_findings:
+        candidates.append(
+            _downstream_candidate(
+                run,
+                destination="evidence",
+                candidate_type="source_finding_evidence",
+                source_candidate_id=finding.id,
+                title=f"Source Evidence candidate: {finding.title}",
+                summary=finding.excerpt,
+                source_finding_ids=(finding.id,),
+                projected_at=projected_at,
+            )
+        )
+        candidates.append(
+            _downstream_candidate(
+                run,
+                destination="follow_up_route",
+                candidate_type="source_finding_follow_up_route",
+                source_candidate_id=f"{finding.id}_follow_up",
+                title=f"Follow-up route candidate: {finding.source_target}",
+                summary="Review source limitations and decide whether more collection, customer engagement, or evidence promotion is needed.",
+                source_finding_ids=(finding.id,),
+                projected_at=projected_at,
+            )
+        )
+    for insight in run.insight_candidates:
+        destination = _downstream_destination_for_insight(insight)
+        source_candidate_id = str(insight.get("id", f"insight_{uuid4().hex[:8]}"))
+        candidates.append(
+            _downstream_candidate(
+                run,
+                destination=destination,
+                candidate_type=str(insight.get("candidate_type", "insight_candidate")),
+                source_candidate_id=source_candidate_id,
+                title=str(insight.get("title") or insight.get("summary") or source_candidate_id),
+                summary=str(insight.get("summary") or insight.get("title") or source_candidate_id),
+                source_finding_ids=tuple(insight.get("supporting_source_finding_ids", ())),
+                seller_baseline_ref_ids=tuple(
+                    insight.get("supporting_seller_baseline_ref_ids", ())
+                ),
+                source_profile_refs=tuple(insight.get("supporting_source_profile_refs", ())),
+                selected_lens=insight.get("lens"),
+                projected_at=projected_at,
+                source_insight_candidate_id=source_candidate_id,
+            )
+        )
+    return tuple(candidates)
+
+
+def _downstream_candidate(
+    run: CaptureResearchRun,
+    *,
+    destination: str,
+    candidate_type: str,
+    source_candidate_id: str,
+    title: str,
+    summary: str,
+    projected_at: str,
+    source_finding_ids: tuple[str, ...] = (),
+    seller_baseline_ref_ids: tuple[str, ...] = (),
+    source_profile_refs: tuple[str, ...] = (),
+    selected_lens: object | None = None,
+    source_insight_candidate_id: str | None = None,
+) -> dict[str, object]:
+    provenance = {
+        "research_run_id": run.research_run_id,
+        "opportunity_id": run.opportunity_id,
+        "research_brief": run.research_brief.model_dump(mode="json"),
+        "trigger_context": run.research_trigger_context.model_dump(mode="json"),
+        "source_finding_ids": source_finding_ids,
+        "selected_lens": selected_lens,
+        "supporting_seller_baseline_ref_ids": seller_baseline_ref_ids,
+        "source_profile_refs": source_profile_refs
+        or tuple(_source_profile_ref_key(ref) for ref in run.source_profile_refs),
+        "source_insight_candidate_id": source_insight_candidate_id,
+    }
+    return {
+        "id": _downstream_candidate_id(destination, source_candidate_id),
+        "candidate_group": destination,
+        "candidate_group_label": _downstream_destination_label(destination),
+        "candidate_type": candidate_type,
+        "title": title,
+        "summary": summary,
+        "review_state": CaptureResearchCandidateReviewState.PENDING_REVIEW.value,
+        "projected_at": projected_at,
+        "trusted_output_written": False,
+        "source_candidate_id": source_candidate_id,
+        "source_insight_candidate_id": source_insight_candidate_id,
+        "supporting_source_finding_ids": source_finding_ids,
+        "supporting_seller_baseline_ref_ids": seller_baseline_ref_ids,
+        "supporting_source_profile_refs": provenance["source_profile_refs"],
+        "selected_lens": selected_lens,
+        "review_decision_ids": (),
+        "routed_destination": None,
+        "provenance": provenance,
+    }
+
+
+def _downstream_candidate_id(destination: str, source_candidate_id: str) -> str:
+    safe_source_id = re.sub(r"[^a-z0-9_]+", "_", source_candidate_id.lower()).strip("_")
+    return f"capture_research_candidate_{destination}_{safe_source_id[:90]}"
+
+
+def _downstream_destination_for_insight(insight: dict[str, object]) -> str:
+    candidate_type = str(insight.get("candidate_type", ""))
+    target_workflow = str(insight.get("target_workflow", ""))
+    selected_lens = str(insight.get("lens", ""))
+    if "teaming" in candidate_type:
+        return "teaming"
+    if "bcc_ready" in candidate_type or target_workflow == "bcc_ready_input":
+        return "bcc_ready"
+    if "follow_up" in candidate_type:
+        return "follow_up_route"
+    if selected_lens in {"price_to_win", "burn_rate_analysis", "workload_analysis"}:
+        return "price_workload"
+    workflow_destinations = {
+        "evidence": "evidence",
+        "packet": "packet",
+        "action_plan": "action_plan",
+        "risk_register": "risk_register",
+        "call_plan": "call_plan",
+        "price_to_win": "price_workload",
+    }
+    return workflow_destinations.get(target_workflow, "follow_up_route")
+
+
+def _downstream_destination_label(destination: str) -> str:
+    labels = {
+        "evidence": "Evidence",
+        "packet": "Packet",
+        "action_plan": "Action Plan",
+        "risk_register": "Risk Register",
+        "call_plan": "Call Plan",
+        "follow_up_route": "Follow-Up Route",
+        "price_workload": "Price/Workload Assumptions",
+        "teaming": "Teaming Partner Needs",
+        "bcc_ready": "BCC-Ready Notes",
+    }
+    return labels.get(destination, destination.replace("_", " ").title())
+
+
+def _find_downstream_candidate(
+    candidates: tuple[dict[str, object], ...], candidate_id: str
+) -> dict[str, object]:
+    for candidate in candidates:
+        if candidate.get("id") == candidate_id:
+            return candidate
+    raise ValueError("Capture Research downstream candidate not found")
+
+
+def _with_candidate_review(
+    candidate: dict[str, object], decision_record: dict[str, object]
+) -> dict[str, object]:
+    decision_ids = tuple(candidate.get("review_decision_ids", ())) + (
+        str(decision_record["id"]),
+    )
+    updated = dict(candidate)
+    updated.update(
+        {
+            "review_state": decision_record["review_state"],
+            "review_decision_ids": decision_ids,
+            "reviewer_rationale": decision_record["reviewer_rationale"],
+            "routed_destination": decision_record["routed_destination"],
+            "trusted_output_written": False,
+        }
+    )
+    return updated
+
+
+def _candidate_review_state_from_decision(
+    decision: CaptureResearchCandidateReviewDecisionType,
+) -> CaptureResearchCandidateReviewState:
+    if decision is CaptureResearchCandidateReviewDecisionType.ACCEPT:
+        return CaptureResearchCandidateReviewState.ACCEPTED
+    if decision is CaptureResearchCandidateReviewDecisionType.DISCARD:
+        return CaptureResearchCandidateReviewState.DISCARDED
+    return CaptureResearchCandidateReviewState.ROUTED
+
+
+def _downstream_candidate_summary_view(candidates: tuple[dict[str, object], ...]) -> str:
+    counts: dict[str, int] = {}
+    trusted_writes = 0
+    for candidate in candidates:
+        label = str(candidate.get("candidate_group_label", "Ungrouped"))
+        counts[label] = counts.get(label, 0) + 1
+        if candidate.get("trusted_output_written") is True:
+            trusted_writes += 1
+    grouped_counts = ", ".join(
+        f"{label}: {count}" for label, count in sorted(counts.items())
+    ) or "none"
+    return (
+        f"Capture Research downstream candidates grouped for review ({grouped_counts}). "
+        f"Automatic trusted writes: {trusted_writes}. Accept, discard, or route decisions only update candidate review state."
     )
 
 

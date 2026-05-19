@@ -22,6 +22,7 @@ from ariadne.capability_runs import (
 )
 from ariadne.capture_research import (
     ApprovedWebSourceCollectionAdapter,
+    CaptureResearchCandidateReviewDecisionType,
     CaptureResearchLens,
     CaptureResearchRun,
     CaptureResearchRunStatus,
@@ -36,6 +37,8 @@ from ariadne.capture_research import (
     create_source_provider_adapter,
     create_source_context_research_run,
     create_user_prompted_research_run,
+    project_capture_research_downstream_candidates,
+    record_capture_research_candidate_review_decision,
     run_approved_source_provider_collection,
     run_competitive_gap_analysis,
     run_requirements_fit_analysis,
@@ -329,6 +332,17 @@ class CaptureResearchCompetitiveGapRequest(BaseModel):
 class CaptureResearchSelectedLensAnalysisRequest(BaseModel):
     analyzed_at: str | None = None
     selected_lenses: tuple[CaptureResearchLens, ...] | None = None
+
+
+class CaptureResearchCandidateProjectionRequest(BaseModel):
+    projected_at: str | None = None
+
+
+class CaptureResearchCandidateReviewDecisionRequest(BaseModel):
+    decision: CaptureResearchCandidateReviewDecisionType
+    reviewer_rationale: str
+    decided_at: str | None = None
+    routed_destination: str | None = None
 
 
 class USAspendingPiidLookupRequest(BaseModel):
@@ -910,6 +924,59 @@ def create_app(
                     research_run_id=research_run_id,
                     selected_lenses=request.selected_lenses,
                     analyzed_at=request.analyzed_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/downstream-candidates")
+    def capture_research_downstream_candidates(
+        research_run_id: str,
+        request: CaptureResearchCandidateProjectionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=project_capture_research_downstream_candidates(
+                    store=store,
+                    research_run_id=research_run_id,
+                    projected_at=request.projected_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post(
+        "/api/capture-research/runs/{research_run_id}/downstream-candidates/{candidate_id}/review-decisions"
+    )
+    def capture_research_candidate_review_decision(
+        research_run_id: str,
+        candidate_id: str,
+        request: CaptureResearchCandidateReviewDecisionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=record_capture_research_candidate_review_decision(
+                    store=store,
+                    research_run_id=research_run_id,
+                    candidate_id=candidate_id,
+                    decision=request.decision,
+                    reviewer_rationale=request.reviewer_rationale,
+                    decided_at=request.decided_at,
+                    routed_destination=request.routed_destination,
                 )
             )
         except FileNotFoundError as error:

@@ -723,3 +723,125 @@ def test_reviewed_artifact_draft_with_blocking_gaps_stops_at_preview_ready(tmp_p
     assert "piid_profile_FA8650_23_C_0001" in (
         reviewed_draft.renderer_readiness.export_blocking_refs
     )
+
+
+def test_artifact_assembly_foundation_loop_stays_schema_first_without_exports_or_downstream_writes(
+    tmp_path,
+) -> None:
+    context = OpportunityKnowledgeContextView(
+        opportunity_id="opp-aflcmc-recompete",
+        trusted_context=KnowledgeContextSection(
+            count=2,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.EVIDENCE_ITEM,
+                    record_id="ev_transition_risk",
+                    title="Transition risk evidence",
+                    summary="Customer flagged transition risk on the recompete.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.ACTION_PLAN_ITEM,
+                    record_id="action_validate_scope",
+                    title="Validate transition scope",
+                    summary="Confirm transition workload with customer before gate.",
+                    trust_state=KnowledgeTrustState.TRUSTED,
+                    status_label="trusted",
+                ),
+            ),
+        ),
+        reviewable_context=KnowledgeContextSection(
+            count=1,
+            items=(
+                KnowledgeContextItem(
+                    record_kind=KnowledgeRecordKind.CAPABILITY_RUN_OUTPUT,
+                    record_id="capability_output_requirements_fit",
+                    title="Requirements fit output",
+                    summary="Capability run found strong incumbent-transition fit.",
+                    trust_state=KnowledgeTrustState.REVIEWABLE,
+                    status_label="reviewable",
+                ),
+            ),
+        ),
+    )
+    artifact_store = ArtifactAssemblyStore(tmp_path / "artifact-assembly")
+    evidence_store = LocalEvidenceStore(tmp_path / "evidence")
+
+    source_package = create_artifact_source_package_from_context(
+        context=context,
+        store=artifact_store,
+        created_at="2026-05-19T20:45:00Z",
+        assumptions=("Customer will keep recompete transition scope stable.",),
+    )
+    draft = assemble_milestone_packet_draft(
+        source_package_id=source_package.package_id,
+        store=artifact_store,
+        assembled_at="2026-05-19T21:15:00Z",
+    )
+
+    assert summarize_artifact_source_package(source_package).trusted_count == 2
+    assert summarize_artifact_source_package(source_package).reviewable_count == 1
+    assert source_package.trusted_refs[0].allowed_use is ArtifactSourceUse.DIRECT_SUPPORT
+    assert source_package.reviewable_refs[0].allowed_use is ArtifactSourceUse.NEEDS_REVIEW
+    assert draft.readiness_state is ArtifactDraftReadiness.NEEDS_REVIEW
+    assert draft.artifact_type is ArtifactDraftType.MILESTONE_DECISION_BRIEFING_PACKET
+    assert {block.block_kind for section in draft.sections for block in section.blocks} >= {
+        ArtifactContentBlockKind.NARRATIVE,
+        ArtifactContentBlockKind.DECISION_SUMMARY,
+        ArtifactContentBlockKind.EVIDENCE_TABLE,
+        ArtifactContentBlockKind.ACTION_LIST,
+        ArtifactContentBlockKind.ASSUMPTION_LIST,
+        ArtifactContentBlockKind.GAP_LIST,
+        ArtifactContentBlockKind.SOURCE_APPENDIX,
+    }
+    assert any(
+        block.reviewable_ref_ids == ("capability_output_requirements_fit",)
+        and block.support_classification is ArtifactBlockSupportClassification.MIXED_SUPPORT
+        for section in draft.sections
+        for block in section.blocks
+    )
+
+    reviewed_draft = review_artifact_block(
+        draft_id=draft.draft_id,
+        block_id="opportunity_overview_narrative",
+        action=ArtifactBlockReviewAction.ACCEPT,
+        store=artifact_store,
+        reviewed_at="2026-05-19T21:30:00Z",
+        reviewer_notes="Accepted first block in foundation demo.",
+    )
+    assert reviewed_draft.readiness_state is ArtifactDraftReadiness.PARTIALLY_REVIEWED
+
+    for block in (
+        block
+        for section in draft.sections
+        for block in section.blocks
+        if block.block_id != "opportunity_overview_narrative"
+    ):
+        action = (
+            ArtifactBlockReviewAction.EXCLUDE_FROM_EXPORT
+            if block.block_kind is ArtifactContentBlockKind.SOURCE_APPENDIX
+            else ArtifactBlockReviewAction.ACCEPT
+        )
+        reviewed_draft = review_artifact_block(
+            draft_id=reviewed_draft.draft_id,
+            block_id=block.block_id,
+            action=action,
+            store=artifact_store,
+            reviewed_at="2026-05-19T22:00:00Z",
+            reviewer_notes="Reviewed in foundation validation loop.",
+        )
+
+    assert reviewed_draft.readiness_state is ArtifactDraftReadiness.EXPORT_READY
+    assert reviewed_draft.renderer_readiness.preview_ready is True
+    assert reviewed_draft.renderer_readiness.export_ready is True
+    assert reviewed_draft.renderer_readiness.renderer_invoked is False
+    assert evidence_store.list() == []
+    generated_files = tuple(path for path in tmp_path.rglob("*") if path.is_file())
+    generated_file_names = tuple(path.as_posix().lower() for path in generated_files)
+    assert {path.suffix for path in generated_files} == {".json"}
+    assert not any(
+        marker in path
+        for path in generated_file_names
+        for marker in (".docx", ".xlsx", ".pptx", ".ppt", "huashu", "visual")
+    )

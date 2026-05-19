@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from typing import Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 from uuid import uuid4
@@ -61,6 +61,14 @@ class SourceCollectionQualityStatus(StrEnum):
     DISCOVERY_ONLY = "discovery_only"
     EXTRACTION_ONLY = "extraction_only"
     NOT_READY = "not_ready"
+
+
+class SourceProviderSmokeCheckStatus(StrEnum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    TIMEOUT = "timeout"
+    MISSING_ENV = "missing_env"
+    REQUIRES_APPROVAL = "requires_approval"
 
 
 class SourceCollectionProviderManifest(BaseModel):
@@ -122,6 +130,39 @@ class SourceProviderRegistry(BaseModel):
                 + ", ".join(unavailable)
             )
         return provider_ids
+
+
+class SourceProviderSmokeRunnerResult(BaseModel):
+    ok: bool = False
+    timed_out: bool = False
+    diagnostic_summary: str
+    endpoint_label: str = ""
+    observed_result_count: int = 0
+
+
+class SourceProviderSmokeCheckResult(BaseModel):
+    provider_id: str
+    provider_name: str
+    source_mode: CaptureResearchSourceMode
+    status: SourceProviderSmokeCheckStatus
+    checked_at: str
+    diagnostic_summary: str
+    missing_env_vars: tuple[str, ...] = ()
+    configured_env_vars: tuple[str, ...] = ()
+    endpoint_label: str = ""
+    observed_result_count: int = 0
+    source_limitations: tuple[str, ...]
+
+
+class SourceProviderSmokeRunner(Protocol):
+    def __call__(
+        self,
+        manifest: SourceCollectionProviderManifest,
+        *,
+        env: dict[str, str],
+        smoke_target: str,
+        timeout_seconds: int,
+    ) -> SourceProviderSmokeRunnerResult: ...
 
 
 class SourceProfileType(StrEnum):
@@ -701,6 +742,116 @@ def build_source_provider_registry(env: dict[str, str]) -> SourceProviderRegistr
     )
 
 
+def run_source_provider_smoke_check(
+    *,
+    provider_id: str,
+    env: dict[str, str],
+    approved: bool,
+    smoke_target: str,
+    runner: SourceProviderSmokeRunner | None = None,
+    timeout_seconds: int = 60,
+    checked_at: str | None = None,
+) -> SourceProviderSmokeCheckResult:
+    manifest = _source_provider_manifest_by_id(provider_id)
+    readiness = _source_provider_readiness(manifest, env)
+    resolved_checked_at = checked_at or datetime.now(UTC).isoformat()
+    if readiness.missing_env_vars:
+        return SourceProviderSmokeCheckResult(
+            provider_id=manifest.id,
+            provider_name=manifest.name,
+            source_mode=manifest.source_mode,
+            status=SourceProviderSmokeCheckStatus.MISSING_ENV,
+            checked_at=resolved_checked_at,
+            diagnostic_summary=(
+                "Missing required env vars: " + ", ".join(readiness.missing_env_vars)
+            ),
+            missing_env_vars=readiness.missing_env_vars,
+            configured_env_vars=readiness.configured_env_vars,
+            source_limitations=manifest.source_limitations,
+        )
+    if not approved:
+        return SourceProviderSmokeCheckResult(
+            provider_id=manifest.id,
+            provider_name=manifest.name,
+            source_mode=manifest.source_mode,
+            status=SourceProviderSmokeCheckStatus.REQUIRES_APPROVAL,
+            checked_at=resolved_checked_at,
+            diagnostic_summary="Live source-provider smoke check requires explicit approval.",
+            configured_env_vars=readiness.configured_env_vars,
+            source_limitations=manifest.source_limitations,
+        )
+    runner_result = (runner or run_source_provider_live_smoke)(
+        manifest,
+        env=env,
+        smoke_target=smoke_target,
+        timeout_seconds=timeout_seconds,
+    )
+    if runner_result.timed_out:
+        status = SourceProviderSmokeCheckStatus.TIMEOUT
+    elif runner_result.ok:
+        status = SourceProviderSmokeCheckStatus.SUCCESS
+    else:
+        status = SourceProviderSmokeCheckStatus.FAILURE
+    return SourceProviderSmokeCheckResult(
+        provider_id=manifest.id,
+        provider_name=manifest.name,
+        source_mode=manifest.source_mode,
+        status=status,
+        checked_at=resolved_checked_at,
+        diagnostic_summary=_redact_env_values(runner_result.diagnostic_summary, env),
+        configured_env_vars=readiness.configured_env_vars,
+        endpoint_label=runner_result.endpoint_label,
+        observed_result_count=runner_result.observed_result_count,
+        source_limitations=manifest.source_limitations,
+    )
+
+
+def run_source_provider_live_smoke(
+    manifest: SourceCollectionProviderManifest,
+    *,
+    env: dict[str, str],
+    smoke_target: str,
+    timeout_seconds: int,
+) -> SourceProviderSmokeRunnerResult:
+    try:
+        if manifest.id == "crawl4ai_local":
+            return _smoke_crawl4ai(env, timeout_seconds=timeout_seconds)
+        if manifest.id == "searxng_local":
+            return _smoke_searxng(
+                env,
+                smoke_target=smoke_target,
+                timeout_seconds=timeout_seconds,
+            )
+        if manifest.id == "serpapi_live":
+            return _smoke_serpapi(
+                env,
+                smoke_target=smoke_target,
+                timeout_seconds=timeout_seconds,
+            )
+        if manifest.id == "olostep_live":
+            return _smoke_olostep(
+                env,
+                smoke_target=smoke_target,
+                timeout_seconds=timeout_seconds,
+            )
+        if manifest.id == "firecrawl_live":
+            return _smoke_firecrawl(
+                env,
+                smoke_target=smoke_target,
+                timeout_seconds=timeout_seconds,
+            )
+    except TimeoutError as error:
+        return SourceProviderSmokeRunnerResult(
+            timed_out=True,
+            diagnostic_summary=f"source provider smoke timed out: {error}",
+        )
+    except ValueError as error:
+        return SourceProviderSmokeRunnerResult(diagnostic_summary=str(error))
+    return SourceProviderSmokeRunnerResult(
+        diagnostic_summary=f"unknown source provider smoke target: {manifest.id}"
+    )
+
+
 def create_source_provider_adapter(
     *,
     env: dict[str, str],
@@ -725,6 +876,13 @@ def create_source_provider_adapter(
 
 def list_source_provider_manifests() -> tuple[SourceCollectionProviderManifest, ...]:
     return _SOURCE_PROVIDER_MANIFESTS
+
+
+def _source_provider_manifest_by_id(provider_id: str) -> SourceCollectionProviderManifest:
+    for manifest in _SOURCE_PROVIDER_MANIFESTS:
+        if manifest.id == provider_id:
+            return manifest
+    raise ValueError(f"unknown source provider: {provider_id}")
 
 
 def _source_provider_readiness(
@@ -822,15 +980,155 @@ def _first_provider_for_roles(
     return None
 
 
-def _read_json_response(request: Request) -> dict[str, object]:
+def _smoke_crawl4ai(
+    env: dict[str, str], *, timeout_seconds: int
+) -> SourceProviderSmokeRunnerResult:
+    base_url = _normalized_base_url(env["CRAWL4AI_BASE_URL"])
     try:
-        with urlopen(request, timeout=60) as response:  # noqa: S310
+        _request_json("GET", f"{base_url}/health", timeout_seconds=timeout_seconds)
+        return SourceProviderSmokeRunnerResult(
+            ok=True,
+            diagnostic_summary="Crawl4AI health endpoint responded.",
+            endpoint_label="crawl4ai_health",
+            observed_result_count=1,
+        )
+    except ValueError:
+        openapi = _request_json(
+            "GET", f"{base_url}/openapi.json", timeout_seconds=timeout_seconds
+        )
+        return SourceProviderSmokeRunnerResult(
+            ok=bool(openapi),
+            diagnostic_summary="Crawl4AI OpenAPI endpoint responded.",
+            endpoint_label="crawl4ai_openapi",
+            observed_result_count=1 if openapi else 0,
+        )
+
+
+def _smoke_searxng(
+    env: dict[str, str], *, smoke_target: str, timeout_seconds: int
+) -> SourceProviderSmokeRunnerResult:
+    base_url = _normalized_base_url(env["SEARXNG_BASE_URL"])
+    response = _request_json(
+        "GET",
+        f"{base_url}/search?{urlencode({'q': smoke_target, 'format': 'json'})}",
+        timeout_seconds=timeout_seconds,
+    )
+    results = response.get("results", [])
+    result_count = len(results) if isinstance(results, list) else 0
+    return SourceProviderSmokeRunnerResult(
+        ok=result_count > 0,
+        diagnostic_summary=f"SearXNG returned {result_count} search result(s).",
+        endpoint_label="searxng_search_json",
+        observed_result_count=result_count,
+    )
+
+
+def _smoke_serpapi(
+    env: dict[str, str], *, smoke_target: str, timeout_seconds: int
+) -> SourceProviderSmokeRunnerResult:
+    url = (
+        "https://serpapi.com/search.json?"
+        + urlencode(
+            {
+                "engine": "google",
+                "q": smoke_target,
+                "api_key": env["SERPAPI_API_KEY"],
+            }
+        )
+    )
+    response = _request_json("GET", url, timeout_seconds=timeout_seconds)
+    results = response.get("organic_results", [])
+    result_count = len(results) if isinstance(results, list) else 0
+    return SourceProviderSmokeRunnerResult(
+        ok=result_count > 0,
+        diagnostic_summary=f"SerpApi returned {result_count} organic result(s).",
+        endpoint_label="serpapi_google_search_json",
+        observed_result_count=result_count,
+    )
+
+
+def _smoke_olostep(
+    env: dict[str, str], *, smoke_target: str, timeout_seconds: int
+) -> SourceProviderSmokeRunnerResult:
+    response = _request_json(
+        "POST",
+        "https://api.olostep.com/v1/scrapes",
+        headers=_olostep_headers(env["OLOSTEP_API_KEY"]),
+        payload={
+            "url_to_scrape": smoke_target,
+            "formats": ["markdown"],
+            "remove_css_selectors": "default",
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    result = response.get("result", {})
+    result_count = 1 if isinstance(result, dict) and result else 0
+    return SourceProviderSmokeRunnerResult(
+        ok=result_count > 0,
+        diagnostic_summary="Olostep scrape endpoint returned content metadata.",
+        endpoint_label="olostep_scrapes_markdown",
+        observed_result_count=result_count,
+    )
+
+
+def _smoke_firecrawl(
+    env: dict[str, str], *, smoke_target: str, timeout_seconds: int
+) -> SourceProviderSmokeRunnerResult:
+    response = _request_json(
+        "POST",
+        "https://api.firecrawl.dev/v1/scrape",
+        headers={
+            "Authorization": f"Bearer {env['FIRECRAWL_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        payload={"url": smoke_target, "formats": ["markdown"]},
+        timeout_seconds=timeout_seconds,
+    )
+    success = response.get("success") is True or isinstance(response.get("data"), dict)
+    return SourceProviderSmokeRunnerResult(
+        ok=success,
+        diagnostic_summary="Firecrawl scrape endpoint responded."
+        if success
+        else "Firecrawl scrape endpoint returned no success marker.",
+        endpoint_label="firecrawl_scrape_markdown",
+        observed_result_count=1 if success else 0,
+    )
+
+
+def _normalized_base_url(value: str) -> str:
+    return value.rstrip("/")
+
+
+def _request_json(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str] | None = None,
+    payload: dict[str, object] | None = None,
+    timeout_seconds: int = 60,
+) -> dict[str, object]:
+    request_headers = headers or {}
+    data = None
+    if payload is not None:
+        request_headers = {"Content-Type": "application/json", **request_headers}
+        data = json.dumps(payload).encode("utf-8")
+    request = Request(url, data=data, headers=request_headers, method=method)
+    return _read_json_response(request, timeout_seconds=timeout_seconds)
+
+
+def _read_json_response(
+    request: Request, *, timeout_seconds: int = 60
+) -> dict[str, object]:
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
         raise ValueError(f"source provider request failed: {error.code} {detail}") from error
     except URLError as error:
         raise ValueError(f"source provider request failed: {error.reason}") from error
+    except TimeoutError as error:
+        raise TimeoutError("source provider request timed out") from error
     if not isinstance(payload, dict):
         raise ValueError("source provider returned a non-object JSON response")
     return payload
@@ -852,6 +1150,14 @@ def _compact_excerpt(value: str, *, limit: int = 420) -> str:
     if len(compacted) <= limit:
         return compacted
     return compacted[: limit - 3].rstrip() + "..."
+
+
+def _redact_env_values(text: str, env: dict[str, str]) -> str:
+    redacted = text
+    for value in sorted(env.values(), key=len, reverse=True):
+        if value:
+            redacted = redacted.replace(value, "<redacted>")
+    return redacted
 
 
 class FakeWebSourceCollectionAdapter:

@@ -28,12 +28,15 @@ from ariadne.capture_research import (
     CaptureResearchStore,
     FakeWebSourceCollectionAdapter,
     SourceProviderRegistry,
+    SourceProviderSmokeCheckResult,
+    SourceProviderSmokeRunner,
     SourceProfileRef,
     build_source_provider_registry,
     create_source_provider_adapter,
     create_source_context_research_run,
     create_user_prompted_research_run,
     run_approved_source_provider_collection,
+    run_source_provider_smoke_check,
     run_web_source_collection,
 )
 from ariadne.command_center import (
@@ -290,6 +293,16 @@ class CaptureResearchSourceProviderResponse(BaseModel):
     registry: SourceProviderRegistry
 
 
+class CaptureResearchSourceProviderSmokeCheckRequest(BaseModel):
+    approved: bool = False
+    smoke_target: str = "https://example.com"
+    checked_at: str | None = None
+
+
+class CaptureResearchSourceProviderSmokeCheckResponse(BaseModel):
+    result: SourceProviderSmokeCheckResult
+
+
 class CaptureResearchFakeCollectionRequest(BaseModel):
     collected_at: str | None = None
 
@@ -457,6 +470,7 @@ def create_app(
     sam_gov_source_mode: SamGovSourceMode | None = None,
     local_admin_model_client: LocalAdminModelClient | None = None,
     source_provider_adapter: ApprovedWebSourceCollectionAdapter | None = None,
+    source_provider_smoke_runner: SourceProviderSmokeRunner | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -709,6 +723,26 @@ def create_app(
                 runtime_settings.capture_research_source_env
             )
         )
+
+    @app.post("/api/capture-research/source-providers/{provider_id}/smoke-check")
+    def capture_research_source_provider_smoke_check(
+        provider_id: str,
+        request: CaptureResearchSourceProviderSmokeCheckRequest,
+    ) -> CaptureResearchSourceProviderSmokeCheckResponse:
+        try:
+            return CaptureResearchSourceProviderSmokeCheckResponse(
+                result=run_source_provider_smoke_check(
+                    provider_id=provider_id,
+                    env=runtime_settings.capture_research_source_env,
+                    approved=request.approved,
+                    smoke_target=request.smoke_target,
+                    runner=source_provider_smoke_runner,
+                    checked_at=request.checked_at,
+                    timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/capture-research/runs/{research_run_id}")
     def capture_research_run_detail(

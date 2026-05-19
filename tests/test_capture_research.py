@@ -7,7 +7,10 @@ from ariadne.capture_research import (
     CaptureResearchStore,
     CaptureResearchSourceMode,
     FakeWebSourceCollectionAdapter,
+    SourceCollectionProviderManifest,
     SourceCollectionQualityStatus,
+    SourceProviderSmokeCheckStatus,
+    SourceProviderSmokeRunnerResult,
     SourceProfileRef,
     SourceProfileType,
     SourceFinding,
@@ -17,6 +20,7 @@ from ariadne.capture_research import (
     create_source_context_research_run,
     create_user_prompted_research_run,
     run_approved_source_provider_collection,
+    run_source_provider_smoke_check,
     run_web_source_collection,
 )
 
@@ -110,6 +114,27 @@ class _ProviderHttpFixture:
         }
 
 
+class _SmokeRunnerFixture:
+    def __init__(self) -> None:
+        self.provider_ids: list[str] = []
+
+    def __call__(
+        self,
+        manifest: SourceCollectionProviderManifest,
+        *,
+        env: dict[str, str],
+        smoke_target: str,
+        timeout_seconds: int,
+    ) -> SourceProviderSmokeRunnerResult:
+        self.provider_ids.append(manifest.id)
+        return SourceProviderSmokeRunnerResult(
+            ok=True,
+            diagnostic_summary="smoke ok " + " ".join(env.values()),
+            endpoint_label=f"{manifest.id}_smoke",
+            observed_result_count=1,
+        )
+
+
 def test_source_provider_registry_reports_quality_without_secret_values() -> None:
     registry = build_source_provider_registry(
         {
@@ -131,6 +156,79 @@ def test_source_provider_registry_reports_quality_without_secret_values() -> Non
     assert "olostep-secret" not in dumped
     assert "SERPAPI_API_KEY" in dumped
     assert "OLOSTEP_API_KEY" in dumped
+
+
+def test_source_provider_smoke_check_covers_all_providers_without_secret_values() -> None:
+    env = {
+        "CRAWL4AI_BASE_URL": "http://localhost:11235/private",
+        "SEARXNG_BASE_URL": "http://localhost:8080/private",
+        "SERPAPI_API_KEY": "serpapi-secret",
+        "OLOSTEP_API_KEY": "olostep-secret",
+        "FIRECRAWL_API_KEY": "firecrawl-secret",
+    }
+    runner = _SmokeRunnerFixture()
+
+    results = tuple(
+        run_source_provider_smoke_check(
+            provider_id=provider_id,
+            env=env,
+            approved=True,
+            smoke_target="https://example.com",
+            runner=runner,
+            checked_at="2026-05-19T10:00:00+00:00",
+        )
+        for provider_id in (
+            "crawl4ai_local",
+            "searxng_local",
+            "serpapi_live",
+            "olostep_live",
+            "firecrawl_live",
+        )
+    )
+
+    assert runner.provider_ids == [
+        "crawl4ai_local",
+        "searxng_local",
+        "serpapi_live",
+        "olostep_live",
+        "firecrawl_live",
+    ]
+    assert all(result.status is SourceProviderSmokeCheckStatus.SUCCESS for result in results)
+    dumped = "\n".join(result.model_dump_json() for result in results)
+    assert "http://localhost:11235/private" not in dumped
+    assert "http://localhost:8080/private" not in dumped
+    assert "serpapi-secret" not in dumped
+    assert "olostep-secret" not in dumped
+    assert "firecrawl-secret" not in dumped
+    assert "CRAWL4AI_BASE_URL" in dumped
+    assert "FIRECRAWL_API_KEY" in dumped
+
+
+def test_source_provider_smoke_check_requires_config_and_approval() -> None:
+    runner = _SmokeRunnerFixture()
+
+    missing_config = run_source_provider_smoke_check(
+        provider_id="crawl4ai_local",
+        env={},
+        approved=True,
+        smoke_target="https://example.com",
+        runner=runner,
+        checked_at="2026-05-19T10:00:00+00:00",
+    )
+    requires_approval = run_source_provider_smoke_check(
+        provider_id="serpapi_live",
+        env={"SERPAPI_API_KEY": "serpapi-secret"},
+        approved=False,
+        smoke_target="https://example.com",
+        runner=runner,
+        checked_at="2026-05-19T10:00:00+00:00",
+    )
+
+    assert missing_config.status is SourceProviderSmokeCheckStatus.MISSING_ENV
+    assert missing_config.missing_env_vars == ("CRAWL4AI_BASE_URL",)
+    assert requires_approval.status is SourceProviderSmokeCheckStatus.REQUIRES_APPROVAL
+    assert runner.provider_ids == []
+    assert "serpapi-secret" not in requires_approval.model_dump_json()
 
 
 def test_approved_source_provider_collection_records_provider_provenance(

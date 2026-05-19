@@ -227,7 +227,8 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - Firecrawl: optional paid/later provider if quality justifies spend. Add `FIRECRAWL_API_KEY` only when deliberately using Firecrawl credits.
 - Vendor free tiers and quotas can change; Ariadne should record provider identity, approval basis, source limits, and budget/free-tier assumptions instead of assuming any one provider remains free forever.
 - Provider readiness is exposed at `GET /api/capture-research/source-providers`; it reports provider IDs, source modes, status, missing env-var names, and quality status without returning API keys or base URL values.
-- Manual live smoke runs should create a Capture Research Run with bounded public source targets, then call `POST /api/capture-research/runs/{research_run_id}/source-provider-collection` with explicit approval. Automated tests use injected fake provider clients and must not consume SerpApi, Olostep, Firecrawl, or local crawler quota.
+- Manual provider smoke checks use `POST /api/capture-research/source-providers/{provider_id}/smoke-check` with explicit approval, covering `crawl4ai_local`, `searxng_local`, `serpapi_live`, `olostep_live`, and `firecrawl_live` when their env vars or local services are configured.
+- Manual live collection runs should create a Capture Research Run with bounded public source targets, then call `POST /api/capture-research/runs/{research_run_id}/source-provider-collection` with explicit approval. Automated tests use injected fake provider clients and smoke runners and must not consume SerpApi, Olostep, Firecrawl, or local crawler quota.
 
 ### Capture Research Data APIs
 

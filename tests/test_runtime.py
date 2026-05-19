@@ -2,7 +2,9 @@ from ariadne.config import RuntimeSettings
 from ariadne.capture_research import (
     CapabilityProvenance,
     CaptureResearchSourceMode,
+    SourceCollectionProviderManifest,
     SourceFinding,
+    SourceProviderSmokeRunnerResult,
     WebSourceCollectionRecord,
 )
 from ariadne.document_intake import DocumentIntakeStore
@@ -75,6 +77,27 @@ class _RuntimeProviderFixtureAdapter:
             approval_basis=run.research_brief.approval_basis,
         )
         return (record,), (finding,)
+
+
+class _RuntimeSmokeRunnerFixture:
+    def __init__(self) -> None:
+        self.provider_ids: list[str] = []
+
+    def __call__(
+        self,
+        manifest: SourceCollectionProviderManifest,
+        *,
+        env: dict[str, str],
+        smoke_target: str,
+        timeout_seconds: int,
+    ) -> SourceProviderSmokeRunnerResult:
+        self.provider_ids.append(manifest.id)
+        return SourceProviderSmokeRunnerResult(
+            ok=True,
+            diagnostic_summary="runtime smoke ok " + " ".join(env.values()),
+            endpoint_label=f"{manifest.id}_smoke",
+            observed_result_count=1,
+        )
 
 
 def test_quick_capture_reference_influences_api_exposes_wiki_matches(tmp_path) -> None:
@@ -2487,6 +2510,68 @@ def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path
     assert "olostep-secret" not in response.text
     assert "SERPAPI_API_KEY" in response.text
     assert "OLOSTEP_API_KEY" in response.text
+
+
+def test_source_provider_smoke_check_api_covers_provider_without_secret_values(
+    tmp_path,
+) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "FIRECRAWL_API_KEY": "firecrawl-secret",
+        }
+    )
+    runner = _RuntimeSmokeRunnerFixture()
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(
+        create_app(settings, source_provider_smoke_runner=runner)
+    ).post(
+        "/api/capture-research/source-providers/firecrawl_live/smoke-check",
+        json={
+            "approved": True,
+            "smoke_target": "https://example.com",
+            "checked_at": "2026-05-19T10:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["provider_id"] == "firecrawl_live"
+    assert body["result"]["status"] == "success"
+    assert body["result"]["endpoint_label"] == "firecrawl_live_smoke"
+    assert runner.provider_ids == ["firecrawl_live"]
+    assert "firecrawl-secret" not in response.text
+    assert "FIRECRAWL_API_KEY" in response.text
+
+
+def test_source_provider_smoke_check_api_requires_approval_without_runner_call(
+    tmp_path,
+) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+        }
+    )
+    runner = _RuntimeSmokeRunnerFixture()
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(
+        create_app(settings, source_provider_smoke_runner=runner)
+    ).post(
+        "/api/capture-research/source-providers/serpapi_live/smoke-check",
+        json={"approved": False, "smoke_target": "https://example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["status"] == "requires_approval"
+    assert runner.provider_ids == []
+    assert "serpapi-secret" not in response.text
 
 
 def test_source_provider_collection_api_requires_approval(tmp_path) -> None:

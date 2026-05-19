@@ -57,8 +57,23 @@ class ArtifactBlockSupportClassification(StrEnum):
     ASSUMPTION = "assumption"
 
 
+class ArtifactBlockReviewAction(StrEnum):
+    ACCEPT = "accept"
+    EDIT = "edit"
+    DISCARD = "discard"
+    ROUTE = "route"
+    EXCLUDE_FROM_EXPORT = "exclude_from_export"
+    MARK_NEEDS_EVIDENCE = "mark_needs_evidence"
+
+
 class ArtifactBlockReviewState(StrEnum):
     PENDING = "pending"
+    ACCEPTED = "accepted"
+    EDITED = "edited"
+    DISCARDED = "discarded"
+    ROUTED = "routed"
+    EXCLUDED_FROM_EXPORT = "excluded_from_export"
+    NEEDS_EVIDENCE = "needs_evidence"
 
 
 class ArtifactSourceRef(BaseModel):
@@ -127,6 +142,22 @@ class ArtifactDraftProvenance(BaseModel):
     model_assist_used: bool = False
 
 
+class ArtifactBlockReviewDecision(BaseModel):
+    decision_id: str
+    block_id: str
+    action: ArtifactBlockReviewAction
+    decided_at: str
+    reviewer_notes: str = ""
+    routed_destination: str | None = None
+    original_body: str
+    revised_body: str | None = None
+    source_ref_ids: tuple[str, ...] = ()
+    reviewable_ref_ids: tuple[str, ...] = ()
+    gap_ref_ids: tuple[str, ...] = ()
+    source_limitation_ref_ids: tuple[str, ...] = ()
+    autonomy_hint: str = "review_required"
+
+
 class ArtifactContentBlock(BaseModel):
     block_id: str
     block_kind: ArtifactContentBlockKind
@@ -142,6 +173,7 @@ class ArtifactContentBlock(BaseModel):
     )
     content_data: dict[str, object] = Field(default_factory=dict)
     review_state: ArtifactBlockReviewState = ArtifactBlockReviewState.PENDING
+    review_decisions: tuple[ArtifactBlockReviewDecision, ...] = ()
     autonomy_hint: str = "review_required"
     export_required: bool = True
 
@@ -380,6 +412,47 @@ def assemble_milestone_packet_draft(
     return store.write_artifact_draft(draft)
 
 
+def review_artifact_block(
+    *,
+    draft_id: str,
+    block_id: str,
+    action: ArtifactBlockReviewAction,
+    store: ArtifactAssemblyStore,
+    reviewed_at: str,
+    reviewer_notes: str = "",
+    edited_body: str | None = None,
+    routed_destination: str | None = None,
+) -> ArtifactDraft:
+    draft = store.read_artifact_draft(draft_id)
+    updated_sections: list[ArtifactSection] = []
+    block_found = False
+    for section in draft.sections:
+        updated_blocks: list[ArtifactContentBlock] = []
+        for block in section.blocks:
+            if block.block_id == block_id:
+                updated_blocks.append(
+                    _reviewed_block(
+                        block,
+                        action=action,
+                        reviewed_at=reviewed_at,
+                        reviewer_notes=reviewer_notes,
+                        edited_body=edited_body,
+                        routed_destination=routed_destination,
+                    )
+                )
+                block_found = True
+            else:
+                updated_blocks.append(block)
+        updated_sections.append(
+            section.model_copy(update={"blocks": tuple(updated_blocks)})
+        )
+    if not block_found:
+        raise ValueError(f"Artifact block not found: {block_id}")
+    reviewed_draft = draft.model_copy(update={"sections": tuple(updated_sections)})
+    reviewed_draft = _refresh_draft_readiness(reviewed_draft)
+    return store.write_artifact_draft(reviewed_draft)
+
+
 def _source_ref(
     item: KnowledgeContextItem,
     *,
@@ -393,6 +466,127 @@ def _source_ref(
         trust_state=item.trust_state,
         allowed_use=allowed_use,
     )
+
+
+def _reviewed_block(
+    block: ArtifactContentBlock,
+    *,
+    action: ArtifactBlockReviewAction,
+    reviewed_at: str,
+    reviewer_notes: str,
+    edited_body: str | None,
+    routed_destination: str | None,
+) -> ArtifactContentBlock:
+    if action is ArtifactBlockReviewAction.EDIT and edited_body is None:
+        raise ValueError("edited_body is required for edit review action")
+    if action is ArtifactBlockReviewAction.ROUTE and not routed_destination:
+        raise ValueError("routed_destination is required for route review action")
+    revised_body = edited_body if action is ArtifactBlockReviewAction.EDIT else None
+    review_state = _review_state_for_action(action)
+    export_required = False if action is ArtifactBlockReviewAction.EXCLUDE_FROM_EXPORT else block.export_required
+    decision = ArtifactBlockReviewDecision(
+        decision_id=_review_decision_id(block.block_id, action, reviewed_at),
+        block_id=block.block_id,
+        action=action,
+        decided_at=reviewed_at,
+        reviewer_notes=reviewer_notes,
+        routed_destination=routed_destination,
+        original_body=block.body,
+        revised_body=revised_body,
+        source_ref_ids=block.source_ref_ids,
+        reviewable_ref_ids=block.reviewable_ref_ids,
+        gap_ref_ids=block.gap_ref_ids,
+        source_limitation_ref_ids=block.source_limitation_ref_ids,
+        autonomy_hint=block.autonomy_hint,
+    )
+    return block.model_copy(
+        update={
+            "body": revised_body if revised_body is not None else block.body,
+            "review_state": review_state,
+            "review_decisions": (*block.review_decisions, decision),
+            "export_required": export_required,
+        }
+    )
+
+
+def _review_state_for_action(
+    action: ArtifactBlockReviewAction,
+) -> ArtifactBlockReviewState:
+    return {
+        ArtifactBlockReviewAction.ACCEPT: ArtifactBlockReviewState.ACCEPTED,
+        ArtifactBlockReviewAction.EDIT: ArtifactBlockReviewState.EDITED,
+        ArtifactBlockReviewAction.DISCARD: ArtifactBlockReviewState.DISCARDED,
+        ArtifactBlockReviewAction.ROUTE: ArtifactBlockReviewState.ROUTED,
+        ArtifactBlockReviewAction.EXCLUDE_FROM_EXPORT: ArtifactBlockReviewState.EXCLUDED_FROM_EXPORT,
+        ArtifactBlockReviewAction.MARK_NEEDS_EVIDENCE: ArtifactBlockReviewState.NEEDS_EVIDENCE,
+    }[action]
+
+
+def _refresh_draft_readiness(draft: ArtifactDraft) -> ArtifactDraft:
+    blocks = tuple(block for section in draft.sections for block in section.blocks)
+    reviewed_blocks = tuple(
+        block
+        for block in blocks
+        if block.review_state is not ArtifactBlockReviewState.PENDING
+    )
+    export_blockers = _export_blocking_refs(blocks)
+    preview_ready = len(reviewed_blocks) == len(blocks)
+    export_ready = preview_ready and not export_blockers
+    if not reviewed_blocks:
+        readiness = ArtifactDraftReadiness.NEEDS_REVIEW
+    elif export_ready:
+        readiness = ArtifactDraftReadiness.EXPORT_READY
+    elif preview_ready:
+        readiness = ArtifactDraftReadiness.PREVIEW_READY
+    else:
+        readiness = ArtifactDraftReadiness.PARTIALLY_REVIEWED
+    return draft.model_copy(
+        update={
+            "readiness_state": readiness,
+            "renderer_readiness": draft.renderer_readiness.model_copy(
+                update={
+                    "preview_ready": preview_ready,
+                    "export_ready": export_ready,
+                    "renderer_invoked": False,
+                    "preview_blocking_refs": _pending_block_refs(blocks),
+                    "export_blocking_refs": export_blockers,
+                }
+            ),
+        }
+    )
+
+
+def _pending_block_refs(blocks: tuple[ArtifactContentBlock, ...]) -> tuple[str, ...]:
+    return tuple(
+        block.block_id
+        for block in blocks
+        if block.review_state is ArtifactBlockReviewState.PENDING
+    )
+
+
+def _export_blocking_refs(blocks: tuple[ArtifactContentBlock, ...]) -> tuple[str, ...]:
+    blockers: list[str] = []
+    for block in blocks:
+        if block.review_state in {
+            ArtifactBlockReviewState.PENDING,
+            ArtifactBlockReviewState.ROUTED,
+            ArtifactBlockReviewState.NEEDS_EVIDENCE,
+        }:
+            blockers.append(block.block_id)
+        blockers.extend(block.gap_ref_ids)
+        blockers.extend(block.source_limitation_ref_ids)
+    return tuple(dict.fromkeys(blockers))
+
+
+def _review_decision_id(
+    block_id: str,
+    action: ArtifactBlockReviewAction,
+    reviewed_at: str,
+) -> str:
+    digest = sha256(f"{block_id}:{action.value}:{reviewed_at}".encode("utf-8")).hexdigest()[
+        :16
+    ]
+    return f"artifact_block_review_{digest}"
 
 
 def _gap_ref(gap: KnowledgeGapSummary) -> ArtifactGapRef:

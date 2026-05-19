@@ -14,7 +14,12 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
     build_capability_reasoning_view,
 )
-from ariadne.capture_research import CaptureResearchRun, CaptureResearchStore
+from ariadne.capture_research import (
+    CaptureResearchRun,
+    CaptureResearchStore,
+    SourceProviderRegistry,
+    build_source_provider_registry,
+)
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
     AcceptedDocumentEvidenceLink,
@@ -137,6 +142,9 @@ def render_command_center_shell(
         _resolve_runtime_path(root, settings.ariadne_capture_research_dir)
     )
     capture_research_runs = tuple(capture_research_store.list())
+    capture_research_source_registry = build_source_provider_registry(
+        settings.capture_research_source_env
+    )
     sam_gov_live_ready = "SAM_GOV_API_KEY" in settings.federal_data_env
     accepted_evidence = demo.accepted_evidence
     accepted_action = demo.accepted_action
@@ -453,7 +461,7 @@ def render_command_center_shell(
         {_render_document_intake_queue_panel(document_intake_records, accepted_document_evidence_links)}
         {_render_document_intake_capabilities_panel(document_intake_adapter_declarations)}
         {_render_federal_data_capabilities_panel(federal_data_registry.capabilities)}
-        {_render_capture_research_enrichment_panel(capture_research_runs)}
+        {_render_capture_research_enrichment_panel(capture_research_runs, capture_research_source_registry)}
         {_render_sam_gov_enrichment_profiles_panel(sam_gov_profiles, sam_gov_live_ready)}
         {_render_piid_profile_command_surface_panel(piid_profiles)}
         {_render_document_intake_draft_parts_panel(document_intake_drafts, accepted_document_evidence_links)}
@@ -1270,19 +1278,27 @@ def _render_piid_profile_command_surface_panel(
 
 
 def _render_capture_research_enrichment_panel(
-    runs: tuple[CaptureResearchRun, ...],
+    runs: tuple[CaptureResearchRun, ...], source_registry: SourceProviderRegistry
 ) -> str:
     if not runs:
         rows = """<div class="row"><strong>No Capture Research runs yet</strong><span>Create one through POST /api/capture-research/runs with a bounded prompt, selected lenses, source targets, and source limits.</span><span>Page render reads persisted research runs only and does not start live source-provider collection.</span></div>"""
     else:
         rows = "".join(_render_capture_research_run_row(run) for run in runs[-3:])
+    readiness = _render_capture_research_source_provider_readiness(source_registry)
     return f"""<section class="panel" id="capture-research-enrichment" aria-labelledby="capture-research-enrichment-heading">
       <div class="panel-heading"><h2 id="capture-research-enrichment-heading">Capture Research Enrichment</h2><span class="status-chip cyan">{len(runs)} persisted</span></div>
-      <div class="row-list">
+      <div class="row-list">{readiness}
         <div class="row"><strong>Bounded research brief workflow</strong><span>Prompted runs start as Capture Research Briefs with selected lenses, source targets, and source limits before any source collection can occur.</span><span>Trusted downstream writes remain unavailable in this first slice.</span></div>
         {rows}
       </div>
     </section>"""
+
+
+def _render_capture_research_source_provider_readiness(
+    source_registry: SourceProviderRegistry,
+) -> str:
+    providers = ", ".join(source_registry.recommended_provider_ids) or "none ready"
+    return f"""<div class="row"><strong>Live Source Readiness</strong><span>{escape(source_registry.quality_status.value.replace("_", " ").title())}: {escape(source_registry.quality_summary)}</span><span>Recommended providers: {escape(providers)}. Readiness shows provider names and env-var names only; secrets stay hidden.</span></div>"""
 
 
 def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
@@ -1292,19 +1308,30 @@ def _render_capture_research_run_row(run: CaptureResearchRun) -> str:
     )
     source_targets = ", ".join(run.research_brief.source_targets) or "none"
     source_limits = ", ".join(run.research_brief.source_limits) or "none"
-    collection_state = (
-        f"Source collection records: {len(run.source_collection_records)}"
-        if run.source_collection_records
-        else "No source collection has run for this brief."
-    )
+    brief = _render_capture_research_brief(run)
+    trigger = _render_capture_research_trigger_context(run)
     source_refs = _render_capture_research_source_refs(run)
+    collection_records = _render_capture_research_source_collection_records(run)
     findings = _render_capture_research_source_findings(run)
+    selected_lenses = _render_capture_research_selected_lenses(run)
     seller_baseline = _render_capture_research_seller_baseline(run)
     requirements_fit = _render_capture_research_requirements_fit(run)
     competitive_gap = _render_capture_research_competitive_gap(run)
     lens_analyses = _render_capture_research_lens_analyses(run)
     downstream_candidates = _render_capture_research_downstream_candidates(run)
-    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{source_refs}<span>{escape(collection_state)}</span>{findings}{seller_baseline}{requirements_fit}{competitive_gap}{lens_analyses}{downstream_candidates}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+    summary = _render_capture_research_summary_view(run)
+    related_links = _render_capture_research_related_links(run)
+    return f"""<div class="row"><strong>{escape(prompt)}</strong><span>Status: {escape(run.status.value.replace("_", " ").title())}</span><span>Lenses: {escape(lenses)}</span><span>Source targets: {escape(source_targets)}</span><span>Source limits: {escape(source_limits)}</span>{brief}{trigger}{source_refs}{collection_records}{findings}{selected_lenses}{seller_baseline}{requirements_fit}{competitive_gap}{lens_analyses}{summary}{downstream_candidates}{related_links}<span class="meta-line">Run: {escape(run.research_run_id)} | Trigger: {escape(run.research_trigger_context.trigger_type)}</span></div>"""
+
+
+def _render_capture_research_brief(run: CaptureResearchRun) -> str:
+    brief = run.research_brief
+    return f"""<div class="row-list"><div class="row"><strong>Capture Research Brief</strong><span>Question: {escape(brief.research_question)}</span><span>Known pivots: {escape(_join_or_none(brief.known_pivots))}</span><span>Evidence goals: {escape(_join_or_none(brief.evidence_goals))}</span><span>Approval basis: {escape(brief.approval_basis)}</span></div></div>"""
+
+
+def _render_capture_research_trigger_context(run: CaptureResearchRun) -> str:
+    trigger = run.research_trigger_context
+    return f"""<div class="row-list"><div class="row"><strong>Trigger Context</strong><span>{escape(trigger.trigger_type.replace("_", " ").title())}</span><span>{escape(trigger.summary)}</span><span>Captured: {escape(trigger.captured_at)}</span></div></div>"""
 
 
 def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
@@ -1317,6 +1344,16 @@ def _render_capture_research_source_refs(run: CaptureResearchRun) -> str:
     return f"""<div class="row-list"><div class="row"><strong>Source Profile refs</strong>{refs}</div></div>"""
 
 
+def _render_capture_research_source_collection_records(run: CaptureResearchRun) -> str:
+    if not run.source_collection_records:
+        return """<div class="row-list"><div class="row"><strong>Source Collection Provenance</strong><span>No source collection has run for this brief.</span></div></div>"""
+    rows = "".join(
+        f"<div class=\"row\"><strong>{escape(record.source_target)}</strong><span>Mode: {escape(record.source_mode.value.replace('_', ' '))}</span><span>Collected: {escape(record.collected_at)}</span><span>Providers: {escape(_join_or_none(record.provider_ids))}</span><span>Findings: {escape(_join_or_none(record.finding_ids))}</span><span>Provenance: {escape(record.capability_provenance.source_capability_id)} - {escape(record.capability_provenance.source_tool_name)}</span><span>Limits: {escape(_join_or_none(record.source_limitations))}</span></div>"
+        for record in run.source_collection_records
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Source Collection Provenance</strong><span>Source collection records: {len(run.source_collection_records)}</span><span>Page render does not start live source collection.</span></div>{rows}</div>"""
+
+
 def _render_capture_research_source_findings(run: CaptureResearchRun) -> str:
     if not run.source_findings:
         return ""
@@ -1325,6 +1362,14 @@ def _render_capture_research_source_findings(run: CaptureResearchRun) -> str:
         for finding in run.source_findings
     )
     return f"""<div class="row-list"><div class="row"><strong>Source Findings</strong><span>Grouped by source target; fake adapter output is development-only.</span></div>{rows}</div>"""
+
+
+def _render_capture_research_selected_lenses(run: CaptureResearchRun) -> str:
+    lenses = "".join(
+        f"<span>{escape(_capture_research_lens_label(lens.value))}</span>"
+        for lens in run.selected_lenses
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Selected Lenses</strong>{lenses}</div></div>"""
 
 
 def _render_capture_research_seller_baseline(run: CaptureResearchRun) -> str:
@@ -1442,10 +1487,16 @@ def _render_capture_research_candidate_group(
         f"{state.replace('_', ' ')}: {count}" for state, count in sorted(state_counts.items())
     )
     rows = "".join(
-        f"<span>{escape(str(candidate.get('title', 'Untitled candidate')))} Review: {escape(str(candidate.get('review_state', 'pending_review')))} Type: {escape(str(candidate.get('candidate_type', 'unknown')))} Trusted write: {escape(str(candidate.get('trusted_output_written', False)).lower())} Findings: {escape(_join_or_none(tuple(candidate.get('supporting_source_finding_ids', ()))))} Baseline refs: {escape(_join_or_none(tuple(candidate.get('supporting_seller_baseline_ref_ids', ()))))} Lens: {escape(str(candidate.get('selected_lens') or 'none'))}</span>"
+        f"<span>{escape(str(candidate.get('title', 'Untitled candidate')))} Review: {escape(str(candidate.get('review_state', 'pending_review')))} Type: {escape(str(candidate.get('candidate_type', 'unknown')))} Trusted write: {escape(str(candidate.get('trusted_output_written', False)).lower())} Findings: {escape(_join_or_none(tuple(candidate.get('supporting_source_finding_ids', ()))))} Baseline refs: {escape(_join_or_none(tuple(candidate.get('supporting_seller_baseline_ref_ids', ()))))} Lens: {escape(str(candidate.get('selected_lens') or 'none'))}</span>{_render_capture_research_candidate_actions(candidate)}"
         for candidate in candidates
     )
     return f"""<div class="row"><strong>{escape(label)}</strong><span>Count: {len(candidates)}; {escape(state_summary)}</span>{rows}</div>"""
+
+
+def _render_capture_research_candidate_actions(candidate: dict[str, object]) -> str:
+    candidate_id = str(candidate.get("id", "candidate"))
+    label = escape(candidate_id)
+    return f"""<div class="action-strip" aria-label="Candidate review actions for {label}"><button class="action-button" type="button">Accept Candidate</button><button class="action-button secondary" type="button">Route Candidate</button><button class="action-button danger" type="button">Discard Candidate</button></div>"""
 
 
 def _render_capture_research_review_decisions(run: CaptureResearchRun) -> str:
@@ -1456,6 +1507,42 @@ def _render_capture_research_review_decisions(run: CaptureResearchRun) -> str:
         for decision in run.review_decisions
     )
     return f"""<div class="row"><strong>Review decisions</strong>{rows}</div>"""
+
+
+def _render_capture_research_summary_view(run: CaptureResearchRun) -> str:
+    if not run.research_summary_view:
+        return ""
+    return f"""<div class="row-list"><div class="row"><strong>Research Summary View</strong><span>{escape(run.research_summary_view)}</span><span>Readable compilation over findings, deterministic context, assumptions, limitations, and candidates; not a trusted source-of-truth object.</span></div></div>"""
+
+
+def _render_capture_research_related_links(run: CaptureResearchRun) -> str:
+    links: list[tuple[str, str]] = []
+    if run.opportunity_id:
+        links.append(("Opportunity Knowledge Context", "#knowledge-context"))
+    if any(ref.source_profile_type.value == "piid_contract_intelligence_profile" for ref in run.source_profile_refs):
+        links.append(("PIID Profile", "#piid-profile-command-surface"))
+    if any(ref.source_profile_type.value == "sam_gov_enrichment_profile" for ref in run.source_profile_refs):
+        links.append(("SAM.gov Profile", "#sam-gov-enrichment-profiles"))
+    candidate_groups = {str(candidate.get("candidate_group")) for candidate in run.downstream_candidates}
+    if "evidence" in candidate_groups:
+        links.append(("Evidence", "#accepted-promotions"))
+    if "packet" in candidate_groups:
+        links.append(("Packet", "#packet"))
+    if "action_plan" in candidate_groups:
+        links.append(("Action Plan", "#action-plan"))
+    if "risk_register" in candidate_groups:
+        links.append(("Risk Register", "#document-capture-candidates"))
+    if "call_plan" in candidate_groups:
+        links.append(("Call Plan", "#document-capture-candidates"))
+    if run.capability_run_refs:
+        links.append(("Capability Run", "#capability-studio"))
+    if not links:
+        return ""
+    rendered = "".join(
+        f"<a class=\"action-button secondary\" href=\"{escape(href)}\">{escape(label)}</a>"
+        for label, href in links
+    )
+    return f"""<div class="row-list"><div class="row"><strong>Related Ariadne Records</strong><span>Links appear when this run carries related refs or routed candidate destinations.</span><div class="action-strip" aria-label="Related Ariadne record links">{rendered}</div></div></div>"""
 
 
 def _join_or_none(values: tuple[str, ...]) -> str:

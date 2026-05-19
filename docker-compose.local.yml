@@ -1,0 +1,19 @@
+name: ariadne-local-dev
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      INSTANCE_NAME: "Ariadne local SearXNG"
+      SEARXNG_BASE_URL: "http://localhost:8080/"
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  crawl4ai:
+    image: unclecode/crawl4ai:basic-amd64
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11235:11235"

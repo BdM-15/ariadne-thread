@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.25**
+**Product Requirements Document (PRD) v1.26**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 19, 2026
-**Status:** Knowledge Layer Foundation complete; Capture Research Enrichment selected as the next vertical epic
+**Status:** Capture Research Enrichment complete; local dev stack follow-on complete
 
 ---
 
@@ -52,17 +52,18 @@
 - Selected capture-lens analysis keeps price-to-win, burn-rate, workload, and engagement outputs separated by lens, with provenance, assumptions, source limitations, follow-up needs, confidence, and review state. The targeted CRO lens is limited to call-plan and customer-engagement clarity and is not used as the primary burn-rate or price-to-win lens.
 - Downstream candidate projection groups Source Findings and research/lens outputs into reviewable Evidence, Packet, Action Plan, Risk Register, Call Plan, Follow-Up Route, Price/Workload Assumptions, Teaming Partner Needs, and BCC-Ready Notes candidates. Accept, discard, and route decisions update review state and preserve run, brief, trigger, source-finding, selected-lens, source-profile, and seller-baseline provenance without creating trusted downstream records.
 - The Capture Research Command Surface now shows live source readiness, the Capture Research Brief, trigger context, source-profile refs, collection provenance, Source Findings, selected lenses, seller-baseline refs, Research Summary View, grouped review candidates, review actions, review decisions, and related Ariadne record links. The first UI shape was reviewed and approved during issue #59.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Capture Research Enrichment issue #59 progression branch, with 259 tests passing.
+- Issue #60 adds a standalone local-development single-startup path after the Capture Research Enrichment epic merged to `main`. `docker-compose.local.yml` starts only the selected local providers, SearXNG on `http://localhost:8080` with JSON results enabled and Crawl4AI on `http://localhost:11235`; `scripts/start-local-dev.ps1` starts those providers and Ariadne on port `9622`; `scripts/smoke-local-dev.ps1` validates direct provider health plus Ariadne's approved `crawl4ai_local` and `searxng_local` smoke endpoints. Ollama remains optional/external through existing `OLLAMA_HOST`, and Neo4j, Postgres, vector databases, graph databases, LightRAG, and broad persistent storage remain out of scope.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the local-dev stack issue #60 progression branch, with 262 tests passing.
 
 **Still Deferred**
 
 - Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
-- Follow-on issue #60 tracks a standalone local-development single-startup stack after the Capture Research Enrichment epic is completed and merged to `main`. The follow-on should cover Ariadne's app runtime and selected local providers such as Crawl4AI and SearXNG, with optional Ollama readiness kept compatible with existing `OLLAMA_HOST` settings. It should not introduce Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, or broad persistent storage unless a later ADR or PRD update explicitly selects that infrastructure.
+- Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, RAGAnything runtime, and broad persistent storage are still not part of the local-development stack unless a later ADR or PRD update explicitly selects them.
 
 **Next Build Gate**
 
-- Build the selected **Capture Research Enrichment** vertical slice before starting broad implementation work on unrelated deferred capabilities.
+- Run a new planning pass before starting broad implementation work on unrelated deferred capabilities now that Capture Research Enrichment and its local-dev stack follow-on are complete.
 - Treat the completed Knowledge Layer Foundation as the required baseline for future knowledge, recommendation, retrieval, graph, artifact, parser, or Hermes work: exact structured context and human-gated review come first.
 - Provider-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Use free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional API-backed providers, and Firecrawl only as an optional later paid provider. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
 - Preserve completed boundaries: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, Capability Run Outputs land in review, Knowledge Mirror/Obsidian-style material remains non-authoritative, the Structured Knowledge Index remains an on-demand projection, and trusted downstream writes remain human-gated.

@@ -27,6 +27,24 @@ The app reads `HOST`, `PORT`, `PUBLIC_APP_NAME`, `ARIADNE_ENV`, `ARIADNE_WORKSPA
 
 With the virtual environment activated, `python app.py` also works.
 
+## Local Dev Provider Stack
+
+The selected local Capture Research providers can be started with Docker Compose, while the Ariadne app still runs through `uv` on the host:
+
+```powershell
+.\scripts\start-local-dev.ps1
+```
+
+That one command starts SearXNG on `http://localhost:8080`, Crawl4AI on `http://localhost:11235`, exports those base URLs for the app process, and starts Ariadne on `http://127.0.0.1:9622`. Use `-ProvidersOnly` when you only want the containers.
+
+Validate the running stack with:
+
+```powershell
+.\scripts\smoke-local-dev.ps1
+```
+
+The smoke script checks Crawl4AI directly, verifies SearXNG JSON search results are enabled, and runs Ariadne's `crawl4ai_local` and `searxng_local` approved smoke-check endpoints. Stop the provider containers with `docker compose -f docker-compose.local.yml down`. Ollama remains optional/external through `OLLAMA_HOST` and is not required by this stack.
+
 ## Development Defaults
 
 - Python is the default language for backend, agents, orchestration, document processing, knowledge workflows, and platform tooling.

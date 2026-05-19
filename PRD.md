@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.28**
+**Product Requirements Document (PRD) v1.29**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 19, 2026
-**Status:** Artifact Assembly Foundation implemented and validation-ready; first UI review pending/deferred
+**Status:** Artifact Assembly Foundation complete; first UI shape accepted as good enough for this stage
 
 ---
 
@@ -57,7 +57,7 @@
 - A `grill-with-docs` planning session selected **Artifact Assembly Foundation** as the next foundation epic. `CONTEXT.md` now defines Artifact Assembly Foundation, Artifact Assembly Capability, Artifact Assembly Store, Artifact Source Package, Artifact Draft, Artifact Section, Artifact Content Block, and Artifact Block Review. ADR 0008 records the architecture decision: Ariadne should build artifact capability through source packages, section/block drafts, block-level review, reviewed artifact content, and renderer-ready contracts before final DOCX, XLSX, presentation, visual, huashu-design, Bidder Comparison Chart, or customer-facing export workflows.
 - `docs/architecture/artifact-assembly-foundation-plan.md` records the selected Artifact Assembly Foundation epic plan: the first tracer is a reviewable Milestone Decision Briefing Packet draft assembled from Opportunity Knowledge Context through an explicit Artifact Source Package; AI/LLM assistance may coordinate, synthesize, prioritize, and draft prose, but every artifact output must land in deterministic, source-backed, reviewable schema; accepted artifact blocks do not automatically become trusted downstream records; autonomy hints are metadata only; the first surface remains in the existing FastAPI Command Center scaffold; and final rendering/export remains deferred.
 - Artifact Assembly Foundation implementation through issue #66 now includes the local Artifact Assembly Store, Artifact Source Packages from Opportunity Knowledge Context, deterministic Milestone Decision Briefing Packet drafts, typed source-backed Artifact Content Blocks, block review decisions and readiness calculation, FastAPI draft assembly/review routes, and the first Artifact Draft Command Surface. The validation loop proves preview/export readiness can be calculated without generating DOCX, XLSX, presentation, visual, huashu, or other final exported files and without automatically writing accepted blocks into trusted downstream records.
-- Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface is ready for maintainer review; review is deferred/pending, not approved.
+- Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface was reviewed by the maintainer and accepted as good enough for this stage.
 
 **Still Deferred**
 
@@ -67,7 +67,7 @@
 
 **Next Build Gate**
 
-- Complete maintainer review of the first Artifact Draft Command Surface before closing the UI-gated issue #65 or treating the Artifact Assembly Foundation UI proof as accepted.
+- Select the next build epic through the project planning flow before starting unrelated deferred artifact, renderer, graph, RAG, Hermes, parser, external API, or Next.js migration work.
 - Treat the completed Knowledge Layer Foundation as the required baseline for future knowledge, recommendation, retrieval, graph, artifact, parser, or Hermes work: exact structured context and human-gated review come first.
 - Artifact Source Packages should begin from Opportunity Knowledge Context as the primary aggregator, then Artifact Drafts should move through block-level review and readiness calculation before any future renderer consumes them.
 - Provider-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Use free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional API-backed providers, and Firecrawl only as an optional later paid provider. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.

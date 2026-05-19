@@ -1,7 +1,7 @@
 # Artifact Assembly Foundation Plan
 
 Date: 2026-05-19  
-Status: selected through `grill-with-docs`; implementation not started
+Status: implemented and validated through issue #66; first UI review pending/deferred
 
 ## Selected Epic
 
@@ -126,3 +126,25 @@ The acceptance demo should show one Opportunity moving through the Artifact Asse
 - Full Next.js UI migration or polished artifact presentation surfaces.
 - Automatic trusted downstream writes from accepted artifact blocks.
 - Automatic artifact export or external delivery.
+
+## Implementation Trail
+
+The Artifact Assembly Foundation epic was implemented as issues #61 through #66 on the `10-build/artifact-assembly-foundation` epic branch.
+
+1. **Artifact Source Package** (#61): added `ariadne.artifact_assembly`, a narrow local `ArtifactAssemblyStore`, runtime config for `ARIADNE_ARTIFACT_ASSEMBLY_DIR`, source-package persistence, and FastAPI/API entry points that seed packages from Opportunity Knowledge Context.
+2. **Milestone Packet Draft Shell** (#62): added the renderer-neutral `ArtifactDraft`, `ArtifactSection`, provenance, readiness metadata, and deterministic `assemble_milestone_packet_draft` tracer.
+3. **Source-Backed Packet Blocks** (#63): populated packet sections with typed `ArtifactContentBlock` records for narrative, decision summary, evidence table, action list, assumption list, gap list, and source appendix content. Trusted support, reviewable refs, assumptions, gaps, and limitations remain explicit block metadata.
+4. **Block Review and Readiness** (#64): added `ArtifactBlockReviewAction`, review-decision history, edit/route/exclude/needs-evidence behavior, preview-ready and export-ready calculations, and tests proving no automatic Evidence Store writes.
+5. **Artifact Draft Command Surface** (#65): added the FastAPI HTML command surface for one draft, plus draft assembly and block-review routes. The surface shows source-package summary, draft readiness, block support labels, reviewable refs, assumptions, gaps, source limitations, related record links, and review actions. Final renderer/export UI remains absent.
+6. **Foundation Validation** (#66): added an end-to-end foundation validation test that moves one Opportunity from Opportunity Knowledge Context to Artifact Source Package, Milestone Decision Briefing Packet draft, block review, preview/export readiness, and boundary checks without producing final exported files or trusted downstream records.
+
+## Validation Results
+
+- Focused Artifact Assembly validation includes the complete source-package -> draft -> block-review -> readiness loop.
+- Tests verify generated local files remain Artifact Assembly JSON records only; no DOCX, XLSX, presentation, visual, huashu, or other final exported file is generated.
+- Tests verify accepted or edited Artifact Content Blocks do not automatically write trusted downstream Evidence records.
+- `uv run ruff check src tests` and `uv run pytest -q` pass after issue #66, with 275 tests passing.
+
+## UI Review Status
+
+The first Artifact Draft Command Surface is available in the existing FastAPI Command Center scaffold and ready for maintainer review. The user has deferred the #65 UI review by asking to continue to the next slice; this is not recorded as an approval. Issue #65 should remain open until the user explicitly reviews and accepts or rejects the first UI shape.

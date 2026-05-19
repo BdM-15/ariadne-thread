@@ -32,7 +32,7 @@ The first SAM.gov slice should stay deterministic and review-gated. It should no
 - Use **SAM.gov Entity Record** for official SAM.gov entity registration or responsibility records so the term does not conflict with Document Intake `Entity Candidate` language.
 - Use **SAM.gov Opportunity Record** for official notices, solicitations, RFIs, Sources Soughts, Special Notices, and related opportunity records.
 - Include **SAM.gov Opportunity Discovery** for cases where no solicitation ID exists yet, using customer, office, program-name, description, keyword, renamed-program, notice-type, NAICS/PSC, set-aside, and date-window signals.
-- Treat Firecrawl/web research as a deferred enrichment route for renamed, ambiguous, stale, or incomplete official-source signals. Do not implement Firecrawl in this epic.
+- Treat provider-backed web research as a deferred enrichment route for renamed, ambiguous, stale, or incomplete official-source signals. Do not implement live web source collection in this epic.
 - Include **SAM.gov Opportunity Attachment Intake** for official opportunity description links and resource links surfaced by SAM.gov results.
 - Ask before downloading opportunity attachments. Approved downloads should become Document Intake records.
 - Use best-effort official-source retrieval for current and prior or archived solicitation documents. Missing or inaccessible attachments become source limitations and possible follow-up routes.
@@ -65,7 +65,7 @@ Outputs should include matched opportunity records, notice type, title, organiza
 
 Starts when Ariadne does not have a solicitation ID. Inputs can include customer, office, agency/subtier, program name, old program name, description fragment, keyword, notice type, NAICS, PSC, set-aside, posted date window, response date window, and place-of-performance clues.
 
-Outputs should include search runs, query parameters, matched notices, match rationale, confidence, ambiguity notes, renamed-program clues, gaps, and recommendations for follow-up. If official SAM.gov results are weak or ambiguous, the profile should recommend a deferred Firecrawl/web enrichment route rather than running broad web research in this epic.
+Outputs should include search runs, query parameters, matched notices, match rationale, confidence, ambiguity notes, renamed-program clues, gaps, and recommendations for follow-up. If official SAM.gov results are weak or ambiguous, the profile should recommend a deferred provider-backed web enrichment route rather than running broad web research in this epic.
 
 ### Opportunity Attachment Intake Lane
 
@@ -144,7 +144,7 @@ Approved downloads use an explicit API action before fetching any file. Download
 
 The fifth progression branch makes the four-lane SAM.gov profile coherent as a saved command surface rather than separate read-only lane snippets. Opportunity Discovery can now be attached to an existing profile beside Entity Record, Known Opportunity, and Attachment Intake lanes. The Command Center links each saved profile to a detail page that reads persisted state only and does not trigger live SAM.gov calls or attachment downloads.
 
-The saved profile detail page and summary API show live readiness, source-mode labels, all lane states, source limitations, linked Document Intake records, review-gated candidate destinations, and explicit deferrals for Firecrawl/Web Enrichment Support, Specialized Solicitation Parser, Project Theseus parser integration, Artifact Renderer/export, Hermes/LangGraph, and additional federal data sources. The surface keeps fake-adapter output visually distinct from live SAM.gov success and repeats that trusted writes remain absent until an explicit reviewer action occurs.
+The saved profile detail page and summary API show live readiness, source-mode labels, all lane states, source limitations, linked Document Intake records, review-gated candidate destinations, and explicit deferrals for provider-backed Web Enrichment Support, Specialized Solicitation Parser, Project Theseus parser integration, Artifact Renderer/export, Hermes/LangGraph, and additional federal data sources. The surface keeps fake-adapter output visually distinct from live SAM.gov success and repeats that trusted writes remain absent until an explicit reviewer action occurs.
 
 This branch provided the user-facing shape for human review. The first UI shape was accepted as good enough for now, so the SAM.gov epic can merge to `main` and later UI polish can be selected through a separate documented slice.
 

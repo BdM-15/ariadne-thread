@@ -20,6 +20,32 @@ from ariadne.capability_runs import (
     run_capability_catalog_validation,
     run_local_admin_model_readiness_probe,
 )
+from ariadne.capture_research import (
+    ApprovedWebSourceCollectionAdapter,
+    CaptureResearchCandidateReviewDecisionType,
+    CaptureResearchLens,
+    CaptureResearchRun,
+    CaptureResearchRunStatus,
+    CaptureResearchStore,
+    FakeWebSourceCollectionAdapter,
+    SourceProviderRegistry,
+    SourceProviderSmokeCheckResult,
+    SourceProviderSmokeRunner,
+    SourceProfileRef,
+    build_seller_baseline_query,
+    build_source_provider_registry,
+    create_source_provider_adapter,
+    create_source_context_research_run,
+    create_user_prompted_research_run,
+    project_capture_research_downstream_candidates,
+    record_capture_research_candidate_review_decision,
+    run_approved_source_provider_collection,
+    run_competitive_gap_analysis,
+    run_requirements_fit_analysis,
+    run_selected_capture_lens_analysis,
+    run_source_provider_smoke_check,
+    run_web_source_collection,
+)
 from ariadne.command_center import (
     build_command_center_knowledge_context,
     render_capability_studio_shell,
@@ -250,6 +276,75 @@ class CapabilityRunOutputReviewRequest(BaseModel):
     routed_destination: str | None = None
 
 
+class CaptureResearchRunCreateRequest(BaseModel):
+    prompt: str
+    trigger_summary: str | None = None
+    opportunity_id: str | None = None
+    source_profile_refs: tuple[SourceProfileRef, ...] = ()
+    selected_lenses: tuple[CaptureResearchLens, ...]
+    source_targets: tuple[str, ...]
+    source_limits: tuple[str, ...]
+    evidence_goals: tuple[str, ...] = ()
+    known_pivots: tuple[str, ...] = ()
+
+
+class CaptureResearchRunResponse(BaseModel):
+    run: CaptureResearchRun
+
+
+class CaptureResearchRunListResponse(BaseModel):
+    runs: tuple[CaptureResearchRun, ...]
+
+
+class CaptureResearchSourceProviderResponse(BaseModel):
+    registry: SourceProviderRegistry
+
+
+class CaptureResearchSourceProviderSmokeCheckRequest(BaseModel):
+    approved: bool = False
+    smoke_target: str = "https://example.com"
+    checked_at: str | None = None
+
+
+class CaptureResearchSourceProviderSmokeCheckResponse(BaseModel):
+    result: SourceProviderSmokeCheckResult
+
+
+class CaptureResearchFakeCollectionRequest(BaseModel):
+    collected_at: str | None = None
+
+
+class CaptureResearchSourceProviderCollectionRequest(BaseModel):
+    approved: bool = False
+    provider_ids: tuple[str, ...] = ()
+    collected_at: str | None = None
+
+
+class CaptureResearchRequirementsFitRequest(BaseModel):
+    analyzed_at: str | None = None
+    reference_limit: int = Field(default=5, ge=0, le=10)
+
+
+class CaptureResearchCompetitiveGapRequest(BaseModel):
+    analyzed_at: str | None = None
+
+
+class CaptureResearchSelectedLensAnalysisRequest(BaseModel):
+    analyzed_at: str | None = None
+    selected_lenses: tuple[CaptureResearchLens, ...] | None = None
+
+
+class CaptureResearchCandidateProjectionRequest(BaseModel):
+    projected_at: str | None = None
+
+
+class CaptureResearchCandidateReviewDecisionRequest(BaseModel):
+    decision: CaptureResearchCandidateReviewDecisionType
+    reviewer_rationale: str
+    decided_at: str | None = None
+    routed_destination: str | None = None
+
+
 class USAspendingPiidLookupRequest(BaseModel):
     contract_number: str
     limit: int = Field(default=5, ge=1, le=100)
@@ -406,6 +501,8 @@ def create_app(
     sam_gov_attachment_fetcher: SamGovAttachmentFetcher | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
     local_admin_model_client: LocalAdminModelClient | None = None,
+    source_provider_adapter: ApprovedWebSourceCollectionAdapter | None = None,
+    source_provider_smoke_runner: SourceProviderSmokeRunner | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
     app = FastAPI(title=runtime_settings.public_app_name)
@@ -602,6 +699,290 @@ def create_app(
             )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Capability Run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs")
+    def create_capture_research_run(
+        request: CaptureResearchRunCreateRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            if request.source_profile_refs:
+                run = create_source_context_research_run(
+                    request.trigger_summary or request.prompt,
+                    opportunity_id=request.opportunity_id,
+                    source_profile_refs=request.source_profile_refs,
+                    prompt=request.prompt,
+                    selected_lenses=request.selected_lenses,
+                    source_targets=request.source_targets,
+                    source_limits=request.source_limits,
+                    evidence_goals=request.evidence_goals,
+                    known_pivots=request.known_pivots,
+                )
+            else:
+                run = create_user_prompted_research_run(
+                    request.prompt,
+                    opportunity_id=request.opportunity_id,
+                    selected_lenses=request.selected_lenses,
+                    source_targets=request.source_targets,
+                    source_limits=request.source_limits,
+                    evidence_goals=request.evidence_goals,
+                    known_pivots=request.known_pivots,
+            )
+            return CaptureResearchRunResponse(run=store.write(run))
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/capture-research/runs")
+    def capture_research_runs(
+        opportunity_id: str | None = None,
+        status: CaptureResearchRunStatus | None = None,
+    ) -> CaptureResearchRunListResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        return CaptureResearchRunListResponse(
+            runs=tuple(store.list(opportunity_id=opportunity_id, status=status))
+        )
+
+    @app.get("/api/capture-research/source-providers")
+    def capture_research_source_providers() -> CaptureResearchSourceProviderResponse:
+        return CaptureResearchSourceProviderResponse(
+            registry=build_source_provider_registry(
+                runtime_settings.capture_research_source_env
+            )
+        )
+
+    @app.post("/api/capture-research/source-providers/{provider_id}/smoke-check")
+    def capture_research_source_provider_smoke_check(
+        provider_id: str,
+        request: CaptureResearchSourceProviderSmokeCheckRequest,
+    ) -> CaptureResearchSourceProviderSmokeCheckResponse:
+        try:
+            return CaptureResearchSourceProviderSmokeCheckResponse(
+                result=run_source_provider_smoke_check(
+                    provider_id=provider_id,
+                    env=runtime_settings.capture_research_source_env,
+                    approved=request.approved,
+                    smoke_target=request.smoke_target,
+                    runner=source_provider_smoke_runner,
+                    checked_at=request.checked_at,
+                    timeout_seconds=runtime_settings.mcp_tool_timeout_seconds,
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/capture-research/runs/{research_run_id}")
+    def capture_research_run_detail(
+        research_run_id: str,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(run=store.read(research_run_id))
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/source-provider-collection")
+    def capture_research_source_provider_collection(
+        research_run_id: str,
+        request: CaptureResearchSourceProviderCollectionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        registry = build_source_provider_registry(
+            runtime_settings.capture_research_source_env
+        )
+        try:
+            adapter = source_provider_adapter or create_source_provider_adapter(
+                env=runtime_settings.capture_research_source_env,
+                registry=registry,
+                provider_ids=request.provider_ids,
+            )
+            return CaptureResearchRunResponse(
+                run=run_approved_source_provider_collection(
+                    store=store,
+                    research_run_id=research_run_id,
+                    registry=registry,
+                    adapter=adapter,
+                    approved=request.approved,
+                    provider_ids=request.provider_ids,
+                    collected_at=request.collected_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/fake-web-source-collection")
+    def capture_research_fake_web_source_collection(
+        research_run_id: str,
+        request: CaptureResearchFakeCollectionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=run_web_source_collection(
+                    store=store,
+                    research_run_id=research_run_id,
+                    adapter=FakeWebSourceCollectionAdapter(),
+                    collected_at=request.collected_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/requirements-fit-analysis")
+    def capture_research_requirements_fit_analysis(
+        research_run_id: str,
+        request: CaptureResearchRequirementsFitRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        evidence_store = LocalEvidenceStore(
+            _resolve_runtime_path(runtime_settings.ariadne_evidence_dir)
+        )
+        try:
+            run = store.read(research_run_id)
+            reference_influences = load_reference_wiki(
+                _resolve_runtime_path(runtime_settings.ariadne_reference_wiki_dir)
+            ).find_influences(
+                build_seller_baseline_query(run),
+                limit=request.reference_limit,
+            )
+            return CaptureResearchRunResponse(
+                run=run_requirements_fit_analysis(
+                    store=store,
+                    research_run_id=research_run_id,
+                    evidence_items=tuple(evidence_store.list()),
+                    reference_influences=reference_influences,
+                    analyzed_at=request.analyzed_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/competitive-gap-analysis")
+    def capture_research_competitive_gap_analysis(
+        research_run_id: str,
+        request: CaptureResearchCompetitiveGapRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=run_competitive_gap_analysis(
+                    store=store,
+                    research_run_id=research_run_id,
+                    analyzed_at=request.analyzed_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/selected-lens-analysis")
+    def capture_research_selected_lens_analysis(
+        research_run_id: str,
+        request: CaptureResearchSelectedLensAnalysisRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=run_selected_capture_lens_analysis(
+                    store=store,
+                    research_run_id=research_run_id,
+                    selected_lenses=request.selected_lenses,
+                    analyzed_at=request.analyzed_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/capture-research/runs/{research_run_id}/downstream-candidates")
+    def capture_research_downstream_candidates(
+        research_run_id: str,
+        request: CaptureResearchCandidateProjectionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=project_capture_research_downstream_candidates(
+                    store=store,
+                    research_run_id=research_run_id,
+                    projected_at=request.projected_at,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post(
+        "/api/capture-research/runs/{research_run_id}/downstream-candidates/{candidate_id}/review-decisions"
+    )
+    def capture_research_candidate_review_decision(
+        research_run_id: str,
+        candidate_id: str,
+        request: CaptureResearchCandidateReviewDecisionRequest,
+    ) -> CaptureResearchRunResponse:
+        store = CaptureResearchStore(
+            _resolve_runtime_path(runtime_settings.ariadne_capture_research_dir)
+        )
+        try:
+            return CaptureResearchRunResponse(
+                run=record_capture_research_candidate_review_decision(
+                    store=store,
+                    research_run_id=research_run_id,
+                    candidate_id=candidate_id,
+                    decision=request.decision,
+                    reviewer_rationale=request.reviewer_rationale,
+                    decided_at=request.decided_at,
+                    routed_destination=request.routed_destination,
+                )
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Capture Research run not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 

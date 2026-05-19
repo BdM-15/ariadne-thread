@@ -41,7 +41,7 @@ class PiidEnrichmentRouteType(StrEnum):
     SAM_GOV_ENTITY = "sam_gov_entity"
     SAM_GOV_OPPORTUNITY = "sam_gov_opportunity"
     BLS_GSA_PRICING_CONTEXT = "bls_gsa_pricing_context"
-    FIRECRAWL_WEB_ENRICHMENT = "firecrawl_web_enrichment"
+    WEB_SOURCE_COLLECTION = "web_source_collection"
     SUBAWARD_PROFILE = "subaward_profile"
     COMPETITOR_PROFILE = "competitor_profile"
     CUSTOMER_PROFILE = "customer_profile"
@@ -495,9 +495,9 @@ def _recommended_enrichment_routes_from_baseline(
     if web_fields:
         routes.append(
             _enrichment_route(
-                PiidEnrichmentRouteType.FIRECRAWL_WEB_ENRICHMENT,
+                PiidEnrichmentRouteType.WEB_SOURCE_COLLECTION,
                 title="Web enrichment",
-                target_capability="firecrawl_web_enrichment",
+                target_capability="web_source_collection",
                 recommendation="Review populated organization names before routing to web enrichment.",
                 rationale="USAspending populated organization names that can seed future web research.",
                 source_fields=tuple(field for field, value in web_fields),

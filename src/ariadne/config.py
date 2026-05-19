@@ -28,6 +28,9 @@ class RuntimeSettings(BaseModel):
     ariadne_capability_runs_dir: Path = Field(
         default=Path(".ariadne/capability-runs")
     )
+    ariadne_capture_research_dir: Path = Field(
+        default=Path(".ariadne/capture-research")
+    )
     ariadne_next_action_recommendations_dir: Path = Field(
         default=Path(".ariadne/next-action-recommendations")
     )
@@ -36,6 +39,9 @@ class RuntimeSettings(BaseModel):
     )
     mcp_tool_timeout_seconds: int = 60
     federal_data_env: dict[str, str] = Field(default_factory=dict, exclude=True)
+    capture_research_source_env: dict[str, str] = Field(
+        default_factory=dict, exclude=True
+    )
     local_admin_model: LocalAdminModelSettings = Field(
         default_factory=LocalAdminModelSettings
     )
@@ -94,6 +100,12 @@ class RuntimeSettings(BaseModel):
                     str(cls.model_fields["ariadne_capability_runs_dir"].default),
                 )
             ),
+            ariadne_capture_research_dir=Path(
+                values.get(
+                    "ARIADNE_CAPTURE_RESEARCH_DIR",
+                    str(cls.model_fields["ariadne_capture_research_dir"].default),
+                )
+            ),
             ariadne_next_action_recommendations_dir=Path(
                 values.get(
                     "ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR",
@@ -117,6 +129,9 @@ class RuntimeSettings(BaseModel):
                 )
             ),
             federal_data_env=_federal_data_env_from_mapping(values),
+            capture_research_source_env=_capture_research_source_env_from_mapping(
+                values
+            ),
             local_admin_model=LocalAdminModelSettings(
                 enabled=_parse_bool(values.get("LOCAL_ADMIN_MODEL_ENABLED", "false")),
                 ollama_base_url=values.get(
@@ -163,6 +178,21 @@ def _federal_data_env_from_mapping(values: dict[str, str]) -> dict[str, str]:
         "API_DATA_GOV_KEY",
         "PERDIEM_API_KEY",
         "REGULATIONS_GOV_API_KEY",
+    )
+    return {
+        env_var_name: value
+        for env_var_name in env_var_names
+        if (value := values.get(env_var_name, ""))
+    }
+
+
+def _capture_research_source_env_from_mapping(values: dict[str, str]) -> dict[str, str]:
+    env_var_names = (
+        "CRAWL4AI_BASE_URL",
+        "SEARXNG_BASE_URL",
+        "SERPAPI_API_KEY",
+        "OLOSTEP_API_KEY",
+        "FIRECRAWL_API_KEY",
     )
     return {
         env_var_name: value

@@ -1,6 +1,14 @@
 from ariadne.config import RuntimeSettings
+from ariadne.capture_research import (
+    CapabilityProvenance,
+    CaptureResearchSourceMode,
+    SourceCollectionProviderManifest,
+    SourceFinding,
+    SourceProviderSmokeRunnerResult,
+    WebSourceCollectionRecord,
+)
 from ariadne.document_intake import DocumentIntakeStore
-from ariadne.evidence import LocalEvidenceStore
+from ariadne.evidence import LocalEvidenceStore, create_source_evidence
 from ariadne.federal_data import FederalDataInitializeRunnerResult
 from ariadne.local_admin_model import (
     LocalAdminDraftAssist,
@@ -20,6 +28,76 @@ from ariadne.sam_gov_profiles import (
 )
 from ariadne.server import create_app
 from ariadne.usaspending import USAspendingMcpToolResult
+
+
+class _RuntimeProviderFixtureAdapter:
+    source_mode = CaptureResearchSourceMode.LIVE_OLOSTEP
+    provider_ids = ("serpapi_live", "olostep_live")
+
+    def collect(
+        self,
+        run,
+        *,
+        collected_at: str,
+    ) -> tuple[tuple[WebSourceCollectionRecord, ...], tuple[SourceFinding, ...]]:
+        provenance = CapabilityProvenance(
+            source_capability_id="serpapi_live+olostep_live",
+            source_tool_name="collect_provider_backed_public_sources",
+            source_package="ariadne.capture_research",
+            source_package_version="local",
+        )
+        limitations = (
+            "SerpApi supplies search discovery; Olostep supplies crawl/extraction fallback.",
+            "Automated test uses injected provider fixture data.",
+        )
+        finding = SourceFinding(
+            id="source_finding_runtime_fixture_1",
+            source_target=run.research_brief.source_targets[0],
+            url="https://example.test/provider-result",
+            title="Provider-backed fixture finding",
+            source_type="provider_backed_public_web",
+            collected_at=collected_at,
+            excerpt="Provider-backed fixture excerpt.",
+            confidence=0.74,
+            source_limitations=limitations,
+            source_mode=self.source_mode,
+            capability_provenance=provenance,
+            provider_ids=self.provider_ids,
+            approval_basis=run.research_brief.approval_basis,
+        )
+        record = WebSourceCollectionRecord(
+            id="web_collection_runtime_fixture_1",
+            source_target=finding.source_target,
+            source_mode=self.source_mode,
+            collected_at=collected_at,
+            capability_provenance=provenance,
+            source_limitations=limitations,
+            finding_ids=(finding.id,),
+            provider_ids=self.provider_ids,
+            approval_basis=run.research_brief.approval_basis,
+        )
+        return (record,), (finding,)
+
+
+class _RuntimeSmokeRunnerFixture:
+    def __init__(self) -> None:
+        self.provider_ids: list[str] = []
+
+    def __call__(
+        self,
+        manifest: SourceCollectionProviderManifest,
+        *,
+        env: dict[str, str],
+        smoke_target: str,
+        timeout_seconds: int,
+    ) -> SourceProviderSmokeRunnerResult:
+        self.provider_ids.append(manifest.id)
+        return SourceProviderSmokeRunnerResult(
+            ok=True,
+            diagnostic_summary="runtime smoke ok " + " ".join(env.values()),
+            endpoint_label=f"{manifest.id}_smoke",
+            observed_result_count=1,
+        )
 
 
 def test_quick_capture_reference_influences_api_exposes_wiki_matches(tmp_path) -> None:
@@ -2181,6 +2259,837 @@ def test_runtime_settings_expose_capability_run_store_path(tmp_path) -> None:
     assert settings.ariadne_capability_runs_dir == run_root
 
 
+def test_prompted_capture_research_api_creates_lists_and_reads_runs(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research the customer's historical use of this contract vehicle.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research", "call_plan_cro"],
+            "source_targets": ["public customer website"],
+            "source_limits": ["public_web_only", "no_linkedin"],
+            "evidence_goals": ["Find customer hot buttons and engagement questions."],
+        },
+    )
+
+    assert create_response.status_code == 200
+    run = create_response.json()["run"]
+    assert run["status"] == "planned"
+    assert run["opportunity_id"] == "opp_aflcmc_recompete"
+    assert run["user_prompt"]["prompt"] == (
+        "Research the customer's historical use of this contract vehicle."
+    )
+    assert run["research_trigger_context"]["trigger_type"] == (
+        "user_prompted_research_request"
+    )
+    assert run["research_brief"]["selected_lenses"] == [
+        "customer_research",
+        "call_plan_cro",
+    ]
+    assert run["research_brief"]["source_limits"] == [
+        "public_web_only",
+        "no_linkedin",
+    ]
+    assert run["source_collection_records"] == []
+    assert run["source_findings"] == []
+    assert run["capability_run_refs"] == []
+
+    list_response = client.get("/api/capture-research/runs")
+
+    assert list_response.status_code == 200
+    assert [item["research_run_id"] for item in list_response.json()["runs"]] == [
+        run["research_run_id"]
+    ]
+
+    detail_response = client.get(f"/api/capture-research/runs/{run['research_run_id']}")
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["run"]["research_run_id"] == run["research_run_id"]
+    assert len(list(research_root.glob("*.json"))) == 1
+
+
+def test_command_center_shell_shows_prompted_capture_research_runs(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research the customer's historical use of this contract vehicle.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research", "call_plan_cro"],
+            "source_targets": ["public customer website"],
+            "source_limits": ["public_web_only", "no_linkedin"],
+            "evidence_goals": ["Find customer hot buttons and engagement questions."],
+        },
+    )
+
+    response = client.get("/")
+
+    assert create_response.status_code == 200
+    assert response.status_code == 200
+    assert "Capture Research Enrichment" in response.text
+    assert "1 persisted" in response.text
+    assert "Research the customer&#x27;s historical use of this contract vehicle." in (
+        response.text
+    )
+    assert "Status: Planned" in response.text
+    assert "Lenses: customer research, call plan cro" in response.text
+    assert "Source limits: public_web_only, no_linkedin" in response.text
+    assert "No source collection has run for this brief." in response.text
+
+
+def test_capture_research_api_and_shell_show_source_profile_refs(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research which public sources clarify incumbent and buyer office.",
+            "trigger_summary": "SAM.gov ambiguity and PIID source limitation need research.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["public agency pages", "public award notices"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Clarify buyer office and incumbent signals."],
+            "source_profile_refs": [
+                {
+                    "source_profile_type": "piid_contract_intelligence_profile",
+                    "source_profile_id": "piid_profile_FA8650_23_F_0001",
+                    "source_element_key": "gaps.prime_recipient",
+                    "source_element_summary": "PIID profile cannot resolve PRIME recipient.",
+                },
+                {
+                    "source_profile_type": "sam_gov_enrichment_profile",
+                    "source_profile_id": "sam_profile_PROJECT_PHOENIX",
+                    "source_element_key": "opportunity_discovery.ambiguous_program_name",
+                    "source_element_summary": "SAM.gov discovery found ambiguous Project Phoenix notices.",
+                },
+            ],
+        },
+    )
+
+    assert create_response.status_code == 200
+    run = create_response.json()["run"]
+    assert run["research_trigger_context"]["trigger_type"] == "source_profile_context"
+    assert run["research_trigger_context"]["summary"] == (
+        "SAM.gov ambiguity and PIID source limitation need research."
+    )
+    assert run["user_prompt"]["prompt"] == (
+        "Research which public sources clarify incumbent and buyer office."
+    )
+    assert [ref["source_profile_id"] for ref in run["source_profile_refs"]] == [
+        "piid_profile_FA8650_23_F_0001",
+        "sam_profile_PROJECT_PHOENIX",
+    ]
+    response_json = create_response.text
+    assert "award_baseline" not in response_json
+    assert "burn_posture" not in response_json
+    assert "entity_matches" not in response_json
+    assert "opportunity_records" not in response_json
+    assert "attachment_metadata" not in response_json
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Trigger: source_profile_context" in shell_response.text
+    assert "PIID Contract Intelligence Profile" in shell_response.text
+    assert "piid_profile_FA8650_23_F_0001" in shell_response.text
+    assert "gaps.prime_recipient" in shell_response.text
+    assert "SAM.gov Enrichment Profile" in shell_response.text
+    assert "sam_profile_PROJECT_PHOENIX" in shell_response.text
+
+
+def test_fake_web_source_collection_api_and_shell_show_findings(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root)}
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research public customer and incumbent context.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["public agency pages", "public award notices"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find customer and incumbent signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    run = collect_response.json()["run"]
+    assert run["status"] == "needs_review"
+    assert [record["source_target"] for record in run["source_collection_records"]] == [
+        "public agency pages",
+        "public award notices",
+    ]
+    assert all(
+        record["source_mode"] == "fake_adapter_test"
+        for record in run["source_collection_records"]
+    )
+    assert len(run["source_findings"]) == 2
+    assert run["source_findings"][0]["url"] == (
+        "fake://capture-research/public-agency-pages"
+    )
+    assert run["source_findings"][0]["source_mode"] == "fake_adapter_test"
+    assert run["source_findings"][0]["capability_provenance"][
+        "source_capability_id"
+    ] == "fake_web_source_collection"
+    assert "Fake adapter test data is not live source-provider success." in (
+        run["source_findings"][0]["source_limitations"]
+    )
+    assert "live_firecrawl" not in collect_response.text
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Source collection records: 2" in shell_response.text
+    assert "public agency pages" in shell_response.text
+    assert "Fake source finding for public agency pages" in shell_response.text
+    assert "fake://capture-research/public-agency-pages" in shell_response.text
+    assert "fake adapter test" in shell_response.text
+    assert "Fake adapter test data is not live source-provider success." in (
+        shell_response.text
+    )
+
+
+def test_requirements_fit_api_and_shell_show_seller_baseline_refs(
+    tmp_path,
+) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    (reference_root / "seller-baseline.md").write_text(
+        "---\n"
+        "title: Seller Baseline Proof\n"
+        "---\n\n"
+        "# Seller Baseline Proof\n\n"
+        "Seller transition proof, cyber modernization capability, and vehicle experience.\n",
+        encoding="utf-8",
+    )
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_seller_baseline",
+            content=(
+                "Accepted seller evidence: transition past performance, cyber "
+                "modernization capability, and contract vehicle proof."
+            ),
+            source_ref="accepted seller proof note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research customer transition modernization needs.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research", "competitive_positioning"],
+            "source_targets": ["public agency modernization page"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Compare transition need against seller proof."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+
+    fit_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    assert fit_response.status_code == 200
+    run = fit_response.json()["run"]
+    assert run["status"] == "needs_review"
+    assert [ref["ref_type"] for ref in run["seller_baseline_refs"]] == [
+        "accepted_evidence",
+        "reference_wiki_note",
+    ]
+    assert run["seller_baseline_refs"][0]["source_ref"] == (
+        "ev_runtime_seller_baseline"
+    )
+    assert run["requirements_fit_analysis"]["strengths"]
+    assert run["requirements_fit_analysis"]["proof_needs"]
+    assert run["insight_candidates"]
+    assert all(
+        candidate["review_state"] == "pending_review"
+        for candidate in run["insight_candidates"]
+    )
+    assert "trusted_output_written" not in fit_response.text
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Seller Capability Baseline" in shell_response.text
+    assert "Accepted Evidence ev_runtime_seller_baseline" in shell_response.text
+    assert "Seller Baseline Proof" in shell_response.text
+    assert "Requirements Fit Analysis" in shell_response.text
+    assert "Strengths" in shell_response.text
+    assert "Proof needs" in shell_response.text
+    assert "Reviewable outputs only" in shell_response.text
+
+
+def test_competitive_gap_api_and_shell_show_bcc_ready_notes(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_competitive_baseline",
+            content=(
+                "Accepted seller evidence: transition past performance, cyber "
+                "modernization capability, vehicle proof, and staffing constraints."
+            ),
+            source_ref="accepted competitive baseline note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research incumbent competitive posture.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["competitive_positioning"],
+            "source_targets": ["incumbent vendor cyber staffing vehicle partner profile"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find competitor notes and BCC-ready inputs."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+    fit_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+
+    gap_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/competitive-gap-analysis",
+        json={"analyzed_at": "2026-05-18T12:15:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    assert fit_response.status_code == 200
+    assert gap_response.status_code == 200
+    run = gap_response.json()["run"]
+    analysis = run["competitive_gap_analysis"]
+    assert analysis["discriminator_candidates"]
+    assert analysis["vulnerabilities"]
+    assert analysis["competitor_incumbent_notes"]
+    assert analysis["teaming_partner_needs"]
+    assert analysis["bcc_ready_notes"]
+    assert analysis["bcc_ready_notes"][0]["bcc_ready_input"] is True
+    assert analysis["bcc_artifact_generated"] is False
+    assert any(
+        candidate["candidate_type"] == "competitive_gap_bcc_ready_note"
+        and candidate["target_workflow"] == "bcc_ready_input"
+        and candidate["bcc_artifact_generated"] is False
+        for candidate in run["insight_candidates"]
+    )
+    assert "bcc_rows" not in run
+    assert "bcc_slides" not in run
+    assert "bcc_artifact" not in run
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Competitive Gap Analysis" in shell_response.text
+    assert "Discriminator candidates" in shell_response.text
+    assert "Competitor/incumbent notes" in shell_response.text
+    assert "Teaming Partner Needs" in shell_response.text
+    assert "BCC-ready notes" in shell_response.text
+    assert "No BCC artifact generated" in shell_response.text
+    assert "later Bidder Comparison Chart work only" in shell_response.text
+
+
+def test_selected_lens_api_and_shell_show_outputs_by_lens(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_lens_baseline",
+            content=(
+                "Accepted seller evidence: pricing discipline, staffing model, transition proof, and customer proof points."
+            ),
+            source_ref="accepted lens baseline note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research price, burn, workload, and engagement assumptions.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "source_profile_refs": [
+                {
+                    "source_profile_type": "piid_contract_intelligence_profile",
+                    "source_profile_id": "piid_profile_FAKE1234",
+                    "source_element_key": "burn_posture",
+                    "source_element_summary": "PIID profile shows net obligations, monthly burn rate, remaining value, staffing workload, and recompete timing.",
+                }
+            ],
+            "selected_lenses": [
+                "price_to_win",
+                "burn_rate_analysis",
+                "workload_analysis",
+                "call_plan_cro",
+            ],
+            "source_targets": [
+                "budget ceiling price FTE staffing workload value proof friction next action"
+            ],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find pricing, burn, workload, and engagement signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+    fit_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+    lens_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/selected-lens-analysis",
+        json={"analyzed_at": "2026-05-18T12:20:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    assert fit_response.status_code == 200
+    assert lens_response.status_code == 200
+    run = lens_response.json()["run"]
+    analyses = {analysis["lens"]: analysis for analysis in run["capture_lens_analyses"]}
+    assert set(analyses) == {
+        "price_to_win",
+        "burn_rate_analysis",
+        "workload_analysis",
+        "call_plan_cro",
+    }
+    assert analyses["price_to_win"]["signals"][0]["target_workflow"] == "price_to_win"
+    assert analyses["burn_rate_analysis"]["signals"][0]["supporting_source_profile_refs"]
+    assert analyses["workload_analysis"]["signals"][0]["supporting_source_finding_ids"]
+    assert analyses["call_plan_cro"]["signals"][0]["target_workflow"] == "call_plan"
+    assert any(
+        "not the primary burn-rate or price-to-win lens" in limitation
+        for limitation in analyses["call_plan_cro"]["signals"][0]["source_limitations"]
+    )
+    assert {candidate.get("lens") for candidate in run["insight_candidates"] if candidate.get("capture_lens_analysis_id")} == {
+        "price_to_win",
+        "burn_rate_analysis",
+        "workload_analysis",
+        "call_plan_cro",
+    }
+    assert "trusted_output_written" not in lens_response.text
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Selected Capture Lens Analysis" in shell_response.text
+    assert "Price-to-Win" in shell_response.text
+    assert "Burn Rate Analysis" in shell_response.text
+    assert "Workload Analysis" in shell_response.text
+    assert "Call Plan CRO" in shell_response.text
+    assert "outputs are shown separately by lens" in shell_response.text
+
+
+def test_capture_research_candidate_projection_review_api_and_shell(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    evidence_root = tmp_path / "evidence"
+    reference_root = tmp_path / "reference-wiki"
+    reference_root.mkdir()
+    LocalEvidenceStore(evidence_root).write(
+        create_source_evidence(
+            evidence_id="ev_runtime_candidate_baseline",
+            content=(
+                "Accepted seller evidence: pricing discipline, staffing model, transition proof, and customer proof points."
+            ),
+            source_ref="accepted candidate baseline note",
+            opportunity_id="opp_aflcmc_recompete",
+        )
+    )
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "ARIADNE_EVIDENCE_DIR": str(evidence_root),
+            "ARIADNE_REFERENCE_WIKI_DIR": str(reference_root),
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research downstream candidate routing.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "source_profile_refs": [
+                {
+                    "source_profile_type": "piid_contract_intelligence_profile",
+                    "source_profile_id": "piid_profile_FAKE1234",
+                    "source_element_key": "burn_posture",
+                    "source_element_summary": "PIID profile shows net obligations, monthly burn rate, remaining value, staffing workload, and recompete timing.",
+                }
+            ],
+            "selected_lenses": [
+                "competitive_positioning",
+                "price_to_win",
+                "burn_rate_analysis",
+                "workload_analysis",
+                "call_plan_cro",
+            ],
+            "source_targets": [
+                "incumbent vendor budget ceiling price FTE staffing partner vehicle proof friction next action"
+            ],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find routed downstream candidates."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/fake-web-source-collection",
+        json={"collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/requirements-fit-analysis",
+        json={"analyzed_at": "2026-05-18T12:10:00+00:00"},
+    )
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/competitive-gap-analysis",
+        json={"analyzed_at": "2026-05-18T12:15:00+00:00"},
+    )
+    client.post(
+        f"/api/capture-research/runs/{research_run_id}/selected-lens-analysis",
+        json={"analyzed_at": "2026-05-18T12:20:00+00:00"},
+    )
+
+    projection_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/downstream-candidates",
+        json={"projected_at": "2026-05-18T12:30:00+00:00"},
+    )
+
+    assert projection_response.status_code == 200
+    run = projection_response.json()["run"]
+    candidates = run["downstream_candidates"]
+    groups = {candidate["candidate_group"] for candidate in candidates}
+    assert groups >= {
+        "evidence",
+        "packet",
+        "risk_register",
+        "call_plan",
+        "follow_up_route",
+        "price_workload",
+        "teaming",
+        "bcc_ready",
+    }
+    assert all(candidate["trusted_output_written"] is False for candidate in candidates)
+    candidate = next(
+        item for item in candidates if item["candidate_group"] == "price_workload"
+    )
+    assert candidate["provenance"]["research_run_id"] == research_run_id
+    assert candidate["provenance"]["research_brief"]
+    assert candidate["provenance"]["trigger_context"]
+
+    review_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/downstream-candidates/{candidate['id']}/review-decisions",
+        json={
+            "decision": "route",
+            "reviewer_rationale": "Route pricing assumption to price review.",
+            "routed_destination": "Price-to-Win Review",
+            "decided_at": "2026-05-18T12:35:00+00:00",
+        },
+    )
+
+    assert review_response.status_code == 200
+    reviewed_run = review_response.json()["run"]
+    reviewed_candidate = next(
+        item for item in reviewed_run["downstream_candidates"] if item["id"] == candidate["id"]
+    )
+    assert reviewed_candidate["review_state"] == "routed"
+    assert reviewed_candidate["routed_destination"] == "Price-to-Win Review"
+    assert reviewed_candidate["trusted_output_written"] is False
+    assert reviewed_run["review_decisions"][0]["candidate_provenance"]["research_run_id"] == research_run_id
+    assert reviewed_run["review_decisions"][0]["trusted_output_written"] is False
+
+    shell_response = client.get("/")
+
+    assert shell_response.status_code == 200
+    assert "Live Source Readiness" in shell_response.text
+    assert "Capture Research Brief" in shell_response.text
+    assert "Trigger Context" in shell_response.text
+    assert "Source Profile refs" in shell_response.text
+    assert "Source Collection Provenance" in shell_response.text
+    assert "Source Findings" in shell_response.text
+    assert "Selected Lenses" in shell_response.text
+    assert "Seller Capability Baseline" in shell_response.text
+    assert "Research Summary View" in shell_response.text
+    assert "not a trusted source-of-truth object" in shell_response.text
+    assert "Reviewable Downstream Candidates" in shell_response.text
+    assert "No automatic trusted downstream writes" in shell_response.text
+    assert "Price/Workload Assumptions" in shell_response.text
+    assert "BCC-Ready Notes" in shell_response.text
+    assert "Accept Candidate" in shell_response.text
+    assert "Route Candidate" in shell_response.text
+    assert "Discard Candidate" in shell_response.text
+    assert "Review decisions" in shell_response.text
+    assert "Related Ariadne Records" in shell_response.text
+    assert "Opportunity Knowledge Context" in shell_response.text
+    assert "PIID Profile" in shell_response.text
+    assert "Packet" in shell_response.text
+    assert "Action Plan" in shell_response.text
+    assert "Trusted write: false" in shell_response.text
+
+
+def test_source_provider_readiness_api_exposes_registry_without_secrets(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+            "OLOSTEP_API_KEY": "olostep-secret",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(settings)).get(
+        "/api/capture-research/source-providers"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["registry"]["quality_status"] == "full_ready"
+    assert body["registry"]["recommended_provider_ids"] == [
+        "serpapi_live",
+        "olostep_live",
+    ]
+    assert "serpapi-secret" not in response.text
+    assert "olostep-secret" not in response.text
+    assert "SERPAPI_API_KEY" in response.text
+    assert "OLOSTEP_API_KEY" in response.text
+
+
+def test_source_provider_smoke_check_api_covers_provider_without_secret_values(
+    tmp_path,
+) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "FIRECRAWL_API_KEY": "firecrawl-secret",
+        }
+    )
+    runner = _RuntimeSmokeRunnerFixture()
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(
+        create_app(settings, source_provider_smoke_runner=runner)
+    ).post(
+        "/api/capture-research/source-providers/firecrawl_live/smoke-check",
+        json={
+            "approved": True,
+            "smoke_target": "https://example.com",
+            "checked_at": "2026-05-19T10:00:00+00:00",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"]["provider_id"] == "firecrawl_live"
+    assert body["result"]["status"] == "success"
+    assert body["result"]["endpoint_label"] == "firecrawl_live_smoke"
+    assert runner.provider_ids == ["firecrawl_live"]
+    assert "firecrawl-secret" not in response.text
+    assert "FIRECRAWL_API_KEY" in response.text
+
+
+def test_source_provider_smoke_check_api_requires_approval_without_runner_call(
+    tmp_path,
+) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+        }
+    )
+    runner = _RuntimeSmokeRunnerFixture()
+
+    from fastapi.testclient import TestClient
+
+    response = TestClient(
+        create_app(settings, source_provider_smoke_runner=runner)
+    ).post(
+        "/api/capture-research/source-providers/serpapi_live/smoke-check",
+        json={"approved": False, "smoke_target": "https://example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["status"] == "requires_approval"
+    assert runner.provider_ids == []
+    assert "serpapi-secret" not in response.text
+
+
+def test_source_provider_collection_api_requires_approval(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+            "OLOSTEP_API_KEY": "olostep-secret",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(settings, source_provider_adapter=_RuntimeProviderFixtureAdapter())
+    )
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research public customer context.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["https://example.gov/program-office"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find customer and incumbent signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/source-provider-collection",
+        json={"approved": False},
+    )
+
+    assert collect_response.status_code == 400
+    assert "requires explicit approval" in collect_response.text
+
+
+def test_source_provider_collection_api_records_provider_findings(tmp_path) -> None:
+    research_root = tmp_path / "capture-research"
+    settings = RuntimeSettings.from_mapping(
+        {
+            "ARIADNE_CAPTURE_RESEARCH_DIR": str(research_root),
+            "SERPAPI_API_KEY": "serpapi-secret",
+            "OLOSTEP_API_KEY": "olostep-secret",
+        }
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(
+        create_app(settings, source_provider_adapter=_RuntimeProviderFixtureAdapter())
+    )
+    create_response = client.post(
+        "/api/capture-research/runs",
+        json={
+            "prompt": "Research public customer context.",
+            "opportunity_id": "opp_aflcmc_recompete",
+            "selected_lenses": ["customer_research"],
+            "source_targets": ["https://example.gov/program-office"],
+            "source_limits": ["public_web_only"],
+            "evidence_goals": ["Find customer and incumbent signals."],
+        },
+    )
+    research_run_id = create_response.json()["run"]["research_run_id"]
+
+    collect_response = client.post(
+        f"/api/capture-research/runs/{research_run_id}/source-provider-collection",
+        json={"approved": True, "collected_at": "2026-05-18T12:05:00+00:00"},
+    )
+
+    assert collect_response.status_code == 200
+    run = collect_response.json()["run"]
+    assert run["status"] == "needs_review"
+    assert run["source_collection_records"][0]["source_mode"] == "live_olostep"
+    assert run["source_collection_records"][0]["provider_ids"] == [
+        "serpapi_live",
+        "olostep_live",
+    ]
+    assert run["source_findings"][0]["url"] == "https://example.test/provider-result"
+    assert run["source_findings"][0]["capability_provenance"][
+        "source_capability_id"
+    ] == "serpapi_live+olostep_live"
+    assert "serpapi-secret" not in collect_response.text
+    assert "olostep-secret" not in collect_response.text
+
+
 def test_capability_catalog_validation_api_creates_persisted_run(tmp_path) -> None:
     run_root = tmp_path / "capability-runs"
     settings = RuntimeSettings.from_mapping(
@@ -2939,7 +3848,7 @@ def test_sam_gov_command_surface_api_summarizes_four_lane_profile(tmp_path) -> N
         profile["attachment_intake_lane"]["attachments"][0]["intake_record_id"]
     ]
     assert (
-        "Firecrawl/Web Enrichment Support implementation deferred."
+        "Provider-backed Web Enrichment Support implementation deferred."
         in (summary["explicit_deferrals"])
     )
     assert len(calls) == call_count
@@ -2979,7 +3888,7 @@ def test_sam_gov_profile_command_surface_page_shows_four_lane_workflow(
     assert "Call Plan" in response.text
     assert "Follow-up Route" in response.text
     assert "Trusted writes: none" in response.text
-    assert "Firecrawl/Web Enrichment Support deferred" in response.text
+    assert "Provider-backed Web Enrichment Support deferred" in response.text
     assert "Specialized Solicitation Parser deferred" in response.text
     assert "Project Theseus parser integration deferred" in response.text
     assert "Artifact export deferred" in response.text

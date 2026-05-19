@@ -1,11 +1,11 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.18**
+**Product Requirements Document (PRD) v1.25**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
-**Date:** May 18, 2026
+**Date:** May 19, 2026
 **Status:** Knowledge Layer Foundation complete; Capture Research Enrichment selected as the next vertical epic
 
 ---
@@ -46,19 +46,25 @@
 - The Knowledge Layer Foundation acceptance demo ran in the local FastAPI Command Center on port `9622`: one Opportunity rebuilt context on demand, separated Trusted Context from Reviewable Context, generated a reviewable Next Action Recommendation, accepted it through the panel, and showed the accepted review history without creating other trusted downstream records automatically. The first UI shape was reviewed as good enough for this stage.
 - `docs/architecture/knowledge-layer-foundation-plan.md` records the completed Knowledge Layer Foundation implementation trail and validation outcome. The slice preserves these boundaries: the Structured Knowledge Index remains an on-demand non-authoritative projection, the Next Action Recommendation Store stays narrow, trusted downstream writes remain human-gated, and semantic retrieval/RAG, graph visualization, Hermes runtime, parser integrations, artifact rendering, automatic action handling, broad databases, and persistent indexing remain deferred.
 - A `grill-with-docs` planning session selected **Capture Research Enrichment** as the next vertical product epic. `CONTEXT.md` now defines Capture Research Enrichment, Source Profile, Research Trigger Context, User-Prompted Research Request, Capture Research Brief, Web Source Collection, Live Source Collection Run, Source Finding, Seller Capability Baseline, Capture Research Lens, Requirements Fit Analysis, Competitive Gap Analysis, Bidder Comparison Chart, Teaming Partner Need, Price-to-Win Research, Burn Rate Analysis, Workload Analysis, Research Summary View, Capture Research Enrichment Command Surface, and related review boundaries.
-- `docs/architecture/capture-research-enrichment-plan.md` records the selected Capture Research Enrichment epic plan: live Firecrawl source collection when configured and approved, fake adapters for automated tests, source-profile references rather than duplicated PIID/SAM.gov fields, bounded user-prompted research, selected marketing/capture lenses, seller baseline from accepted/reference Ariadne knowledge, reviewable source findings and insight candidates, and no LangGraph/Hermes runtime or automatic trusted downstream writes in the first slice.
-- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Knowledge Layer Foundation epic branch, with 227 tests passing.
+- `docs/architecture/capture-research-enrichment-plan.md` records the selected Capture Research Enrichment epic plan: provider-registry Web Source Collection with free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional recurring-free API-backed providers, Firecrawl kept optional for later paid use, fake adapters for automated tests, source-profile references rather than duplicated PIID/SAM.gov fields, bounded user-prompted research, selected marketing/capture lenses, seller baseline from accepted/reference Ariadne knowledge, reviewable source findings and insight candidates, and no LangGraph/Hermes runtime or automatic trusted downstream writes in the first slice.
+- Capture Research Enrichment implementation through issue #59 now includes bounded research-run creation, source-profile references, fake Web Source Collection, source-provider registry/readiness/smoke checks, approved provider-backed collection, Seller Capability Baseline refs from accepted evidence and Reference Wiki context, reviewable Requirements Fit Analysis outputs, reviewable Competitive Gap Analysis outputs with BCC-ready inputs, selected capture-lens analyses, reviewable downstream candidate projection with candidate review decisions, and an end-to-end Capture Research Command Surface in the existing Command Center scaffold.
+- Competitive Gap Analysis produces BCC-ready notes only as reviewable input for later Bidder Comparison Chart work. It does not generate BCC rows, scores, slides, artifacts, or trusted downstream records in this slice.
+- Selected capture-lens analysis keeps price-to-win, burn-rate, workload, and engagement outputs separated by lens, with provenance, assumptions, source limitations, follow-up needs, confidence, and review state. The targeted CRO lens is limited to call-plan and customer-engagement clarity and is not used as the primary burn-rate or price-to-win lens.
+- Downstream candidate projection groups Source Findings and research/lens outputs into reviewable Evidence, Packet, Action Plan, Risk Register, Call Plan, Follow-Up Route, Price/Workload Assumptions, Teaming Partner Needs, and BCC-Ready Notes candidates. Accept, discard, and route decisions update review state and preserve run, brief, trigger, source-finding, selected-lens, source-profile, and seller-baseline provenance without creating trusted downstream records.
+- The Capture Research Command Surface now shows live source readiness, the Capture Research Brief, trigger context, source-profile refs, collection provenance, Source Findings, selected lenses, seller-baseline refs, Research Summary View, grouped review candidates, review actions, review decisions, and related Ariadne record links. The first UI shape was reviewed and approved during issue #59.
+- Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the Capture Research Enrichment issue #59 progression branch, with 259 tests passing.
 
 **Still Deferred**
 
-- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment Firecrawl source-collection lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
+- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
+- Follow-on issue #60 tracks a standalone local-development single-startup stack after the Capture Research Enrichment epic is completed and merged to `main`. The follow-on should cover Ariadne's app runtime and selected local providers such as Crawl4AI and SearXNG, with optional Ollama readiness kept compatible with existing `OLLAMA_HOST` settings. It should not introduce Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, or broad persistent storage unless a later ADR or PRD update explicitly selects that infrastructure.
 
 **Next Build Gate**
 
 - Build the selected **Capture Research Enrichment** vertical slice before starting broad implementation work on unrelated deferred capabilities.
 - Treat the completed Knowledge Layer Foundation as the required baseline for future knowledge, recommendation, retrieval, graph, artifact, parser, or Hermes work: exact structured context and human-gated review come first.
-- Firecrawl-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
+- Provider-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Use free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional API-backed providers, and Firecrawl only as an optional later paid provider. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
 - Preserve completed boundaries: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, Capability Run Outputs land in review, Knowledge Mirror/Obsidian-style material remains non-authoritative, the Structured Knowledge Index remains an on-demand projection, and trusted downstream writes remain human-gated.
 
 ---
@@ -171,7 +177,11 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 | 1102tools/federal-contracting-mcps            | Hardened public federal data MCPs for USAspending, SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov                       | https://github.com/1102tools/federal-contracting-mcps   |
 | 1102tools/federal-contracting-skills          | Government contracting deliverables (IGCE, SOW/PWS, market research)                                                                                       | https://github.com/1102tools/federal-contracting-skills |
 | coreyhaines31/marketingskills                 | Vendored workspace skills for value propositions, positioning, messaging, customer research, competitor profiling, sales enablement, pricing, and CRO      | https://github.com/coreyhaines31/marketingskills        |
-| Firecrawl                                     | Primary research/scraping engine                                                                                                                           | https://github.com/mendableai/firecrawl                 |
+| Crawl4AI                                      | Primary free/local page crawling and LLM-ready extraction provider for Capture Research Web Source Collection                                              | https://github.com/unclecode/crawl4ai                   |
+| SearXNG                                       | Primary free/local search discovery provider for Capture Research Web Source Collection                                                                    | https://github.com/searxng/searxng                      |
+| SerpApi                                       | Optional API-backed SERP/search provider for Capture Research fallback discovery                                                                           | https://serpapi.com                                     |
+| Olostep                                       | Optional API-backed search, scraping, and crawling provider for Capture Research fallback collection                                                       | https://www.olostep.com                                 |
+| Firecrawl                                     | Optional paid/later research and scraping provider if its quality is worth the spend                                                                       | https://github.com/mendableai/firecrawl                 |
 
 ---
 
@@ -184,7 +194,7 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - **Initial Python Package Shape**: Start with one `src/ariadne/` package and deep internal modules for the first slice rather than many small top-level packages. Initial module homes should include configuration, opportunities, evidence, packets, action plans, and capability catalog concerns.
 - **CLI-First Harnesses**: Use Python Click-style CLIs with `--json` output for repeatable, batchable, tool-facing, or agent-facing operations. These CLIs should sit behind the UI or agent runtime rather than replacing human-facing strategy workflows.
 - **Federal Data MCP Foundation**: Integrate upstream `1102tools/federal-contracting-mcps` through manifest-only Federal Data Capability declarations. Ariadne should pin upstream packages, record provenance and env-var names, smoke-test MCP initialize behavior, and deeply integrate one source at a time through product workflows rather than building unique federal data MCP servers.
-- **Capture Research Enrichment**: Build a bounded research workflow over deterministic source profiles, Opportunity Knowledge Context, user-prompted research requests, Firecrawl-backed public source collection, selected capture/marketing lenses, and seller-baseline reference knowledge. Persist research briefs, trigger context, source findings, selected lenses, insight candidates, review decisions, and downstream candidate links in a narrow local workflow store; keep PIID/SAM.gov source-profile data referenced rather than duplicated.
+- **Capture Research Enrichment**: Build a bounded research workflow over deterministic source profiles, Opportunity Knowledge Context, user-prompted research requests, provider-backed public source collection, selected capture/marketing lenses, and seller-baseline reference knowledge. Persist research briefs, trigger context, source findings, selected lenses, insight candidates, review decisions, and downstream candidate links in a narrow local workflow store; keep PIID/SAM.gov source-profile data referenced rather than duplicated.
 - **Evidence Store**: Store traceable Evidence Items local-first behind a Pydantic-validated interface. Start with structured local files as the first adapter, while keeping callers isolated from whether persistence later becomes SQLite, Postgres, or another storage engine.
 - **Document Intake Command Surface**: Turn uploaded source material into extraction provenance, Capture Intelligence Draft Parts, recommendations, skill-chain options, accepted Evidence Items, review-gated downstream candidates, Knowledge Note Projections, and Command Center actions. Build functionality first through domain models, a narrow Document Intake Store, and Extraction Bundle behavior before rendering UI.
 - **Extraction Boundary**: Use Extraction Bundles as the shared parser output contract for generic source material, visual source material, and solicitation-family documents. Parser, OCR, multimodal, retrieval, MinerU, RAGAnything, LightRAG, and Theseus-style tools must act as adapters that produce reviewable output; Ariadne keeps trusted entities, relationships, provenance, and review gates in the domain model.
@@ -214,12 +224,42 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - Add to `.env` as `OPENAI_API_KEY`
 - Use `text-embedding-3-large` as the single canonical embedding path for Ariadne indexes unless an ADR explicitly defines migration and index isolation.
 
-### Firecrawl
+### Capture Research Source Providers
 
-- Site: https://www.firecrawl.dev
-- Free signup → Dashboard → API Key
-- Add to `.env` as `FIRECRAWL_API_KEY`
-- 500 credits/month free tier (ample for research)
+- Crawl4AI: free/local page crawling and LLM-ready extraction. Set `CRAWL4AI_BASE_URL` only after a local or self-hosted Crawl4AI endpoint is running.
+- SearXNG: free/local metasearch discovery. Set `SEARXNG_BASE_URL` only after a local or self-hosted SearXNG endpoint is running.
+- SerpApi: optional API-backed SERP/search fallback. Add your existing key to private `.env` as `SERPAPI_API_KEY`.
+- Olostep: optional API-backed search, scraping, and crawling fallback. Add your existing key to private `.env` as `OLOSTEP_API_KEY`.
+- Firecrawl: optional paid/later provider if quality justifies spend. Add `FIRECRAWL_API_KEY` only when deliberately using Firecrawl credits.
+- Vendor free tiers and quotas can change; Ariadne should record provider identity, approval basis, source limits, and budget/free-tier assumptions instead of assuming any one provider remains free forever.
+- Provider readiness is exposed at `GET /api/capture-research/source-providers`; it reports provider IDs, source modes, status, missing env-var names, and quality status without returning API keys or base URL values.
+- Manual provider smoke checks use `POST /api/capture-research/source-providers/{provider_id}/smoke-check` with explicit approval, covering `crawl4ai_local`, `searxng_local`, `serpapi_live`, `olostep_live`, and `firecrawl_live` when their env vars or local services are configured.
+- Manual live collection runs should create a Capture Research Run with bounded public source targets, then call `POST /api/capture-research/runs/{research_run_id}/source-provider-collection` with explicit approval. Automated tests use injected fake provider clients and smoke runners and must not consume SerpApi, Olostep, Firecrawl, or local crawler quota.
+
+### Capture Research Seller Baseline And Requirements Fit
+
+- The first Seller Capability Baseline uses existing accepted Ariadne knowledge and Capture Reference Context, including accepted Evidence Items and Reference Wiki notes. It must attach stable refs with summarized support, assumptions, matched terms, and baseline gaps rather than storing a new seller profile or business-unit profile.
+- Requirements Fit Analysis uses the research brief, source findings, selected lenses, and Seller Capability Baseline refs to produce reviewable strengths, weaknesses, qualification risks, proof needs, and follow-up recommendations.
+- Requirements fit is exposed through `POST /api/capture-research/runs/{research_run_id}/requirements-fit-analysis` and in the existing Command Center Capture Research panel. It may update the research run with reviewable insight candidates, but it must not create trusted Evidence, Packet, Action Plan, Risk Register, or Call Plan records without explicit downstream review.
+
+### Capture Research Competitive Gap And BCC-Ready Notes
+
+- Competitive Gap Analysis uses Source Findings and Seller Capability Baseline refs to identify reviewable discriminator candidates, vulnerabilities, proof gaps, competitor/incumbent notes, Teaming Partner Needs, and follow-up recommendations.
+- Competitive gap is exposed through `POST /api/capture-research/runs/{research_run_id}/competitive-gap-analysis` and in the existing Command Center Capture Research panel with source provenance, seller-baseline refs, confidence, review state, and explicit BCC-ready input labels.
+- BCC-ready notes are inputs for later Bidder Comparison Chart generation only. This endpoint must not create BCC rows, scores, slides, artifacts, Milestone Briefing Packet add-ons, or trusted downstream records without a later selected workflow and explicit review.
+
+### Capture Research Selected Lens Analysis
+
+- Selected lens analysis uses Source Findings, Source Profile refs, and Seller Capability Baseline refs to create reviewable outputs for Price-to-Win Research, Burn Rate Analysis, Workload Analysis, and targeted call-plan CRO engagement improvements.
+- Selected lens analysis is exposed through `POST /api/capture-research/runs/{research_run_id}/selected-lens-analysis`. The request may use the run's selected lenses or supply a supported subset.
+- Price-to-win outputs produce pricing strategy assumptions, confidence, source limitations, and follow-up needs. Burn-rate outputs connect PIID/source-profile context and source findings to funding, timing, recompete, and price/workload implications. Workload outputs connect scope, staffing, timing, funding, and operational complexity assumptions to reviewable follow-up. Call-plan CRO outputs sharpen value, proof, friction, objection, and next-action clarity for customer engagement only.
+- All selected lens outputs remain reviewable insight candidates. They do not write trusted Evidence, Packet, Action Plan, Risk Register, Call Plan, price, workload, or artifact records without explicit downstream review.
+
+### Capture Research Reviewable Candidate Projection
+
+- Reviewable downstream candidate projection is exposed through `POST /api/capture-research/runs/{research_run_id}/downstream-candidates`. It prepares grouped candidates for Evidence, Packet, Action Plan, Risk Register, Call Plan, Follow-Up Route, Price/Workload Assumptions, Teaming Partner Needs, and BCC-Ready Notes from Source Findings and generated insight candidates.
+- Candidate review decisions are exposed through `POST /api/capture-research/runs/{research_run_id}/downstream-candidates/{candidate_id}/review-decisions` with `accept`, `discard`, and `route` decisions, reviewer rationale, decided timestamp, and routed destination when routing.
+- Candidate review decisions preserve provenance to the Capture Research run, research brief, trigger context, Source Findings, Source Profile refs, selected lens, supporting Seller Capability Baseline refs, and source insight candidate. They update candidate review state only; they do not create trusted downstream records automatically.
 
 ### Capture Research Data APIs
 
@@ -314,7 +354,7 @@ The Knowledge Layer should include a Knowledge Graph View that visualizes Ariadn
 
 If Obsidian or another Knowledge Mirror is edited directly, those edits should return to Ariadne as Mirror Update Proposals rather than directly overwriting structured knowledge. Ariadne should classify, validate, and route those proposals through the same Knowledge Processing Workflow used by Quick Capture so traceability and source-of-truth discipline are preserved.
 
-The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices. Firecrawl-backed source collection is now selected only inside the later Capture Research Enrichment workflow.
+The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices. Provider-backed source collection is now selected only inside the later Capture Research Enrichment workflow.
 
 ## 6.2 Completed Epic PRD: SAM.gov Enrichment Profile
 
@@ -384,7 +424,7 @@ The SAM.gov profile is a structured, reviewable source profile. It may create ca
 - Route approved downloaded attachments into Document Intake with provenance back to the SAM.gov profile, opportunity record, source URL, and source mode.
 - Let Document Intake classification determine whether downloaded material follows generic extraction or waits for a future Solicitation Parser Capability such as Project Theseus.
 - Persist profile source limitations when SAM.gov fields, historical versions, archived documents, attachments, or hierarchy details are missing or inaccessible.
-- Keep Firecrawl/web enrichment as a deferred Web Enrichment Support route, not part of the first SAM.gov implementation.
+- Keep provider-backed web enrichment as a deferred Web Enrichment Support route, not part of the first SAM.gov implementation.
 - Add provenance source mode values for live SAM.gov, fake adapter tests, and demo fixtures. Fake and demo output must not be eligible for normal trusted Evidence promotion.
 - User-triggered product workflows should call live SAM.gov by default when the private key is configured. Page render should not trigger live calls.
 - The Command Center should show saved SAM.gov profiles, live-readiness status, profile lanes, source limitations, review candidates, attachment download state, and Document Intake links.
@@ -421,7 +461,7 @@ This epic extends ADR 0007 and ADR 0006 rather than requiring a new ADR. ADR 000
 
 ### Problem Statement
 
-Ariadne can now build structured official-source profiles from USAspending and SAM.gov, and it can assemble deterministic Opportunity Knowledge Context from accepted and reviewable records. But real capture work still requires targeted external research: customer context, competitor positioning, incumbent signals, teaming gaps, public proof, price/workload assumptions, and requirement-fit analysis. Without a product workflow for this, Firecrawl, marketing skills, seller knowledge, and future agent coordination would become disconnected tool calls or detached research reports.
+Ariadne can now build structured official-source profiles from USAspending and SAM.gov, and it can assemble deterministic Opportunity Knowledge Context from accepted and reviewable records. But real capture work still requires targeted external research: customer context, competitor positioning, incumbent signals, teaming gaps, public proof, price/workload assumptions, and requirement-fit analysis. Without a product workflow for this, source providers, marketing skills, seller knowledge, and future agent coordination would become disconnected tool calls or detached research reports.
 
 The user needs Ariadne to turn source-profile gaps, ambiguous official signals, packet/action needs, or bounded research prompts into traceable research findings and reviewable capture implications that feed existing work surfaces.
 
@@ -433,7 +473,7 @@ The selected **Capture Research Enrichment** epic creates a bounded research wor
 2. Create a Capture Research Brief that states the research question, known pivots, source targets, selected research lenses, evidence goals, source limits, and approval basis.
 3. Use existing Source Profiles and a small Research Trigger Context snapshot by reference rather than copying full deterministic profiles.
 4. Use accepted Ariadne knowledge, Capture Reference Context, and the Reference Wiki as the first Seller Capability Baseline.
-5. Run live Firecrawl-backed Web Source Collection when `FIRECRAWL_API_KEY` is configured and the run is explicitly approved or covered by a future approved autonomy policy. Automated tests use fake source-collection adapters.
+5. Run live provider-backed Web Source Collection when a local provider or API key is configured and the run is explicitly approved or covered by a future approved autonomy policy. Automated tests use fake source-collection adapters.
 6. Convert collected public-source material into Source Findings with URL/source provenance, timestamps, limitations, and capability trace.
 7. Apply selected Shipley-aligned capture lenses, including customer research, competitor profiling, product/positioning, sales enablement, pricing, workload analysis, price-to-win thinking, and targeted CRO for call-plan or engagement-friction questions.
 8. Produce reviewable Marketing Insight Candidates, Requirements Fit Analysis, Competitive Gap Analysis, Teaming Partner Needs, price/workload assumptions, Evidence candidates, Packet candidates, Action Plan candidates, Risk Register candidates, Call Plan candidates, and follow-up routes.
@@ -445,7 +485,7 @@ The first slice should prove the fixed product sequence before adding LangGraph,
 
 1. As a capture professional, I want a PIID or SAM.gov source limitation to launch bounded research, so that ambiguous official data becomes actionable without polluting official records.
 2. As a capture professional, I want to start a user-prompted research request when I do not yet have deterministic details, so that exploratory research can still enter Ariadne's reviewable workflow.
-3. As a capture professional, I want Ariadne to use live Firecrawl when configured and approved, so that public web research can support real capture work.
+3. As a capture professional, I want Ariadne to use configured live source providers when approved, so that public web research can support real capture work without depending on one paid credit meter.
 4. As a capture professional, I want every web finding to show its source URL, collection time, source type, and limitation, so that I can trust or reject the research appropriately.
 5. As a capture professional, I want competitor research to compare competitors against my seller baseline, so that it helps requirements fit, discriminators, vulnerabilities, and teaming strategy rather than becoming isolated competitor notes.
 6. As a capture professional, I want the seller baseline to draw from accepted Ariadne knowledge and the Reference Wiki, so that Project Ariadne knowledge becomes useful in active opportunity work.
@@ -461,8 +501,9 @@ The first slice should prove the fixed product sequence before adding LangGraph,
 - Keep Capability Runs available for execution/provenance detail, while the Capture Research Enrichment Store owns product workflow meaning.
 - Reference PIID and SAM.gov Source Profiles by ID and source-profile element; do not embed full source-profile records.
 - Preserve a small Research Trigger Context snapshot so a research brief remains auditable if the source profile later changes.
-- Use Firecrawl as the first live Web Source Collection adapter. Page render must not trigger live calls.
-- Require configured `FIRECRAWL_API_KEY` and explicit user approval or future approved autonomy policy before a live Firecrawl run.
+- Use a source-provider registry for live Web Source Collection. Page render must not trigger live calls.
+- Prefer Crawl4AI and SearXNG for free/local capability, SerpApi and Olostep for optional API-backed fallback, and Firecrawl only as optional later paid fallback.
+- Require a configured provider and explicit user approval or future approved autonomy policy before a live provider run.
 - Keep restricted or logged-in sites such as LinkedIn and X out of first-slice crawling unless the user provides exports, notes, screenshots, or other user-mediated material. Do not bypass login, paywall, or anti-bot controls.
 - Treat Grokipedia or similar public references as possible source targets when relevant, with provenance and source limitations.
 - Use the installed `coreyhaines31/marketingskills` pack as capability inventory, but choose a narrow lens set per Capture Research Brief.
@@ -471,11 +512,11 @@ The first slice should prove the fixed product sequence before adding LangGraph,
 
 ### Testing Decisions
 
-- Automated tests should use fake source-collection adapters and must not depend on Firecrawl, private credentials, live network access, or paid credits.
+- Automated tests should use fake source-collection adapters and must not depend on private credentials, live network access, paid credits, or a running local crawler/search service.
 - Fake and demo source output must carry source-mode provenance and must not be presented as live source success.
 - Tests should cover research brief creation, source-profile refs, trigger context, approval boundaries, source finding creation, seller-baseline refs, selected lenses, candidate projection, review decisions, persistence, and Command Center responses.
 - Tests should assert Capture Research Enrichment references PIID/SAM.gov profiles instead of duplicating deterministic source-profile fields.
-- Optional local validation can run a live Firecrawl smoke check when `FIRECRAWL_API_KEY` is configured, but that is outside the normal unit-test path.
+- Optional local validation can run live provider smoke checks when the relevant local service or private API key is configured, but that is outside the normal unit-test path.
 
 ### Out of Scope
 
@@ -577,7 +618,7 @@ Each future slice should leave a short documentation trail before code: what is 
 - Built a PIID Contract Intelligence Profile workflow that starts from one contract number and produces structured award baseline, burn posture, vehicle context, deterministic pivots, PRIME gaps, recommended next enrichments, review-gated candidates, and Hermes-observable events.
 - Treated user-provided PIID intelligence templates as strategy input, not product specs; Ariadne behavior is built around the upstream USAspending MCP and Ariadne's evidence/review model.
 - Kept artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
-- Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, Firecrawl/web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI at that stage. SAM.gov is now complete, and Firecrawl-backed source collection is now selected only inside Capture Research Enrichment.
+- Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, provider-backed web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI at that stage. SAM.gov is now complete, and provider-backed source collection is now selected only inside Capture Research Enrichment.
 
 **SAM.gov Enrichment Profile Epic** ← **COMPLETE**
 
@@ -588,7 +629,7 @@ Each future slice should leave a short documentation trail before code: what is 
 - Uses live SAM.gov by default for user-triggered workflows when `SAM_GOV_API_KEY` is configured; automated tests stay deterministic with fake adapters that are clearly labeled and never presented as live source success.
 - Routes approved official SAM.gov attachment downloads into Document Intake; documents are classified before choosing generic extraction versus future Solicitation Parser Capability routing.
 - Keeps all downstream Evidence, Packet, Action Plan, Risk Register, Call Plan, Opportunity Knowledge, and follow-up route outputs review-gated.
-- Deferred Firecrawl/web enrichment, Theseus solicitation parsing, BLS/GSA pricing, subaward/competitor/customer profile workflows, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration at that stage. Firecrawl-backed source collection is now selected only inside Capture Research Enrichment.
+- Deferred provider-backed web enrichment, Theseus solicitation parsing, BLS/GSA pricing, subaward/competitor/customer profile workflows, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration at that stage. Provider-backed source collection is now selected only inside Capture Research Enrichment.
 
 **Capability Run Foundation + Assisted Execution Command Surface Epic** ← **COMPLETE**
 
@@ -614,7 +655,7 @@ Each future slice should leave a short documentation trail before code: what is 
 - Plan recorded in `docs/architecture/capture-research-enrichment-plan.md`; no new ADR is needed unless implementation adopts a workflow engine, autonomous live-research policy, new storage engine, or automatic trusted-write model.
 - Suggested epic branch: `08-build/capture-research-enrichment`.
 - Build a bounded product workflow that turns source-profile gaps, opportunity context, packet/action needs, and user-prompted research requests into Capture Research Briefs, live or fake source collection, Source Findings, selected capture-lens interpretations, and reviewable downstream candidates.
-- Use live Firecrawl when `FIRECRAWL_API_KEY` is configured and the user approves or a future approved autonomy policy covers the run. Automated tests use fake source-collection adapters.
+- Use live source-provider collection when a local provider or private API key is configured and the user approves or a future approved autonomy policy covers the run. Automated tests use fake source-collection adapters.
 - Keep PIID and SAM.gov profiles source-specific; Capture Research Enrichment references them and stores only trigger context snapshots, not duplicated deterministic profile data.
 - Use the Reference Wiki and accepted Ariadne knowledge as the first Seller Capability Baseline so research can support requirements fit, competitive gap analysis, teaming needs, differentiators, price-to-win, workload, and call-plan recommendations.
 - Feed Bidder Comparison Chart and Milestone Briefing Packet add-on work later without making BCC artifact generation the first-slice deliverable.

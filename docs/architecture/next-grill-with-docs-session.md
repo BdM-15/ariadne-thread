@@ -1,70 +1,68 @@
 # Next Grill-With-Docs Session Prep
 
-Date: 2026-05-18
-Purpose: prepare the next conversation to choose the vertical epic after the completed Capability Run Foundation epic.
+Date: 2026-05-19
+Purpose: prepare the next conversation to choose the vertical epic after completed Capture Research Enrichment and the local-dev provider stack follow-on.
 
 ## Current Baseline
 
-- Phase 0, first-slice domain/storage, Quick Capture Knowledge Processing, Document Intake Command Surface, Federal Data MCP Foundation, USAspending Recompete Intelligence Intake, SAM.gov Enrichment Profile, and Capability Run Foundation are complete.
+- Phase 0, first-slice domain/storage, Quick Capture Knowledge Processing, Document Intake Command Surface, Federal Data MCP Foundation, USAspending Recompete Intelligence Intake, SAM.gov Enrichment Profile, Capability Run Foundation, Knowledge Layer Foundation, Capture Research Enrichment, and issue #60 local-dev provider stack are complete and merged to `main`.
 - The current runtime is a local FastAPI Command Center on port `9622`; `9621` remains reserved for Project Theseus.
-- The latest completed validation: `uv run ruff check src tests` and `uv run pytest -q` with 209 tests passing.
-- Federal Data now registers all eight upstream `1102tools/federal-contracting-mcps` servers as manifest-only Federal Data Capabilities.
-- USAspending is the first product-integrated federal data source, with PIID lookup/history adapter behavior, persisted PIID Contract Intelligence Profiles, burn posture, vehicle context, deterministic pivots, source-limit gaps, review-gated candidates, Hermes-observable events, and a Command Center demo surface.
-- SAM.gov is the second product-integrated federal data source, with persisted SAM.gov Enrichment Profiles, Entity Record, Known Opportunity, Opportunity Discovery, and Attachment Intake lanes, source-mode provenance, explicit download approval, Document Intake provenance, saved command surfaces, and review-gated candidates.
-- Capability Run Foundation adds a local Capability Run Store, deterministic Capability Catalog validation runs, optional Local Admin Model readiness probe runs, reviewable Capability Run Outputs, output review decisions without trusted downstream writes, Capability Studio run history/detail/Capability Reasoning Views, and Command Center launch/review entry points.
-- BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, provider-backed web enrichment, parser integrations, artifact rendering, Hermes runtime, graph visualization, and advanced capability workflows remain deferred until selected through a fresh documented slice.
+- The latest completed validation: `uv run ruff check src tests` and `uv run pytest -q` with 262 tests passing.
+- The local-dev provider stack can start selected local providers plus Ariadne through `scripts/start-local-dev.ps1`; `scripts/smoke-local-dev.ps1` live-validates Crawl4AI, SearXNG JSON search, and Ariadne's approved `crawl4ai_local` and `searxng_local` smoke endpoints.
+- Capture Research Enrichment now provides bounded Capture Research Briefs, source-profile refs, provider readiness/smoke checks, fake and approved provider-backed Web Source Collection, Seller Capability Baseline refs, Requirements Fit Analysis, Competitive Gap Analysis, selected capture-lens analyses, downstream candidate projection, candidate review decisions, and a reviewed Capture Research Command Surface.
+- Knowledge Layer Foundation provides deterministic on-demand Structured Knowledge Index projection, Opportunity Knowledge Context, and reviewable Next Action Recommendations that can create Action Plan work only through human review.
+- Capability Run Foundation provides durable Capability Runs, Capability Run Outputs, Capability Reasoning Views, deterministic Capability Catalog validation runs, optional Local Admin Model readiness/probe runs, and review decisions without automatic trusted downstream writes.
+- Federal-data sources remain behind Federal Data Capabilities. USAspending and SAM.gov are product-integrated; GSA CALC, BLS, GSA Per Diem, eCFR, Federal Register, and Regulations.gov remain registered/deferred until selected by a future slice.
+- Hermes runtime, semantic retrieval/RAG, graph visualization, MinerU, RAGAnything, LightRAG, huashu-design/artifact rendering, parser integrations, automatic trusted writes, and broad persistent storage remain deferred.
 
 ## Session Inputs
 
 - `PRD.md` for product source of truth and next build gate.
 - `CONTEXT.md` for domain language and relationship rules.
+- `README.md` for the current local run and local provider stack workflow.
+- `.env.example` for the public secret-free configuration contract.
 - `docs/adr/0006-document-intake-extraction-boundary.md` for parser/retrieval boundary constraints.
 - `docs/adr/0007-upstream-federal-data-mcps.md` for the upstream MCP integration boundary.
 - `docs/architecture/document-intake-command-surface-plan.md` for the completed Document Intake implementation trail.
-- `docs/architecture/federal-data-mcp-foundation-plan.md` for the completed Federal Data implementation trail and deferred enrichment paths.
-- `docs/architecture/sam-gov-enrichment-plan.md` for the completed SAM.gov implementation trail and source-boundary decisions.
-- `docs/architecture/capability-run-foundation-plan.md` for the completed Capability Run implementation trail, Capability Run Store, Capability Provenance, Capability Reasoning View, review-gated output, and Graduated Autonomy constraints.
+- `docs/architecture/federal-data-mcp-foundation-plan.md` for completed Federal Data implementation trail and deferred enrichment paths.
+- `docs/architecture/sam-gov-enrichment-plan.md` for completed SAM.gov implementation trail and source-boundary decisions.
+- `docs/architecture/capability-run-foundation-plan.md` for completed Capability Run implementation trail, Capability Run Store, Capability Provenance, Capability Reasoning View, review-gated output, and Graduated Autonomy constraints.
+- `docs/architecture/knowledge-layer-foundation-plan.md` for completed Structured Knowledge Index, Opportunity Knowledge Context, and Next Action Recommendation boundaries.
+- `docs/architecture/capture-research-enrichment-plan.md` for completed Capture Research Enrichment provider, source, baseline, lens, downstream-candidate, and Command Surface boundaries.
 - `docs/architecture/future-integration-strategy.md` for future Hermes, graph, parser, RAG, artifact, external API, and advanced skill integration rules.
 - The running Command Center at `http://127.0.0.1:9622` when the local runtime is active.
 
 ## Decisions To Force Next
 
-- Which vertical epic follows Capability Run Foundation.
-- Whether the next slice is primarily Command Center UI workflow, CLI-first harness, external integration adapter, Capability Run executor expansion, or both.
-- Which Ariadne product object receives the output: Evidence Item, Packet Field Answer, Action Plan Item, Risk Register Item, Call Plan signal, Capability Run Output, Artifact draft, or Improvement Proposal.
+- Which vertical epic follows Capture Research Enrichment and the local-dev stack follow-on.
+- Whether the next slice is primarily a Command Center UI workflow, CLI-first harness, external integration adapter, Capability Run executor expansion, artifact/export path, parser/retrieval path, graph sensemaking path, or a narrow combination.
+- What concrete tracer object starts the workflow and what durable Ariadne product object receives the output: Evidence Item, Packet Field Answer, Action Plan Item, Risk Register Item, Call Plan signal, Capability Run Output, Research Finding, Artifact draft, Improvement Proposal, or Knowledge Context projection.
+- Whether the local provider stack should stay as infrastructure support only or become part of a new user-facing workflow.
 - What remains explicitly deferred so the next slice does not become a broad platform sweep.
 - Whether a new ADR is needed because the decision is hard to reverse, surprising without context, or trade-off driven.
 
-## Session Notes
-
-- Risk Register Item and Risk Response Plan remain important downstream Ariadne concepts, but a standalone Risk Register command surface is too narrow as the immediate next epic unless the slice also proves how risk signals are populated from source material, capability runs, federal data, call plans, packet gaps, or other reviewed inputs.
-- The next slice should favor an upstream population path or execution structure that can feed multiple product objects, including Risk Register Items, rather than only refining the Risk Register artifact shape.
-- Microsoft Agent Framework is accepted only as a candidate future Hermes or multi-agent workflow runtime adapter. Do not make it the focus of the next slice or add it as a dependency until Ariadne has a concrete runtime problem that the existing skills, CLI harnesses, MCP adapters, and Python modules cannot handle cleanly.
-- The completed **Capability Run Foundation + Assisted Execution Command Surface** epic created durable Capability Run and Capability Run Output records before Ariadne added new external integrations or autonomous agent runtimes.
-- CLI-Anything should help when a capability is repeatable, batchable, tool-facing, or agent-facing and benefits from deterministic JSON output. Treat it as one executor style under Capability Runs, not as the whole product workflow.
-- Project Theseus patterns for source tracing, skill-run chain tracing, and reasoning views are relevant inspiration for Ariadne's Capability Provenance and Capability Reasoning View. Ariadne should show why an output exists, what sources and assumptions support it, what logic or transformations were applied, what gaps remain, and what review decision is needed, without copying Theseus UI/runtime structure.
-- The completed required tracer bullet is a deterministic **Capability Catalog validation run** that works without Ollama, hosted models, external APIs, or autonomous agents. The optional tracer runs a **Local Admin Model readiness/probe** through existing `OLLAMA_HOST`, `LOCAL_DAILY_MODEL`, and `LOCAL_ADMIN_MODEL_TIMEOUT_SECONDS` settings, recording `used`, `unavailable`, `invalid_response`, or `disabled` outcomes as Capability Run provenance rather than making Ollama availability required.
-- Future model-assisted capability runs should preserve user-facing rationale through **Model Rationale Summaries** and **Capability Reasoning Views**. Do not make raw hidden model reasoning a required durable artifact; Ariadne's trusted record should be evidence, sources, assumptions, confidence, gaps, transformations, outputs, and human review decisions.
-- Capability Run Foundation now uses a separate local-first **Capability Run Store** under `.ariadne/capability-runs`, because the Capability Catalog records what can run, the Evidence Store records trusted support, and the Capability Run Store records execution history, outputs, review decisions, iterations, and provenance.
-- Capability Run Outputs currently land in review and do not automatically create trusted downstream records. Later **Graduated Autonomy** can allow selected low-risk automatic handling after repeated reliability, provenance quality, reversibility, sensitivity limits, and user-approved autonomy rules are proven. Hermes may recommend those changes as Improvement Proposals, but it must not silently expand its own permissions.
-- Capability Run Outputs may carry autonomy recommendation metadata such as `review_required`, `ask_before_running`, or `safe_to_auto_handle_later`, but Ariadne should not act on those recommendations automatically until a future slice explicitly enables that behavior.
-- Capability Studio now holds the detailed run surface, with lightweight Command Center entry points. The Command Center should help the user efficiently launch, review, route, and complete work with minimal clicks, while Capability Studio exposes run history, validation detail, provenance, reasoning views, and executor diagnostics for deeper inspection.
-- The completed acceptance demo showed the Command Center surfacing a Capability Catalog validation action; the user launching it; Ariadne creating a Capability Run in the Capability Run Store; deterministic local validation producing Capability Run Outputs with provenance and autonomy recommendation metadata; Capability Studio showing run history and a Capability Reasoning View; the Command Center surfacing outputs needing review; and the user accepting, discarding, or routing one output without automatic trusted downstream writes.
-- Completed implementation order: build the Capability Run domain model and Capability Run Store first; add the deterministic Capability Catalog validation executor second; add optional Local Admin Model readiness/probe third; add review decisions fourth; surface Capability Studio run history/detail/reasoning views plus lightweight Command Center entries fifth; then update docs and automated coverage.
-- No new ADR was needed for the Capability Run Foundation slice because it follows existing local-first, Capability Module, and review-gated-promotion decisions. `docs/architecture/capability-run-foundation-plan.md` records the selected plan. Create an ADR only if a later decision adopts an agent runtime framework, changes the storage engine, enables automatic trusted writes, or makes a graph/workflow engine the Capability Run runtime.
-
 ## Candidate Directions
 
-- BLS, GSA CALC, or GSA Per Diem pricing and labor context from NAICS, place-of-performance, or role signals.
-- Firecrawl or web enrichment seeded by customer, incumbent, office, vehicle, or solicitation pivots.
-- Focused competitor, customer, subaward, or vehicle profile workflow built from accepted PIID profile content.
-- Artifact Renderer export from accepted PIID profile content into DOCX, XLSX, presentation, or huashu-design downstream work.
-- Hermes operational learning over repeated PIID profile runs and review decisions.
-- Capability Studio progression beyond the first run history/detail/reasoning view, such as artifact library, validation-status promotion, executor diagnostics, or richer review workflows.
-- Knowledge Graph sensemaking over accepted evidence, opportunities, action items, packet answers, document-intake outputs, and PIID profiles.
-- Project Theseus solicitation parser adapter through the Extraction Bundle contract.
-- Deeper Risk Register or Call Plan promotion workflows from review-gated candidates.
-- Follow-on SAM.gov polish only if scoped as a separate vertical slice, such as live-run ergonomics, richer attachment review, or deeper opportunity-to-plan promotion.
+- BLS, GSA CALC, or GSA Per Diem pricing/labor context from NAICS, place-of-performance, labor category, or role signals, ideally feeding price-to-win, workload, action-plan, and risk candidates.
+- Focused Bidder Comparison Chart preparation using accepted Capture Research outputs, while preserving the current boundary that no BCC artifact exists until selected.
+- Artifact Renderer first slice for preview/export of accepted packet, call-plan, risk, or BCC-ready content into DOCX, XLSX, presentation, or huashu-design downstream work.
+- Project Theseus solicitation parser adapter through the Extraction Bundle contract, scoped to reviewable solicitation entities, requirements, evaluation criteria, source spans, and parser limitations.
+- Knowledge Graph sensemaking over accepted evidence, opportunities, action items, packet answers, document-intake outputs, PIID/SAM.gov profiles, Capture Research runs, and reusable insights.
+- Hermes operational learning over repeated review decisions, Capability Runs, Capture Research runs, and accepted/rejected recommendations, constrained to Improvement Proposals.
+- Capability Studio progression beyond run history/detail/reasoning views, such as artifact library, validation-status promotion, executor diagnostics, or richer review workflows.
+- Deeper Risk Register or Call Plan promotion workflows from review-gated candidates already produced by Document Intake, SAM.gov, Knowledge Context, and Capture Research.
+- Live source-provider ergonomics and provider-backed collection improvements only if scoped as a product workflow with explicit approval, provenance, limits, and reviewable outputs.
+
+## Session Notes
+
+- Risk Register Item and Risk Response Plan remain important downstream Ariadne concepts, but a standalone Risk Register command surface is too narrow unless the slice also proves how risk signals are populated from source material, capability runs, federal data, call plans, packet gaps, or reviewed Capture Research outputs.
+- The next slice should favor an upstream population path or execution structure that can feed multiple product objects rather than only refining one artifact shape.
+- Microsoft Agent Framework is accepted only as a candidate future Hermes or multi-agent workflow runtime adapter. Do not make it the focus of the next slice or add it as a dependency until Ariadne has a concrete runtime problem that existing skills, CLI harnesses, MCP adapters, local providers, and Python modules cannot handle cleanly.
+- CLI-Anything should help when a capability is repeatable, batchable, tool-facing, or agent-facing and benefits from deterministic JSON output. Treat it as one executor style under Capability Runs, not as the whole product workflow.
+- Future model-assisted capability runs should preserve user-facing rationale through Model Rationale Summaries and Capability Reasoning Views. Do not make raw hidden model reasoning a required durable artifact.
+- Capture Research outputs remain reviewable candidates until accepted or routed. BCC-ready notes are inputs for later Bidder Comparison Chart work, not generated BCC rows, slides, scores, or artifacts.
+- Live source-provider calls require explicit approval or a future approved autonomy policy. Page render must not trigger provider calls.
+- The local-dev stack selected only Crawl4AI and SearXNG. Ollama remains optional/external through `OLLAMA_HOST`; Neo4j, Postgres, vector databases, graph databases, LightRAG, RAGAnything, and broad persistent storage remain out of scope until selected by ADR/PRD.
 
 ## Guardrails
 
@@ -72,6 +70,7 @@ Purpose: prepare the next conversation to choose the vertical epic after the com
 - Keep the next epic vertical and reviewable.
 - Preserve the Extraction Bundle boundary for parser and retrieval tools.
 - Preserve the Federal Data Capability boundary for upstream 1102 MCPs; do not create duplicate Ariadne MCP servers for those sources.
+- Preserve Capture Research boundaries: bounded briefs, explicit source limits, provider provenance, fake/live source-mode honesty, and reviewable downstream candidates.
 - Keep trusted promotions human-gated.
 - Prefer CLI-first harnesses for repeatable, batchable, tool-facing, or agent-facing work with deterministic JSON output.
 - Keep the main Command Center command-first: evidence, recommendations, and actions should stay connected.

@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #080b0f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #080b0f;
+}
+
+button {
+  font: inherit;
+}
+
+.mode-button {
+  align-items: center;
+  background: rgba(16, 21, 27, 0.82);
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #d8e0e8;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.mode-button:focus-visible,
+.command-button:focus-visible {
+  outline: 2px solid #4dd8cf;
+  outline-offset: 2px;
+}
+
+.mode-button:hover,
+.command-button:hover {
+  border-color: #4dd8cf;
+  color: #ffffff;
+}
+
+.mode-count {
+  align-items: center;
+  background: rgba(216, 138, 54, 0.16);
+  border: 1px solid rgba(216, 138, 54, 0.45);
+  border-radius: 999px;
+  color: #f0b573;
+  display: inline-flex;
+  font-size: 12px;
+  height: 24px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 7px;
+}
+
+.metric {
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  min-height: 74px;
+  padding: 13px 14px;
+}
+
+.metric dt {
+  color: #98a6b3;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.metric dd {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 8px 0 0;
+}
+
+.metric-cyan dd {
+  color: #4dd8cf;
+}
+
+.metric-copper dd {
+  color: #d88a36;
+}
+
+.metric-rose dd {
+  color: #e85d75;
+}
+
+.metric-signal dd {
+  color: #f2c94c;
+}
+
+.region-panel {
+  background: #10151b;
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  min-height: 178px;
+  padding: 18px;
+}
+
+.command-button {
+  background: #10151b;
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #d8e0e8;
+  min-height: 42px;
+  padding: 10px 13px;
+  text-align: left;
+  width: 100%;
+}
+
+.command-button.primary {
+  background: #173038;
+  border-color: rgba(77, 216, 207, 0.55);
+  color: #e9fffd;
+}

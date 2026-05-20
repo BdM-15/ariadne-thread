@@ -180,6 +180,10 @@ from ariadne.usaspending import (
     fetch_usaspending_award_history,
     resolve_usaspending_piid,
 )
+from ariadne.production_command_center import (
+    ProductionCommandCenterWorkspace,
+    build_production_command_center_workspace,
+)
 
 
 class ReviewDecisionAction(StrEnum):
@@ -512,6 +516,10 @@ class CapturePromotionResponse(BaseModel):
     decision: DraftPartPromotionDecision | None = None
 
 
+class ProductionCommandCenterWorkspaceResponse(BaseModel):
+    workspace: ProductionCommandCenterWorkspace
+
+
 def create_app(
     settings: RuntimeSettings | None = None,
     *,
@@ -545,6 +553,15 @@ def create_app(
             },
             "status": "online",
         }
+
+    @app.get("/api/production-command-center/workspace")
+    def production_command_center_workspace() -> ProductionCommandCenterWorkspaceResponse:
+        return ProductionCommandCenterWorkspaceResponse(
+            workspace=build_production_command_center_workspace(
+                runtime_settings,
+                workspace_root=Path.cwd(),
+            )
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:

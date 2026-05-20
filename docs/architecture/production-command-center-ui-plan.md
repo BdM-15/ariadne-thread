@@ -258,7 +258,7 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 
 ### MVP-1B Packet Field + Portfolio UI
 
-- Opportunity Portfolio list and switcher for active, future/watchlist, held, archived, won, and lost Opportunities.
+- Compact Opportunity Portfolio dropdown selector for active, future/watchlist, held, archived, won, and lost Opportunities.
 - Opportunity Intake command for creating a user-identified Opportunity from a simple name-only modal, opening the selected Opportunity workspace, and exposing the generated Standard Opportunity Scaffold through the portfolio/workspace contract.
 - selected Opportunity summary with lifecycle state, packet readiness, source freshness, review count, and next-action urgency.
 - Opportunity Activation Run entry point and resume state after create/import/select.

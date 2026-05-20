@@ -3,6 +3,7 @@ import {
   Bot,
   BriefcaseBusiness,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Download,
   FileStack,
@@ -147,9 +148,13 @@ const modeIcons: Record<
 
 const apiBaseUrl = process.env.ARIADNE_API_BASE_URL ?? "http://127.0.0.1:9622";
 
-async function loadWorkspace(opportunityId?: string): Promise<Workspace | null> {
+async function loadWorkspace(
+  opportunityId?: string,
+): Promise<Workspace | null> {
   try {
-    const url = new URL(`${apiBaseUrl}/api/production-command-center/workspace`);
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/workspace`,
+    );
     if (opportunityId !== undefined) {
       url.searchParams.set("opportunity_id", opportunityId);
     }
@@ -205,11 +210,13 @@ async function loadRendererReadiness(): Promise<RendererReadiness | null> {
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
-  const resolvedSearchParams = searchParams === undefined ? {} : await searchParams;
+  const resolvedSearchParams =
+    searchParams === undefined ? {} : await searchParams;
   const selectedOpportunityId = firstSearchParam(
     resolvedSearchParams.opportunity_id,
   );
-  const createdWorkspace = firstSearchParam(resolvedSearchParams.created) === "1";
+  const createdWorkspace =
+    firstSearchParam(resolvedSearchParams.created) === "1";
   const [workspace, rendererReadiness, portfolio] = await Promise.all([
     loadWorkspace(selectedOpportunityId),
     loadRendererReadiness(),
@@ -285,13 +292,19 @@ export default async function CommandCenterPage({
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                Opportunity
+                Command Center
               </p>
               <h1 className="text-lg font-semibold leading-tight">
-                {workspace.opportunity.name}
+                Capture workspace
               </h1>
             </div>
           </div>
+
+          <OpportunityPortfolioSwitcher
+            currentOpportunity={workspace.opportunity}
+            opportunities={portfolio}
+            selectedOpportunityId={workspace.opportunity.id}
+          />
 
           <dl className="mt-6 grid grid-cols-2 gap-3 text-sm xl:grid-cols-1">
             <Metric
@@ -305,11 +318,6 @@ export default async function CommandCenterPage({
               tone="copper"
             />
           </dl>
-
-          <OpportunityPortfolioList
-            opportunities={portfolio}
-            selectedOpportunityId={workspace.opportunity.id}
-          />
 
           <nav
             className="mt-7 space-y-2"
@@ -363,7 +371,9 @@ export default async function CommandCenterPage({
                   activation digest.
                 </span>
               </div>
-              <a href={`/?opportunity_id=${encodeURIComponent(workspace.opportunity.id)}`}>
+              <a
+                href={`/?opportunity_id=${encodeURIComponent(workspace.opportunity.id)}`}
+              >
                 Dismiss
               </a>
             </section>
@@ -454,52 +464,83 @@ export default async function CommandCenterPage({
   );
 }
 
-function OpportunityPortfolioList({
+function OpportunityPortfolioSwitcher({
+  currentOpportunity,
   opportunities,
   selectedOpportunityId,
 }: {
+  currentOpportunity: Opportunity;
   opportunities: PortfolioOpportunity[];
   selectedOpportunityId: string;
 }) {
+  const selectedOpportunity = opportunities.find(
+    (opportunity) => opportunity.id === selectedOpportunityId,
+  );
+  const selectedName = selectedOpportunity?.name ?? currentOpportunity.name;
+  const selectedLifecycle =
+    selectedOpportunity?.lifecycle_state ?? currentOpportunity.lifecycle_state;
+  const selectedReadiness = selectedOpportunity?.packet_readiness_label;
+
   return (
-    <section className="portfolio-panel" aria-labelledby="portfolio-title">
-      <div className="portfolio-heading">
-        <p>Portfolio</p>
-        <span>{opportunities.length}</span>
+    <section className="portfolio-switcher" aria-labelledby="portfolio-title">
+      <div className="portfolio-switcher-heading">
+        <p id="portfolio-title">Opportunity</p>
+        <span>{opportunities.length} managed</span>
       </div>
-      <h2 id="portfolio-title">Managed Opportunities</h2>
-      <div className="portfolio-list">
-        {opportunities.map((opportunity) => {
-          const isSelected = opportunity.id === selectedOpportunityId;
-          const href = opportunity.is_demo
-            ? "/"
-            : `/?opportunity_id=${encodeURIComponent(opportunity.id)}`;
-          return (
-            <a
-              aria-current={isSelected ? "page" : undefined}
-              className={`portfolio-opportunity${isSelected ? " active" : ""}`}
-              href={href}
-              key={opportunity.id}
-            >
-              <span className="portfolio-opportunity-name">
-                {opportunity.name}
-              </span>
-              <span className="portfolio-opportunity-meta">
-                {formatLabel(opportunity.lifecycle_state)} / {formatLabel(opportunity.packet_readiness_label)}
-              </span>
-              <span className="portfolio-opportunity-status">
-                {opportunity.is_demo ? <span>Demo</span> : null}
-                {opportunity.blocked_field_count > 0 ? (
-                  <span>{opportunity.blocked_field_count} fields</span>
-                ) : null}
-                {opportunity.review_ready_count > 0 ? (
-                  <span>{opportunity.review_ready_count} reviews</span>
-                ) : null}
-              </span>
-            </a>
-          );
-        })}
-      </div>
+      <details className="portfolio-dropdown">
+        <summary
+          aria-label={`Switch Opportunity workspace, current ${selectedName}`}
+          className="portfolio-current"
+        >
+          <span>
+            <span className="portfolio-current-name">{selectedName}</span>
+            <span className="portfolio-current-meta">
+              {formatLabel(selectedLifecycle)}
+              {selectedReadiness !== undefined
+                ? ` / ${formatLabel(selectedReadiness)}`
+                : null}
+            </span>
+          </span>
+          <ChevronDown className="portfolio-chevron" size={18} aria-hidden />
+        </summary>
+        <nav className="portfolio-menu" aria-label="Managed Opportunities">
+          {opportunities.length > 0 ? (
+            opportunities.map((opportunity) => {
+              const isSelected = opportunity.id === selectedOpportunityId;
+              const href = opportunity.is_demo
+                ? "/"
+                : `/?opportunity_id=${encodeURIComponent(opportunity.id)}`;
+              return (
+                <a
+                  aria-current={isSelected ? "page" : undefined}
+                  className={`portfolio-menu-link${isSelected ? " active" : ""}`}
+                  href={href}
+                  key={opportunity.id}
+                >
+                  <span className="portfolio-opportunity-name">
+                    {opportunity.name}
+                  </span>
+                  <span className="portfolio-opportunity-meta">
+                    {formatLabel(opportunity.lifecycle_state)} /{" "}
+                    {formatLabel(opportunity.packet_readiness_label)}
+                  </span>
+                  <span className="portfolio-opportunity-status">
+                    {opportunity.is_demo ? <span>Demo</span> : null}
+                    {opportunity.blocked_field_count > 0 ? (
+                      <span>{opportunity.blocked_field_count} fields</span>
+                    ) : null}
+                    {opportunity.review_ready_count > 0 ? (
+                      <span>{opportunity.review_ready_count} reviews</span>
+                    ) : null}
+                  </span>
+                </a>
+              );
+            })
+          ) : (
+            <p className="portfolio-empty">No saved Opportunities found.</p>
+          )}
+        </nav>
+      </details>
     </section>
   );
 }
@@ -627,7 +668,9 @@ function formatLabel(value: string): string {
     .join(" ");
 }
 
-function firstSearchParam(value: string | string[] | undefined): string | undefined {
+function firstSearchParam(
+  value: string | string[] | undefined,
+): string | undefined {
   if (Array.isArray(value)) {
     return value[0];
   }

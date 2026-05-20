@@ -6,7 +6,10 @@ from ariadne.opportunity_activation import (
     OpportunityActivationReviewState,
     OpportunityActivationRunStore,
     OpportunityActivationRunTrigger,
+    PacketFieldActionItem,
     PacketFieldActionState,
+    PacketFieldRouteKind,
+    build_packet_field_action_matrix,
     record_opportunity_activation_field_review,
     run_opportunity_activation,
 )
@@ -65,6 +68,67 @@ def test_activation_matrix_marks_current_milestone_gate_fields() -> None:
     assert evaluation.required_milestone_gates == (
         MilestoneGate.MILESTONE_3.value,
         MilestoneGate.MILESTONE_4.value,
+    )
+
+
+def test_activation_matrix_exposes_route_steps_and_approval_gates() -> None:
+    definitions = build_default_packet_field_definitions()
+
+    matrix = build_packet_field_action_matrix(
+        opportunity_id="opp-disa-cloud",
+        definitions=definitions,
+    )
+
+    customer = next(field for field in matrix.fields if field.field_key == "customer")
+    competition = next(
+        field for field in matrix.fields if field.field_key == "competition"
+    )
+    pwin = next(field for field in matrix.fields if field.field_key == "pwin")
+
+    assert any("notice or call-note extraction" in step for step in customer.route_steps)
+    assert customer.approval_gate is None
+    assert competition.route_kind is PacketFieldRouteKind.RESEARCH_OR_MCP
+    assert competition.route_steps == (
+        "Approve capability-backed research route.",
+        "Use competitor research capability.",
+        "Cross-check with capture lead intel.",
+        "Review packet candidate before trusted use.",
+    )
+    assert competition.approval_gate == (
+        "Operator approval required before capability-backed or external research."
+    )
+    assert pwin.route_kind is PacketFieldRouteKind.MODEL_SYNTHESIS
+    assert pwin.route_steps[-1] == "Review synthesized answer before trusted use."
+    assert pwin.approval_gate == (
+        "Human review required before synthesized content becomes a trusted answer."
+    )
+
+
+def test_activation_matrix_hydrates_legacy_route_metadata() -> None:
+    definitions = build_default_packet_field_definitions()
+    matrix = build_packet_field_action_matrix(
+        opportunity_id="opp-disa-cloud",
+        definitions=definitions,
+    )
+    competition = next(
+        field for field in matrix.fields if field.field_key == "competition"
+    )
+    legacy_payload = competition.model_dump(
+        mode="json",
+        exclude={"route_kind", "route_steps", "approval_gate"},
+    )
+
+    hydrated = PacketFieldActionItem.model_validate(legacy_payload)
+
+    assert hydrated.route_kind is PacketFieldRouteKind.RESEARCH_OR_MCP
+    assert hydrated.route_steps == (
+        "Approve capability-backed research route.",
+        "Use competitor research capability.",
+        "Cross-check with capture lead intel.",
+        "Review packet candidate before trusted use.",
+    )
+    assert hydrated.approval_gate == (
+        "Operator approval required before capability-backed or external research."
     )
 
 

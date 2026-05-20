@@ -1565,6 +1565,93 @@ button {
   color: #98a6b3;
 }
 
+.activation-field-route-detail {
+  display: grid;
+  gap: 7px;
+}
+
+.activation-field-route-detail p,
+.activation-field-route-detail ol {
+  margin: 0;
+}
+
+.activation-field-route-detail p {
+  color: #c5d0dc;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.activation-field-route-detail ol {
+  counter-reset: activation-route-step;
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  padding: 0;
+}
+
+.activation-field-route-detail li {
+  color: #d8e0e8;
+  counter-increment: activation-route-step;
+  display: grid;
+  font-size: 12px;
+  gap: 7px;
+  grid-template-columns: 18px 1fr;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.activation-field-route-detail li::before {
+  align-items: center;
+  background: rgba(77, 216, 207, 0.12);
+  border: 1px solid rgba(77, 216, 207, 0.28);
+  border-radius: 999px;
+  color: #9ae7e2;
+  content: counter(activation-route-step);
+  display: inline-flex;
+  font-size: 10px;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  width: 18px;
+}
+
+.activation-field-answer-paths {
+  display: grid;
+  gap: 6px;
+}
+
+.activation-field-answer-paths > span {
+  color: #98a6b3;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.activation-field-answer-path-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.activation-field-answer-path-row span {
+  border: 1px solid rgba(216, 138, 54, 0.28);
+  border-radius: 999px;
+  color: #f0b573;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.activation-field-approval-gate {
+  color: #ffd7df;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .activation-field-chip-row {
   align-items: flex-end;
   display: flex;

@@ -6,7 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
@@ -84,11 +84,33 @@ class PacketFieldActionItem(BaseModel):
     route_kind: PacketFieldRouteKind = PacketFieldRouteKind.SOURCE_BACKED_ANSWER
     recommended_route: str
     route_rationale: str
+    route_steps: tuple[str, ...] = ()
+    approval_gate: str | None = None
     requires_review: bool = True
     approval_required: bool = False
     source_refs: tuple[str, ...] = ()
     gap_summary: str | None = None
     current_value: str | None = None
+
+    @model_validator(mode="after")
+    def hydrate_route_metadata(self) -> PacketFieldActionItem:
+        inferred_route_kind = _route_kind_from_recommended_route(self.recommended_route)
+        if (
+            self.route_kind is PacketFieldRouteKind.SOURCE_BACKED_ANSWER
+            and inferred_route_kind is not PacketFieldRouteKind.SOURCE_BACKED_ANSWER
+        ):
+            self.route_kind = inferred_route_kind
+        if not self.route_steps:
+            self.route_steps = _route_steps_from_labels(
+                route_kind=self.route_kind,
+                answer_path_labels=self.answer_paths,
+            )
+        if self.approval_gate is None:
+            self.approval_gate = _approval_gate_for_route_kind(
+                route_kind=self.route_kind,
+                approval_required=self.approval_required,
+            )
+        return self
 
 
 class PacketFieldActionMatrix(BaseModel):
@@ -496,6 +518,8 @@ def _action_item_for_definition(
         route_kind=recommend_packet_field_route_kind(definition),
         recommended_route=recommend_packet_field_route(definition),
         route_rationale=_route_rationale(definition),
+        route_steps=_route_steps(definition),
+        approval_gate=_approval_gate(definition),
         requires_review=action_state is not PacketFieldActionState.ANSWERED,
         approval_required=_approval_required(definition),
         source_refs=answer.evidence_ids if answer is not None else (),
@@ -720,6 +744,220 @@ def _route_rationale(definition: PacketFieldDefinition) -> str:
     if AnswerPathKind.MODEL_SYNTHESIS in kinds:
         return "Synthesis is useful only after accepted evidence or explicit assumptions exist."
     return "Ariadne cannot safely infer this field without capture lead or customer input."
+
+
+def _route_steps(definition: PacketFieldDefinition) -> tuple[str, ...]:
+    route_kind = recommend_packet_field_route_kind(definition)
+    if route_kind is PacketFieldRouteKind.RESEARCH_OR_MCP:
+        steps = (
+            "Approve capability-backed research route.",
+            _route_step_for_labels(
+                prefix="Use",
+                labels=_answer_path_labels(definition, AnswerPathKind.CAPABILITY_MODULE),
+                fallback="available research capability",
+            ),
+        )
+        human_labels = _answer_path_labels(definition, AnswerPathKind.HUMAN_INPUT)
+        if human_labels:
+            steps += (
+                _route_step_for_labels(
+                    prefix="Cross-check with",
+                    labels=human_labels,
+                    fallback="capture lead input",
+                ),
+            )
+        return steps + ("Review packet candidate before trusted use.",)
+    if route_kind is PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP:
+        return (
+            _route_step_for_labels(
+                prefix="Lookup",
+                labels=_answer_path_labels(definition, AnswerPathKind.IMPORTED_DATA),
+                fallback="source-profile or imported data",
+            ),
+            "Review packet implication before trusted use.",
+        )
+    if route_kind is PacketFieldRouteKind.MODEL_SYNTHESIS:
+        return (
+            "Collect accepted evidence or explicit assumptions.",
+            _route_step_for_labels(
+                prefix="Prepare",
+                labels=_answer_path_labels(definition, AnswerPathKind.MODEL_SYNTHESIS),
+                fallback="local synthesis candidate",
+            ),
+            "Review synthesized answer before trusted use.",
+        )
+    if route_kind is PacketFieldRouteKind.CUSTOMER_CALL_PLAN:
+        return (
+            _route_step_for_labels(
+                prefix="Prepare",
+                labels=_answer_path_labels(definition, AnswerPathKind.HUMAN_INPUT),
+                fallback="capture lead or customer question",
+            ),
+            "Route the answer back through packet-field review.",
+        )
+    steps = (
+        _route_step_for_labels(
+            prefix="Extract from",
+            labels=_answer_path_labels(definition, AnswerPathKind.EVIDENCE_EXTRACTION),
+            fallback="source material",
+        ),
+    )
+    context_labels = _answer_path_labels(definition, AnswerPathKind.HUMAN_INPUT) + _answer_path_labels(
+        definition,
+        AnswerPathKind.IMPORTED_DATA,
+    )
+    if context_labels:
+        steps += (
+            _route_step_for_labels(
+                prefix="Cross-check with",
+                labels=context_labels,
+                fallback="operator or imported context",
+            ),
+        )
+    return steps + ("Review packet candidate before trusted use.",)
+
+
+def _approval_gate(definition: PacketFieldDefinition) -> str | None:
+    return _approval_gate_for_route_kind(
+        route_kind=recommend_packet_field_route_kind(definition),
+        approval_required=_approval_required(definition),
+    )
+
+
+def _approval_gate_for_route_kind(
+    *,
+    route_kind: PacketFieldRouteKind,
+    approval_required: bool,
+) -> str | None:
+    if approval_required:
+        return "Operator approval required before capability-backed or external research."
+    if route_kind is PacketFieldRouteKind.MODEL_SYNTHESIS:
+        return "Human review required before synthesized content becomes a trusted answer."
+    return None
+
+
+def _answer_path_labels(
+    definition: PacketFieldDefinition,
+    kind: AnswerPathKind,
+) -> tuple[str, ...]:
+    return tuple(path.label for path in definition.answer_paths if path.kind is kind)
+
+
+def _route_step_for_labels(
+    *,
+    prefix: str,
+    labels: tuple[str, ...],
+    fallback: str,
+) -> str:
+    target = ", ".join(labels) if labels else fallback
+    return f"{prefix} {target}."
+
+
+def _route_kind_from_recommended_route(route: str) -> PacketFieldRouteKind:
+    normalized_route = route.lower()
+    if "capability" in normalized_route or "research" in normalized_route:
+        return PacketFieldRouteKind.RESEARCH_OR_MCP
+    if "source-profile" in normalized_route or "import or lookup" in normalized_route:
+        return PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP
+    if "synthesize" in normalized_route:
+        return PacketFieldRouteKind.MODEL_SYNTHESIS
+    if "call-plan" in normalized_route or "customer call" in normalized_route:
+        return PacketFieldRouteKind.CUSTOMER_CALL_PLAN
+    return PacketFieldRouteKind.SOURCE_BACKED_ANSWER
+
+
+def _route_steps_from_labels(
+    *,
+    route_kind: PacketFieldRouteKind,
+    answer_path_labels: tuple[str, ...],
+) -> tuple[str, ...]:
+    if route_kind is PacketFieldRouteKind.RESEARCH_OR_MCP:
+        capability_labels = _labels_matching(answer_path_labels, ("capability",))
+        human_labels = tuple(
+            label for label in answer_path_labels if label not in capability_labels
+        )
+        steps = (
+            "Approve capability-backed research route.",
+            _route_step_for_labels(
+                prefix="Use",
+                labels=capability_labels,
+                fallback="available research capability",
+            ),
+        )
+        if human_labels:
+            steps += (
+                _route_step_for_labels(
+                    prefix="Cross-check with",
+                    labels=human_labels,
+                    fallback="capture lead input",
+                ),
+            )
+        return steps + ("Review packet candidate before trusted use.",)
+    if route_kind is PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP:
+        return (
+            _route_step_for_labels(
+                prefix="Lookup",
+                labels=_labels_matching(
+                    answer_path_labels,
+                    ("import", "crm", "contract", "feed", "award"),
+                ),
+                fallback="source-profile or imported data",
+            ),
+            "Review packet implication before trusted use.",
+        )
+    if route_kind is PacketFieldRouteKind.MODEL_SYNTHESIS:
+        return (
+            "Collect accepted evidence or explicit assumptions.",
+            _route_step_for_labels(
+                prefix="Prepare",
+                labels=_labels_matching(answer_path_labels, ("synthesis", "rationale")),
+                fallback="local synthesis candidate",
+            ),
+            "Review synthesized answer before trusted use.",
+        )
+    if route_kind is PacketFieldRouteKind.CUSTOMER_CALL_PLAN:
+        return (
+            _route_step_for_labels(
+                prefix="Prepare",
+                labels=answer_path_labels,
+                fallback="capture lead or customer question",
+            ),
+            "Route the answer back through packet-field review.",
+        )
+    evidence_labels = _labels_matching(
+        answer_path_labels,
+        ("extraction", "notice", "source", "sow", "pws", "section"),
+    )
+    context_labels = tuple(
+        label for label in answer_path_labels if label not in evidence_labels
+    )
+    steps = (
+        _route_step_for_labels(
+            prefix="Extract from",
+            labels=evidence_labels,
+            fallback="source material",
+        ),
+    )
+    if context_labels:
+        steps += (
+            _route_step_for_labels(
+                prefix="Cross-check with",
+                labels=context_labels,
+                fallback="operator or imported context",
+            ),
+        )
+    return steps + ("Review packet candidate before trusted use.",)
+
+
+def _labels_matching(
+    labels: tuple[str, ...],
+    needles: tuple[str, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        label
+        for label in labels
+        if any(needle in label.lower() for needle in needles)
+    )
 
 
 def _approval_required(definition: PacketFieldDefinition) -> bool:

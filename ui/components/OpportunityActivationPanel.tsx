@@ -38,6 +38,8 @@ type PacketFieldActionItem = {
   route_kind?: string;
   recommended_route: string;
   route_rationale: string;
+  route_steps: string[];
+  approval_gate: string | null;
   requires_review: boolean;
   approval_required: boolean;
   source_refs: string[];
@@ -328,6 +330,10 @@ export function OpportunityActivationPanel({
                 items={digest.next_best_actions}
               />
               <ActivationListPanel
+                title="Approvals needed"
+                items={digest.approval_required_routes}
+              />
+              <ActivationListPanel
                 title="Source limits"
                 items={digest.source_limitations}
               />
@@ -433,12 +439,36 @@ function ActivationFieldCard({
       </div>
       <p className="activation-field-question">{field.question}</p>
       <p className="activation-field-route">{field.recommended_route}</p>
+      <div className="activation-field-route-detail">
+        <p>{field.route_rationale}</p>
+        {field.route_steps.length > 0 ? (
+          <ol aria-label={`${field.label} route steps`}>
+            {field.route_steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        ) : null}
+      </div>
+      {field.answer_paths.length > 0 ? (
+        <div className="activation-field-answer-paths">
+          <span>Answer paths</span>
+          <div className="activation-field-answer-path-row">
+            {field.answer_paths.map((path) => (
+              <span key={path}>{path}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {field.approval_gate ? (
+        <p className="activation-field-approval-gate">{field.approval_gate}</p>
+      ) : null}
       <div className="activation-field-chip-row">
         <span>
           {field.current_gate_required === false
             ? "Future gate"
             : "Required this gate"}
         </span>
+        {field.route_kind ? <span>{formatLabel(field.route_kind)}</span> : null}
         <span>{formatLabel(field.evidence_status)}</span>
         <span>{formatLabel(field.value_kind)}</span>
         {field.approval_required ? <span>Approval</span> : null}

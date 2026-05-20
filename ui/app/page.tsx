@@ -228,11 +228,14 @@ async function loadLatestActivationRun(
     if (!response.ok) {
       return null;
     }
-    const body = (await response.json()) as OpportunityActivationRunListResponse;
-    return [...body.runs].sort(
-      (firstRun, secondRun) =>
-        activationTimestamp(secondRun) - activationTimestamp(firstRun),
-    )[0] ?? null;
+    const body =
+      (await response.json()) as OpportunityActivationRunListResponse;
+    return (
+      [...body.runs].sort(
+        (firstRun, secondRun) =>
+          activationTimestamp(secondRun) - activationTimestamp(firstRun),
+      )[0] ?? null
+    );
   } catch {
     return null;
   }

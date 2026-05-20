@@ -147,7 +147,11 @@ export function OpportunityActivationPanel({
     if (run === null) {
       return;
     }
-    const value = (fieldValues[field.field_key] ?? field.current_value ?? "").trim();
+    const value = (
+      fieldValues[field.field_key] ??
+      field.current_value ??
+      ""
+    ).trim();
     const note = fieldNotes[field.field_key]?.trim();
     const reviewerRationale =
       note && note.length > 0
@@ -176,7 +180,8 @@ export function OpportunityActivationPanel({
             value:
               decision === "accept" || decision === "edit" ? value : undefined,
             reviewer_rationale: reviewerRationale,
-            routed_destination: decision === "route" ? "capture_research" : undefined,
+            routed_destination:
+              decision === "route" ? "capture_research" : undefined,
           }),
         },
       );
@@ -195,7 +200,9 @@ export function OpportunityActivationPanel({
       setFieldStatus((current) => ({
         ...current,
         [field.field_key]:
-          reviewError instanceof Error ? reviewError.message : "Field review failed.",
+          reviewError instanceof Error
+            ? reviewError.message
+            : "Field review failed.",
       }));
     } finally {
       setReviewingFieldKey(null);
@@ -375,11 +382,14 @@ function ActivationFieldCard({
   onReview: (decision: FieldReviewDecision) => void;
   output: OpportunityActivationRunOutput | null;
 }) {
-  const isReviewed = output !== null && output.review_state !== "pending_review";
+  const isReviewed =
+    output !== null && output.review_state !== "pending_review";
   const canReview = output !== null && output.review_state === "pending_review";
 
   return (
-    <article className={`activation-field-card ${actionStateClass(field.action_state)}`}>
+    <article
+      className={`activation-field-card ${actionStateClass(field.action_state)}`}
+    >
       <div className="activation-field-header">
         <div>
           <p>{formatLabel(field.section)}</p>

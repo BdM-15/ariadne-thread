@@ -656,6 +656,43 @@ def test_workspace_api_loads_selected_created_opportunity(tmp_path) -> None:
     )
 
 
+def test_workspace_work_mode_badges_reflect_review_queues(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Space Force review queue watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    document_response = client.post(
+        "/api/document-intake/source-material",
+        json={
+            "filename": "customer-brief.md",
+            "mime_type": "text/markdown",
+            "content": "Customer needs transition proof and PM follow up.",
+            "opportunity_id": opportunity_id,
+        },
+    )
+    capability_response = client.post(
+        "/api/capability-runs/local-admin-model-readiness-probe"
+    )
+
+    response = client.get(
+        f"/api/production-command-center/workspace?opportunity_id={opportunity_id}"
+    )
+
+    assert document_response.status_code == 200, document_response.text
+    assert capability_response.status_code == 200, capability_response.text
+    assert response.status_code == 200, response.text
+    modes = {
+        mode["id"]: mode
+        for mode in response.json()["workspace"]["work_modes"]
+    }
+    assert modes["documents"]["pending_count"] >= 1
+    assert modes["capability_studio"]["pending_count"] == 1
+
+
 def test_workspace_api_rejects_unknown_selected_opportunity(tmp_path) -> None:
     from fastapi.testclient import TestClient
 

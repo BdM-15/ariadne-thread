@@ -3048,6 +3048,7 @@ function buildCommandModes(workModes: WorkMode[]): CommandMode[] {
     "research",
     "documents",
     "artifacts",
+    "capability_studio",
   ];
   const orderedModes = orderedIds.map((id) => {
     const backendMode = backendModes.get(id);

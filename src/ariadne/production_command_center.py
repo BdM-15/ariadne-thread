@@ -7,7 +7,14 @@ import re
 
 from pydantic import BaseModel
 
+from ariadne.capability_runs import CapabilityRunOutputReviewState, CapabilityRunStore
 from ariadne.config import RuntimeSettings
+from ariadne.document_intake import (
+    DocumentIntakeCandidateReviewState,
+    DocumentIntakeStatus,
+    DocumentIntakeStore,
+    ExtractionBundleReviewStatus,
+)
 from ariadne.opportunities import (
     CoreCaptureWorkstream,
     EntryContext,
@@ -907,12 +914,23 @@ def build_production_command_center_workspace(
             raise ValueError(f"Opportunity context not found: {opportunity_id}")
         return _workspace_from_scaffold(
             store.read_scaffold(opportunity_id),
+            settings=settings,
+            workspace_root=workspace_root,
             answer_store=answer_store,
         )
 
     demo = build_quick_capture_demo_thread(
         settings,
         workspace_root=workspace_root or Path.cwd(),
+    )
+    document_pending_count = _document_work_mode_pending_count(
+        settings,
+        workspace_root=workspace_root,
+        opportunity_id=opportunity_id,
+    )
+    capability_pending_count = _capability_studio_pending_count(
+        settings,
+        workspace_root=workspace_root,
     )
     packet_states = tuple(demo.packet.sections.values())
     gap_count = sum(1 for state in packet_states if state.evidence_status is EvidenceStatus.GAP)
@@ -958,9 +976,17 @@ def build_production_command_center_workspace(
             ProductionCommandCenterWorkMode(id="actions", label="Actions", pending_count=len(demo.action_plan.items)),
             ProductionCommandCenterWorkMode(id="engagement", label="Engagement"),
             ProductionCommandCenterWorkMode(id="research", label="Research"),
-            ProductionCommandCenterWorkMode(id="documents", label="Documents", pending_count=1),
+            ProductionCommandCenterWorkMode(
+                id="documents",
+                label="Documents",
+                pending_count=document_pending_count,
+            ),
             ProductionCommandCenterWorkMode(id="artifacts", label="Artifacts"),
-            ProductionCommandCenterWorkMode(id="capability_studio", label="Capability Studio"),
+            ProductionCommandCenterWorkMode(
+                id="capability_studio",
+                label="Capability Studio",
+                pending_count=capability_pending_count,
+            ),
         ),
         assisted_capture_goals=ASSISTED_CAPTURE_GOALS,
     )
@@ -1164,6 +1190,8 @@ def _packet_readiness_label(matrix: PacketFieldActionMatrix) -> str:
 def _workspace_from_scaffold(
     scaffold: ProductionOpportunityScaffold,
     *,
+    settings: RuntimeSettings,
+    workspace_root: Path | None = None,
     answer_store: PacketFieldAnswerStore | None = None,
 ) -> ProductionCommandCenterWorkspace:
     activation_run = _activation_run_for_scaffold(
@@ -1172,6 +1200,15 @@ def _workspace_from_scaffold(
     )
     matrix = activation_run.packet_field_action_matrix
     packet = _packet_view_from_matrix(scaffold.packet.title, matrix)
+    document_pending_count = _document_work_mode_pending_count(
+        settings,
+        workspace_root=workspace_root,
+        opportunity_id=scaffold.opportunity.id,
+    )
+    capability_pending_count = _capability_studio_pending_count(
+        settings,
+        workspace_root=workspace_root,
+    )
     return ProductionCommandCenterWorkspace(
         production_ui_contract="nextjs_command_center_shell",
         scaffold_role="standard_opportunity_scaffold",
@@ -1205,15 +1242,93 @@ def _workspace_from_scaffold(
                     activation_run.activation_digest.approval_required_routes
                 ),
             ),
-            ProductionCommandCenterWorkMode(id="documents", label="Documents"),
+            ProductionCommandCenterWorkMode(
+                id="documents",
+                label="Documents",
+                pending_count=document_pending_count,
+            ),
             ProductionCommandCenterWorkMode(id="artifacts", label="Artifacts"),
             ProductionCommandCenterWorkMode(
                 id="capability_studio",
                 label="Capability Studio",
+                pending_count=capability_pending_count,
             ),
         ),
         assisted_capture_goals=ASSISTED_CAPTURE_GOALS,
     )
+
+
+def _document_work_mode_pending_count(
+    settings: RuntimeSettings,
+    *,
+    workspace_root: Path | None,
+    opportunity_id: str | None,
+) -> int:
+    store = DocumentIntakeStore(
+        _runtime_path(settings.ariadne_document_intake_dir, workspace_root)
+    )
+    records = store.list(opportunity_id=opportunity_id)
+    record_ids = {record.id for record in records}
+    bundles = tuple(
+        bundle
+        for bundle in store.list_extraction_bundles()
+        if opportunity_id is None
+        or bundle.opportunity_id == opportunity_id
+        or bundle.document_id in record_ids
+    )
+    bundle_ids = {bundle.id for bundle in bundles}
+    candidates = tuple(
+        candidate
+        for candidate in store.list_capture_candidates()
+        if opportunity_id is None
+        or candidate.source_intake_record_id in record_ids
+        or candidate.source_extraction_bundle_id in bundle_ids
+    )
+    return (
+        sum(
+            1
+            for record in records
+            if record.status is DocumentIntakeStatus.PARSER_REQUIRED
+            or record.extraction_bundle_id is None
+        )
+        + sum(
+            1
+            for bundle in bundles
+            if bundle.review_status
+            in {
+                ExtractionBundleReviewStatus.PENDING_REVIEW,
+                ExtractionBundleReviewStatus.IN_REVIEW,
+            }
+        )
+        + sum(
+            1
+            for candidate in candidates
+            if candidate.review_state
+            is DocumentIntakeCandidateReviewState.PENDING_REVIEW
+        )
+    )
+
+
+def _capability_studio_pending_count(
+    settings: RuntimeSettings,
+    *,
+    workspace_root: Path | None,
+) -> int:
+    runs = CapabilityRunStore(
+        _runtime_path(settings.ariadne_capability_runs_dir, workspace_root)
+    ).list()
+    return sum(
+        1
+        for run in runs
+        for output in run.outputs
+        if output.review_state is CapabilityRunOutputReviewState.PENDING
+    )
+
+
+def _runtime_path(path: Path, workspace_root: Path | None) -> Path:
+    if path.is_absolute() or workspace_root is None:
+        return path
+    return workspace_root / path
 
 
 def _production_layout_regions() -> tuple[ProductionCommandCenterRegion, ...]:

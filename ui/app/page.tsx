@@ -11,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { ComponentType } from "react";
+import { AssistedCapturePanel, type AssistedCaptureGoal } from "../components/AssistedCapturePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ type Workspace = {
   context_summary: ContextSummary;
   layout_regions: LayoutRegion[];
   work_modes: WorkMode[];
+  assisted_capture_goals: AssistedCaptureGoal[];
 };
 
 type WorkspaceResponse = {
@@ -178,11 +180,10 @@ export default async function CommandCenterPage() {
             <Metric label="Limits" value={workspace.context_summary.source_limitation_count.toString()} tone="signal" />
           </div>
 
-          <div className="mt-7 space-y-3">
-            <button className="command-button primary" type="button">Start route recommendation</button>
-            <button className="command-button" type="button">Review pending context</button>
-            <button className="command-button" type="button">Open provenance drawer</button>
-          </div>
+          <AssistedCapturePanel
+            goals={workspace.assisted_capture_goals}
+            opportunityId={workspace.opportunity.id}
+          />
         </aside>
       </div>
     </main>

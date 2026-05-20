@@ -181,8 +181,12 @@ from ariadne.usaspending import (
     resolve_usaspending_piid,
 )
 from ariadne.production_command_center import (
+    AssistedRouteRecommendationRequest,
+    AssistedRouteRecommendationResponse,
     ProductionCommandCenterWorkspace,
+    WorkflowRoutingStore,
     build_production_command_center_workspace,
+    recommend_assisted_capture_routes,
 )
 
 
@@ -562,6 +566,25 @@ def create_app(
                 workspace_root=Path.cwd(),
             )
         )
+
+    @app.post(
+        "/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations"
+    )
+    def production_command_center_route_recommendations(
+        opportunity_id: str,
+        request: AssistedRouteRecommendationRequest,
+    ) -> AssistedRouteRecommendationResponse:
+        if opportunity_id != "opp-aflcmc-recompete":
+            raise HTTPException(status_code=404, detail="Opportunity context not found")
+        try:
+            return recommend_assisted_capture_routes(
+                opportunity_id=opportunity_id,
+                goal_id=request.goal_id,
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:

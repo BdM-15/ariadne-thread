@@ -37,6 +37,9 @@ class RuntimeSettings(BaseModel):
     ariadne_next_action_recommendations_dir: Path = Field(
         default=Path(".ariadne/next-action-recommendations")
     )
+    ariadne_workflow_routing_dir: Path = Field(
+        default=Path(".ariadne/workflow-routing")
+    )
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
@@ -123,6 +126,12 @@ class RuntimeSettings(BaseModel):
                             "ariadne_next_action_recommendations_dir"
                         ].default
                     ),
+                )
+            ),
+            ariadne_workflow_routing_dir=Path(
+                values.get(
+                    "ARIADNE_WORKFLOW_ROUTING_DIR",
+                    str(cls.model_fields["ariadne_workflow_routing_dir"].default),
                 )
             ),
             ariadne_reference_wiki_dir=Path(

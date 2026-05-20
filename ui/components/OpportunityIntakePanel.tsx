@@ -16,7 +16,12 @@ type OpportunityScaffold = {
     readiness_label: string;
     gap_section_count: number;
   };
-  packet_fields: { key: string; label: string; status: string; recommended_route: string }[];
+  packet_fields: {
+    key: string;
+    label: string;
+    status: string;
+    recommended_route: string;
+  }[];
   activation_digest: {
     coverage_gained: string[];
     review_ready_count: number;
@@ -68,17 +73,20 @@ export function OpportunityIntakePanel() {
     setIsSubmitting(true);
     setError(null);
     try {
-      const response = await fetch("/api/production-command-center/opportunities", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          entry_reason: entryReason,
-          starting_lifecycle_state: lifecycleState,
-          rationale: rationale || null,
-          missing_or_stale_workstreams: selectedBackfills,
-        }),
-      });
+      const response = await fetch(
+        "/api/production-command-center/opportunities",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            entry_reason: entryReason,
+            starting_lifecycle_state: lifecycleState,
+            rationale: rationale || null,
+            missing_or_stale_workstreams: selectedBackfills,
+          }),
+        },
+      );
       if (!response.ok) {
         const body = (await response.json()) as { detail?: string };
         throw new Error(body.detail ?? "Opportunity creation failed.");
@@ -89,7 +97,11 @@ export function OpportunityIntakePanel() {
       setRationale("");
       setSelectedBackfills([]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Opportunity creation failed.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Opportunity creation failed.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -104,10 +116,15 @@ export function OpportunityIntakePanel() {
   }
 
   return (
-    <section className="intake-panel" aria-labelledby="opportunity-intake-title">
+    <section
+      className="intake-panel"
+      aria-labelledby="opportunity-intake-title"
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Intake</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+            Intake
+          </p>
           <h2 id="opportunity-intake-title" className="text-lg font-semibold">
             Add Opportunity
           </h2>
@@ -186,8 +203,16 @@ export function OpportunityIntakePanel() {
           </div>
         </fieldset>
 
-        <button className="command-button primary flex items-center justify-center gap-2" disabled={isSubmitting} type="submit">
-          {isSubmitting ? <Loader2 className="animate-spin" size={17} aria-hidden /> : <PlusCircle size={17} aria-hidden />}
+        <button
+          className="command-button primary flex items-center justify-center gap-2"
+          disabled={isSubmitting}
+          type="submit"
+        >
+          {isSubmitting ? (
+            <Loader2 className="animate-spin" size={17} aria-hidden />
+          ) : (
+            <PlusCircle size={17} aria-hidden />
+          )}
           <span>Create scaffold</span>
         </button>
       </form>
@@ -198,7 +223,11 @@ export function OpportunityIntakePanel() {
         {scaffold !== null ? (
           <article className="intake-result">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-1 text-ariadne-cyan" size={19} aria-hidden />
+              <CheckCircle2
+                className="mt-1 text-ariadne-cyan"
+                size={19}
+                aria-hidden
+              />
               <div>
                 <h3>{scaffold.opportunity.name}</h3>
                 <p>{scaffold.opportunity.id}</p>
@@ -221,7 +250,9 @@ export function OpportunityIntakePanel() {
             </dl>
 
             <div className="mt-3 border-t border-ariadne-line pt-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Activation Digest</p>
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                Activation Digest
+              </p>
               <ul className="mt-2 space-y-2 text-sm leading-5 text-slate-300">
                 {scaffold.activation_digest.coverage_gained.map((item) => (
                   <li key={item}>{item}</li>

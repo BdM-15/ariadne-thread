@@ -107,10 +107,18 @@ export function AssistedCapturePanel({
 }) {
   const [selectedGoalId, setSelectedGoalId] = useState(goals[0]?.id ?? "");
   const [routes, setRoutes] = useState<AssistedRouteRecommendation[]>([]);
-  const [runsByRouteId, setRunsByRouteId] = useState<Record<string, AssistedRouteRun>>({});
-  const [updatesByOutputId, setUpdatesByOutputId] = useState<Record<string, WorkProductUpdateProjection[]>>({});
-  const [provenanceByRouteId, setProvenanceByRouteId] = useState<Record<string, ProvenanceView>>({});
-  const [reviewNotesByOutputId, setReviewNotesByOutputId] = useState<Record<string, string>>({});
+  const [runsByRouteId, setRunsByRouteId] = useState<
+    Record<string, AssistedRouteRun>
+  >({});
+  const [updatesByOutputId, setUpdatesByOutputId] = useState<
+    Record<string, WorkProductUpdateProjection[]>
+  >({});
+  const [provenanceByRouteId, setProvenanceByRouteId] = useState<
+    Record<string, ProvenanceView>
+  >({});
+  const [reviewNotesByOutputId, setReviewNotesByOutputId] = useState<
+    Record<string, string>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -178,7 +186,8 @@ export function AssistedCapturePanel({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             decision,
-            accepted_destination: decision === "accept" ? "call_plan" : undefined,
+            accepted_destination:
+              decision === "accept" ? "call_plan" : undefined,
             reviewer_rationale: reviewerRationale,
           }),
         },
@@ -218,13 +227,19 @@ export function AssistedCapturePanel({
     <section className="mt-7 border-t border-ariadne-line pt-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Route</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+            Route
+          </p>
           <h3 className="text-base font-semibold">Assisted Capture</h3>
         </div>
         <Target className="text-ariadne-cyan" size={20} aria-hidden />
       </div>
 
-      <div className="mt-4 space-y-2" role="listbox" aria-label="Assisted capture goals">
+      <div
+        className="mt-4 space-y-2"
+        role="listbox"
+        aria-label="Assisted capture goals"
+      >
         {goals.map((goal) => (
           <button
             aria-selected={selectedGoalId === goal.id}
@@ -240,15 +255,21 @@ export function AssistedCapturePanel({
         ))}
       </div>
 
-      {isPending ? <p className="mt-4 text-sm text-ariadne-signal">Routing...</p> : null}
-      {error !== null ? <p className="mt-4 text-sm text-ariadne-rose">{error}</p> : null}
+      {isPending ? (
+        <p className="mt-4 text-sm text-ariadne-signal">Routing...</p>
+      ) : null}
+      {error !== null ? (
+        <p className="mt-4 text-sm text-ariadne-rose">{error}</p>
+      ) : null}
 
       <div className="mt-4 space-y-3">
         {routes.map((routeRecommendation) => (
           <article className="route-card" key={routeRecommendation.id}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">Recommended</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">
+                  Recommended
+                </p>
                 <h4 className="mt-1 text-sm font-semibold text-slate-100">
                   {routeRecommendation.route_label}
                 </h4>
@@ -260,7 +281,9 @@ export function AssistedCapturePanel({
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {routeRecommendation.work_product_targets.map((target) => (
-                <span className="chip" key={target}>{formatLabel(target)}</span>
+                <span className="chip" key={target}>
+                  {formatLabel(target)}
+                </span>
               ))}
             </div>
             <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
@@ -269,7 +292,8 @@ export function AssistedCapturePanel({
             </div>
             <div className="capability-chain">
               <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                {routeRecommendation.capability_route_card.capability_count} steps
+                {routeRecommendation.capability_route_card.capability_count}{" "}
+                steps
               </p>
               {routeRecommendation.capability_route_card.steps.map((step) => (
                 <div className="capability-step" key={step.capability_id}>
@@ -306,7 +330,11 @@ export function AssistedCapturePanel({
                   {runsByRouteId[routeRecommendation.id].output.summary}
                 </p>
                 <div className="progress-bar" aria-label="Capability progress">
-                  <span style={{ width: `${runsByRouteId[routeRecommendation.id].capability_progress.percent_complete}%` }} />
+                  <span
+                    style={{
+                      width: `${runsByRouteId[routeRecommendation.id].capability_progress.percent_complete}%`,
+                    }}
+                  />
                 </div>
                 <div className="review-gate">
                   <p className="text-xs uppercase tracking-[0.16em] text-ariadne-signal">
@@ -318,19 +346,27 @@ export function AssistedCapturePanel({
                     onChange={(event) =>
                       setReviewNotesByOutputId((currentNotes) => ({
                         ...currentNotes,
-                        [runsByRouteId[routeRecommendation.id].output.id]: event.target.value,
+                        [runsByRouteId[routeRecommendation.id].output.id]:
+                          event.target.value,
                       }))
                     }
                     placeholder="Reviewer rationale"
                     rows={3}
-                    value={reviewNotesByOutputId[runsByRouteId[routeRecommendation.id].output.id] ?? ""}
+                    value={
+                      reviewNotesByOutputId[
+                        runsByRouteId[routeRecommendation.id].output.id
+                      ] ?? ""
+                    }
                   />
                   <div className="review-action-row">
                     <button
                       className="command-button"
                       disabled={isPending}
                       onClick={() =>
-                        reviewOutput(runsByRouteId[routeRecommendation.id].output.id, "accept")
+                        reviewOutput(
+                          runsByRouteId[routeRecommendation.id].output.id,
+                          "accept",
+                        )
                       }
                       type="button"
                     >
@@ -340,7 +376,10 @@ export function AssistedCapturePanel({
                       className="command-button danger"
                       disabled={isPending}
                       onClick={() =>
-                        reviewOutput(runsByRouteId[routeRecommendation.id].output.id, "reject")
+                        reviewOutput(
+                          runsByRouteId[routeRecommendation.id].output.id,
+                          "reject",
+                        )
                       }
                       type="button"
                     >
@@ -348,9 +387,13 @@ export function AssistedCapturePanel({
                     </button>
                   </div>
                 </div>
-                {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id] !== undefined ? (
+                {updatesByOutputId[
+                  runsByRouteId[routeRecommendation.id].output.id
+                ] !== undefined ? (
                   <div className="mt-3 space-y-2">
-                    {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id].map((update) => (
+                    {updatesByOutputId[
+                      runsByRouteId[routeRecommendation.id].output.id
+                    ].map((update) => (
                       <div className="update-projection" key={update.id}>
                         <div>
                           <span>{formatLabel(update.destination)}</span>
@@ -372,15 +415,25 @@ export function AssistedCapturePanel({
                 <dl className="mt-2 space-y-2 text-xs text-slate-300">
                   <div>
                     <dt>Inputs</dt>
-                    <dd>{provenanceByRouteId[routeRecommendation.id].input_refs.join(", ")}</dd>
+                    <dd>
+                      {provenanceByRouteId[
+                        routeRecommendation.id
+                      ].input_refs.join(", ")}
+                    </dd>
                   </div>
                   <div>
                     <dt>Capability chain</dt>
-                    <dd>{provenanceByRouteId[routeRecommendation.id].capability_chain.join(" -> ")}</dd>
+                    <dd>
+                      {provenanceByRouteId[
+                        routeRecommendation.id
+                      ].capability_chain.join(" -> ")}
+                    </dd>
                   </div>
                   <div>
                     <dt>Reasoning</dt>
-                    <dd>{provenanceByRouteId[routeRecommendation.id].reasoning[0]}</dd>
+                    <dd>
+                      {provenanceByRouteId[routeRecommendation.id].reasoning[0]}
+                    </dd>
                   </div>
                 </dl>
               </div>

@@ -19,6 +19,7 @@ class RuntimeSettings(BaseModel):
     public_app_name: str = "Ariadne Thread"
     ariadne_env: str = "development"
     ariadne_workspace: str = "default"
+    ariadne_opportunities_dir: Path = Field(default=Path(".ariadne/opportunities"))
     ariadne_evidence_dir: Path = Field(default=Path(".ariadne/evidence"))
     ariadne_document_intake_dir: Path = Field(default=Path(".ariadne/document-intake"))
     ariadne_piid_profiles_dir: Path = Field(default=Path(".ariadne/piid-profiles"))
@@ -75,6 +76,12 @@ class RuntimeSettings(BaseModel):
             ),
             ariadne_workspace=values.get(
                 "ARIADNE_WORKSPACE", cls.model_fields["ariadne_workspace"].default
+            ),
+            ariadne_opportunities_dir=Path(
+                values.get(
+                    "ARIADNE_OPPORTUNITIES_DIR",
+                    str(cls.model_fields["ariadne_opportunities_dir"].default),
+                )
             ),
             ariadne_evidence_dir=Path(
                 values.get(

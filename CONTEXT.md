@@ -26,6 +26,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Command Center: the single working surface where opportunity data, evidence, recommendations, decisions, actions, HITL sessions, plans, agents, and artifacts are connected for active capture work.
 - Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
 - Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
+- Opportunity Intake: the command surface and API flow where the user identifies an Opportunity and Ariadne creates the standardized local workspace for capture work.
+- Standard Opportunity Scaffold: the generated starting structure for one Opportunity, including the Opportunity record, core capture workstreams, backfill needs, Living Packet sections, packet-field action slots, and initial Autonomy Digest.
 - Opportunity Activation Run: a bounded autonomous sweep Ariadne performs after opportunity identification or on user request to gather permitted context, evaluate required packet fields, run low-risk or pre-approved capabilities, identify skills/chains/MCP routes, record source limitations, and queue reviewable candidates or approval requests.
 - Autonomy Digest: the compact UX summary of autonomous or background work, showing coverage gained, field candidates ready for review, blocked fields, source limitations, recommended skills/chains, approvals needed, and next-best actions while keeping raw tool traces secondary.
 - Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
@@ -209,6 +211,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Relationships
 
 - An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
+- **Opportunity Intake** creates a **Standard Opportunity Scaffold** before deeper activation, research, or artifact work begins.
 - An **Opportunity Activation Run** can start after an **Opportunity** is created, imported, selected, or materially refreshed, and it should produce reviewable candidates and route recommendations rather than silently creating trusted capture records.
 - An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
 - **Shipley Phases** can map to **Lifecycle States**, but **Lifecycle State** remains Ariadne's canonical maturity model.

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { ComponentType } from "react";
 import { AssistedCapturePanel, type AssistedCaptureGoal } from "../components/AssistedCapturePanel";
+import { OpportunityIntakePanel } from "../components/OpportunityIntakePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -237,6 +238,8 @@ export default async function CommandCenterPage() {
             <Metric label="Gaps" value={workspace.context_summary.gap_count.toString()} tone="rose" />
             <Metric label="Limits" value={workspace.context_summary.source_limitation_count.toString()} tone="signal" />
           </div>
+
+          <OpportunityIntakePanel />
 
           <AssistedCapturePanel
             goals={workspace.assisted_capture_goals}

@@ -1,12 +1,28 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from hashlib import sha256
 from pathlib import Path
+import re
 
 from pydantic import BaseModel
 
 from ariadne.config import RuntimeSettings
-from ariadne.packets import EvidenceStatus
+from ariadne.opportunities import (
+    CoreCaptureWorkstream,
+    EntryContext,
+    EntryReason,
+    LifecycleState,
+    create_opportunity,
+)
+from ariadne.packet_knowledge import (
+    AnswerPathKind,
+    PacketFieldAnswerStatus,
+    PacketFieldDefinition,
+    build_default_packet_field_definitions,
+    create_packet_field_answer,
+)
+from ariadne.packets import EvidenceStatus, create_living_briefing_packet
 from ariadne.quick_capture_demo import build_quick_capture_demo_thread
 
 
@@ -42,6 +58,69 @@ class ProductionCommandCenterWorkMode(BaseModel):
     id: str
     label: str
     pending_count: int = 0
+
+
+class ProductionOpportunityIntakeRequest(BaseModel):
+    name: str
+    entry_reason: EntryReason = EntryReason.NEW_LEAD
+    starting_lifecycle_state: LifecycleState = LifecycleState.IDENTIFIED
+    rationale: str | None = None
+    missing_or_stale_workstreams: tuple[CoreCaptureWorkstream, ...] = ()
+
+
+class ProductionOpportunityWorkstream(BaseModel):
+    id: str
+    label: str
+    status: str
+
+
+class ProductionOpportunityBackfillNeed(BaseModel):
+    workstream_id: str
+    label: str
+    rationale: str
+
+
+class ProductionOpportunityPacketSection(BaseModel):
+    id: str
+    label: str
+    evidence_status: str
+
+
+class ProductionOpportunityPacketFieldSlot(BaseModel):
+    key: str
+    label: str
+    question: str
+    section: str
+    status: str
+    evidence_status: str
+    answer_paths: tuple[str, ...]
+    recommended_route: str
+
+
+class OpportunityActivationDigest(BaseModel):
+    coverage_gained: tuple[str, ...]
+    review_ready_count: int
+    blocked_field_count: int
+    recommended_skill_chains: tuple[str, ...]
+    approval_required_routes: tuple[str, ...]
+    source_limitations: tuple[str, ...]
+    next_best_actions: tuple[str, ...]
+
+
+class ProductionOpportunityScaffold(BaseModel):
+    opportunity: ProductionCommandCenterOpportunity
+    entry_reason: str
+    entry_rationale: str
+    workstreams: tuple[ProductionOpportunityWorkstream, ...]
+    backfill_needs: tuple[ProductionOpportunityBackfillNeed, ...]
+    packet: ProductionCommandCenterPacket
+    packet_sections: tuple[ProductionOpportunityPacketSection, ...]
+    packet_fields: tuple[ProductionOpportunityPacketFieldSlot, ...]
+    activation_digest: OpportunityActivationDigest
+
+
+class ProductionOpportunityCreateResponse(BaseModel):
+    scaffold: ProductionOpportunityScaffold
 
 
 class AssistedCaptureWorkProduct(StrEnum):
@@ -303,6 +382,43 @@ class ProductionCommandCenterWorkspace(BaseModel):
     assisted_capture_goals: tuple[AssistedCaptureGoal, ...]
 
 
+class OpportunityScaffoldStore:
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root)
+
+    def write_scaffold(
+        self,
+        scaffold: ProductionOpportunityScaffold,
+    ) -> ProductionOpportunityScaffold:
+        self._scaffold_path(scaffold.opportunity.id).write_text(
+            scaffold.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return scaffold
+
+    def read_scaffold(self, opportunity_id: str) -> ProductionOpportunityScaffold:
+        return ProductionOpportunityScaffold.model_validate_json(
+            self._scaffold_path(opportunity_id).read_text(encoding="utf-8")
+        )
+
+    def has_scaffold(self, opportunity_id: str) -> bool:
+        return self._scaffold_path(opportunity_id).exists()
+
+    def list_scaffolds(self) -> tuple[ProductionOpportunityScaffold, ...]:
+        return tuple(
+            ProductionOpportunityScaffold.model_validate_json(
+                path.read_text(encoding="utf-8")
+            )
+            for path in sorted(self.root.glob("*.json"))
+        )
+
+    def _scaffold_path(self, opportunity_id: str) -> Path:
+        if not opportunity_id or opportunity_id != Path(opportunity_id).name:
+            raise ValueError("opportunity_id must be a file-safe identifier")
+        self.root.mkdir(parents=True, exist_ok=True)
+        return self.root / f"{opportunity_id}.json"
+
+
 class WorkflowRoutingStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
@@ -502,6 +618,94 @@ CAPABILITY_STEP_METADATA: dict[str, tuple[str, str, str, str]] = {
 }
 
 
+def create_standard_opportunity_scaffold(
+    *,
+    request: ProductionOpportunityIntakeRequest,
+    store: OpportunityScaffoldStore,
+) -> ProductionOpportunityScaffold:
+    opportunity_name = request.name.strip()
+    if not opportunity_name:
+        raise ValueError("Opportunity name is required")
+
+    rationale = (
+        request.rationale.strip()
+        if request.rationale and request.rationale.strip()
+        else "Capture operator identified this Opportunity for Ariadne activation."
+    )
+    opportunity_id = _opportunity_id_from_name(opportunity_name)
+    entry_context = EntryContext(
+        reason=request.entry_reason,
+        starting_lifecycle_state=request.starting_lifecycle_state,
+        rationale=rationale,
+        missing_or_stale_workstreams=set(request.missing_or_stale_workstreams),
+    )
+    opportunity = create_opportunity(
+        name=opportunity_name,
+        entry_context=entry_context,
+    )
+    packet = create_living_briefing_packet(opportunity)
+    packet_states = tuple(packet.sections.values())
+    definitions = build_default_packet_field_definitions()
+    packet_field_slots = tuple(
+        _packet_field_slot_for_new_opportunity(
+            opportunity_id=opportunity_id,
+            definition=definition,
+        )
+        for definition in definitions
+    )
+
+    scaffold = ProductionOpportunityScaffold(
+        opportunity=ProductionCommandCenterOpportunity(
+            id=opportunity_id,
+            name=opportunity.name,
+            lifecycle_state=opportunity.lifecycle_state.value,
+            gate_status="opportunity_activation_ready",
+        ),
+        entry_reason=entry_context.reason.value,
+        entry_rationale=entry_context.rationale,
+        workstreams=tuple(
+            ProductionOpportunityWorkstream(
+                id=workstream.value,
+                label=_label_from_identifier(workstream.value),
+                status=state.status.value,
+            )
+            for workstream, state in opportunity.workstreams.items()
+        ),
+        backfill_needs=tuple(
+            ProductionOpportunityBackfillNeed(
+                workstream_id=need.workstream.value,
+                label=_label_from_identifier(need.workstream.value),
+                rationale=need.rationale,
+            )
+            for need in opportunity.backfill_needs
+        ),
+        packet=ProductionCommandCenterPacket(
+            title="Living Milestone Decision Briefing Packet",
+            readiness_label=packet.readiness.value,
+            answered_section_count=0,
+            gap_section_count=sum(
+                1 for state in packet_states if state.evidence_status is EvidenceStatus.GAP
+            ),
+            partial_section_count=0,
+        ),
+        packet_sections=tuple(
+            ProductionOpportunityPacketSection(
+                id=state.section.value,
+                label=_label_from_identifier(state.section.value),
+                evidence_status=state.evidence_status.value,
+            )
+            for state in packet_states
+        ),
+        packet_fields=packet_field_slots,
+        activation_digest=_activation_digest_for_new_opportunity(
+            packet_field_count=len(packet_field_slots),
+            packet_section_count=len(packet_states),
+            workstream_count=len(opportunity.workstreams),
+        ),
+    )
+    return store.write_scaffold(scaffold)
+
+
 def build_production_command_center_workspace(
     settings: RuntimeSettings,
     *,
@@ -678,6 +882,14 @@ def recommend_assisted_capture_routes(
     )
 
 
+def production_opportunity_context_exists(
+    opportunity_id: str,
+    *,
+    store: OpportunityScaffoldStore,
+) -> bool:
+    return opportunity_id == "opp-aflcmc-recompete" or store.has_scaffold(opportunity_id)
+
+
 def execute_assisted_capture_route(
     *,
     store: WorkflowRoutingStore,
@@ -827,6 +1039,91 @@ def list_work_product_update_projections(
     for update in updates:
         summary[update.destination.value] = summary.get(update.destination.value, 0) + 1
     return WorkProductUpdateListResponse(updates=updates, summary=summary)
+
+
+def _opportunity_id_from_name(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    stable_slug = slug[:48].strip("-") or "opportunity"
+    digest = sha256(name.encode("utf-8")).hexdigest()[:10]
+    return f"opp-{stable_slug}-{digest}"
+
+
+def _label_from_identifier(identifier: str) -> str:
+    return " ".join(part.capitalize() for part in identifier.split("_"))
+
+
+def _packet_field_slot_for_new_opportunity(
+    *,
+    opportunity_id: str,
+    definition: PacketFieldDefinition,
+) -> ProductionOpportunityPacketFieldSlot:
+    answer = create_packet_field_answer(
+        field_key=definition.key,
+        opportunity_id=opportunity_id,
+        status=PacketFieldAnswerStatus.UNANSWERED,
+        evidence_status=EvidenceStatus.GAP,
+        gap_summary=f"{definition.label} has not been answered for this Opportunity.",
+        provenance_note="Created by the production Opportunity intake scaffold.",
+    )
+    return ProductionOpportunityPacketFieldSlot(
+        key=definition.key,
+        label=definition.label,
+        question=definition.question,
+        section=definition.section.value,
+        status=answer.status.value,
+        evidence_status=answer.evidence_status.value,
+        answer_paths=tuple(path.label for path in definition.answer_paths),
+        recommended_route=_recommended_route_for_definition(definition),
+    )
+
+
+def _recommended_route_for_definition(definition: PacketFieldDefinition) -> str:
+    kinds = {path.kind for path in definition.answer_paths}
+    if AnswerPathKind.CAPABILITY_MODULE in kinds:
+        return "Recommend a capability or skill-backed research route."
+    if AnswerPathKind.EVIDENCE_EXTRACTION in kinds:
+        return "Inspect source material and extract a reviewable answer candidate."
+    if AnswerPathKind.IMPORTED_DATA in kinds:
+        return "Import or lookup source-profile data before synthesis."
+    if AnswerPathKind.MODEL_SYNTHESIS in kinds:
+        return "Synthesize a reviewable answer from accepted evidence and gaps."
+    return "Ask the capture lead or prepare a customer follow-up question."
+
+
+def _activation_digest_for_new_opportunity(
+    *,
+    packet_field_count: int,
+    packet_section_count: int,
+    workstream_count: int,
+) -> OpportunityActivationDigest:
+    return OpportunityActivationDigest(
+        coverage_gained=(
+            f"Created {workstream_count} standard capture workstreams.",
+            f"Created {packet_section_count} Living Packet sections.",
+            f"Created {packet_field_count} packet field action slots.",
+        ),
+        review_ready_count=0,
+        blocked_field_count=packet_field_count,
+        recommended_skill_chains=(
+            "source-profile lookup -> packet implication -> action recommendation",
+            "research brief -> customer insight -> call-plan prep",
+            "requirements fit -> packet implication -> action recommendation",
+        ),
+        approval_required_routes=(
+            "Approve live source collection before public web research runs.",
+            "Approve official attachment downloads before document intake.",
+            "Review customer-facing material before export or delivery.",
+        ),
+        source_limitations=(
+            "No accepted source evidence is attached to this Opportunity yet.",
+            "No source profile has been selected for deterministic lookup yet.",
+        ),
+        next_best_actions=(
+            "Attach source material or approve source discovery.",
+            "Run the Packet Field Action Matrix against the new scaffold.",
+            "Prepare customer questions for fields Ariadne cannot answer safely.",
+        ),
+    )
 
 
 def _goal_by_id(goal_id: str) -> AssistedCaptureGoal:

@@ -190,14 +190,19 @@ from ariadne.production_command_center import (
     AssistedRouteRunResponse,
     ProductionCommandCenterWorkspace,
     ProductionCommandCenterHealthResponse,
+    ProductionOpportunityCreateResponse,
+    ProductionOpportunityIntakeRequest,
+    OpportunityScaffoldStore,
     WorkflowRoutingStore,
     WorkProductUpdateListResponse,
     RendererReadinessResponse,
     build_production_command_center_workspace,
     build_renderer_readiness,
+    create_standard_opportunity_scaffold,
     execute_assisted_capture_route,
     get_assisted_route_provenance,
     list_work_product_update_projections,
+    production_opportunity_context_exists,
     production_command_center_health,
     recommend_assisted_capture_routes,
     review_assisted_route_output,
@@ -589,6 +594,19 @@ def create_app(
     def production_command_center_renderer_readiness() -> RendererReadinessResponse:
         return build_renderer_readiness()
 
+    @app.post("/api/production-command-center/opportunities")
+    def production_command_center_create_opportunity(
+        request: ProductionOpportunityIntakeRequest,
+    ) -> ProductionOpportunityCreateResponse:
+        try:
+            scaffold = create_standard_opportunity_scaffold(
+                request=request,
+                store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return ProductionOpportunityCreateResponse(scaffold=scaffold)
+
     @app.post(
         "/api/production-command-center/opportunities/{opportunity_id}/"
         "route-recommendations"
@@ -597,7 +615,10 @@ def create_app(
         opportunity_id: str,
         request: AssistedRouteRecommendationRequest,
     ) -> AssistedRouteRecommendationResponse:
-        if opportunity_id != "opp-aflcmc-recompete":
+        if not production_opportunity_context_exists(
+            opportunity_id,
+            store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+        ):
             raise HTTPException(status_code=404, detail="Opportunity context not found")
         try:
             return recommend_assisted_capture_routes(

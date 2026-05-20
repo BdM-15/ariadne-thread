@@ -60,6 +60,7 @@
 - Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface was reviewed by the maintainer and accepted as good enough for this stage.
 - The production Command Center UI review branch (`11-build/production-command-center-ui`) implements the first route-first tracer: a Next.js Opportunity workspace, Living Packet center surface, assisted capture goal selector, deterministic route recommendations, local route execution, explicit human review gate, provenance view, capability route cards, before/after work-product projections, renderer readiness surface, and local HTTP/browser smoke validation. This proves the interaction loop, but it is not the full capture platform.
 - Product direction clarified: once an Opportunity is identified, Ariadne should run a bounded Opportunity Activation Run that gathers as many packet-field answers, source-backed candidates, recommendations, source limitations, and skill/capability route matches as current permissions allow. The UX must present that work as compact coverage, deltas, review queues, and next-best actions rather than as a clunky pile of tools.
+- The same review branch now includes the first Opportunity Intake path: a production Command Center API and compact Next.js right-rail panel can create a user-identified Opportunity and persist a Standard Opportunity Scaffold with core workstreams, Living Packet sections, packet-field action slots, and an initial Autonomy Digest.
 
 **Still Deferred**
 
@@ -678,6 +679,7 @@ The MVP must let the user:
 - accumulate that context into the **Living Milestone Decision Briefing Packet** as the primary working artifact for gate readiness and capture judgment.
 - manage multiple Opportunities across lifecycle state, pursuit status, archive/outcome state, source freshness, and next-action urgency, while keeping packet answers scoped to the selected Opportunity.
 - run or queue a bounded Opportunity Activation Run once an Opportunity is identified, so Ariadne can research permitted sources, gather as many packet-field answers or candidates as possible, identify recommendations, match skills/capabilities, and expose remaining gaps without waiting for the user to manually visit every tool.
+- create a Standard Opportunity Scaffold from a user-identified opportunity name and entry context, including core capture workstreams, Living Packet sections, packet-field action slots, and activation status.
 - treat every required Living Packet data element or Packet Field Definition as an actionable slot: show status, source support, gaps, answer paths, recommended routes, and at least one AI/capability/user action to answer or advance it.
 - see the most important gaps, risks, source limitations, recommended actions, and relevant capability routes for the opportunity.
 - run or request AI/LLM assistance, installed skills, short skill chains, source collection, federal-data tools, document-intake actions, renderers, and capture/marketing capabilities from inside product workflows through Capability Modules.
@@ -760,7 +762,7 @@ Goal: once an Opportunity is identified, make Ariadne automatically inventory th
 Deliverables:
 
 - Add an Opportunity Portfolio surface and API for active, future, past, held, archived, won, and lost Opportunities, with lifecycle state, next-action urgency, source freshness, packet readiness, and review counts.
-- Add create/import/update/archive behavior for Opportunities with local-first persistence and deterministic tests.
+- Add create/import/update/archive behavior for Opportunities with local-first persistence and deterministic tests, beginning with a Create Opportunity command that produces a Standard Opportunity Scaffold.
 - Add an Opportunity Activation Run that can start from opportunity creation/import or a user action, then evaluate required packet fields, known source profiles, accepted evidence, documents, capture research options, federal-data capabilities, local skills, source limitations, and approval requirements.
 - Allow the activation run to perform low-risk/local or pre-approved gathering automatically, while queuing external calls, paid/credit-spending providers, broad research, and sensitive/customer-facing work for explicit approval.
 - Present activation results as an Autonomy Digest: coverage gained, field candidates ready for review, blocked fields, recommended skills/chains, MCP/source-provider routes, approvals needed, and next-best actions.

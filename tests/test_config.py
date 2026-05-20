@@ -13,6 +13,14 @@ def test_artifact_assembly_dir_uses_configured_local_store_path() -> None:
     )
 
 
+def test_opportunities_dir_uses_configured_local_store_path() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_OPPORTUNITIES_DIR": ".ariadne/opportunities-test"}
+    )
+
+    assert settings.ariadne_opportunities_dir == Path(".ariadne/opportunities-test")
+
+
 def test_capture_research_source_provider_env_exposes_configured_connectors() -> None:
     settings = RuntimeSettings.from_mapping(
         {

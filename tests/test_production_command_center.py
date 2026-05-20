@@ -11,6 +11,7 @@ def _command_center_settings(tmp_path):
             "ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR": str(
                 tmp_path / "next-action-recommendations"
             ),
+            "ARIADNE_OPPORTUNITIES_DIR": str(tmp_path / "opportunities"),
             "ARIADNE_WORKFLOW_ROUTING_DIR": str(tmp_path / "workflow-routing"),
         }
     )
@@ -63,6 +64,79 @@ def test_production_command_center_workspace_api_exposes_opportunity_context(
         "close_packet_gap",
         "build_capture_action_plan",
     ]
+
+
+def test_production_command_center_can_create_standard_opportunity_scaffold(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+
+    response = client.post(
+        "/api/production-command-center/opportunities",
+        json={
+            "name": "DISA cloud sustainment watch",
+            "entry_reason": "new_lead",
+            "starting_lifecycle_state": "identified",
+            "rationale": "Analyst spotted a future recompete signal.",
+            "missing_or_stale_workstreams": [
+                "customer_insight",
+                "competitive_intelligence",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    scaffold = response.json()["scaffold"]
+    assert scaffold["opportunity"]["id"].startswith(
+        "opp-disa-cloud-sustainment-watch-"
+    )
+    assert scaffold["opportunity"]["name"] == "DISA cloud sustainment watch"
+    assert scaffold["opportunity"]["lifecycle_state"] == "identified"
+    assert scaffold["opportunity"]["gate_status"] == "opportunity_activation_ready"
+    assert scaffold["entry_reason"] == "new_lead"
+    assert len(scaffold["workstreams"]) == 10
+    assert {need["workstream_id"] for need in scaffold["backfill_needs"]} == {
+        "customer_insight",
+        "competitive_intelligence",
+    }
+    assert scaffold["packet"]["title"] == "Living Milestone Decision Briefing Packet"
+    assert scaffold["packet"]["readiness_label"] == "not_ready"
+    assert scaffold["packet"]["gap_section_count"] == 8
+    assert len(scaffold["packet_sections"]) == 8
+    assert len(scaffold["packet_fields"]) >= 8
+    assert all(field["status"] == "unanswered" for field in scaffold["packet_fields"])
+    assert all(field["evidence_status"] == "gap" for field in scaffold["packet_fields"])
+    digest = scaffold["activation_digest"]
+    assert digest["blocked_field_count"] == len(scaffold["packet_fields"])
+    assert digest["review_ready_count"] == 0
+    assert "Created 10 standard capture workstreams." in digest["coverage_gained"]
+    assert digest["recommended_skill_chains"]
+    assert digest["approval_required_routes"]
+    assert digest["next_best_actions"]
+
+
+def test_created_opportunity_can_receive_route_recommendations(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap"},
+    )
+
+    assert response.status_code == 200
+    recommendation = response.json()["recommendations"][0]
+    assert recommendation["opportunity_id"] == opportunity_id
+    assert recommendation["id"].startswith(f"route_{opportunity_id}_close_packet_gap")
 
 
 def test_assisted_capture_goal_selection_returns_reviewable_routes(tmp_path) -> None:

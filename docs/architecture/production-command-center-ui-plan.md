@@ -252,6 +252,7 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 ### MVP-1B Packet Field + Portfolio UI
 
 - Opportunity Portfolio list and switcher for active, future/watchlist, held, archived, won, and lost Opportunities.
+- Opportunity Intake command for creating a user-identified Opportunity and showing the generated Standard Opportunity Scaffold.
 - selected Opportunity summary with lifecycle state, packet readiness, source freshness, review count, and next-action urgency.
 - Opportunity Activation Run entry point and resume state after create/import/select.
 - Autonomy Digest showing coverage gained, review-ready field candidates, blocked fields, recommended skills/chains, MCP/source-provider routes, approvals needed, and next-best actions.
@@ -307,6 +308,7 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 Production UI is good enough for MVP only when user can:
 
 - open one Opportunity.
+- create a user-identified Opportunity and see its generated standard scaffold.
 - switch among multiple Opportunities in active, future/watchlist, and past/archive states.
 - launch or resume an Opportunity Activation Run without entering separate tool screens.
 - understand the Autonomy Digest in under 30 seconds.

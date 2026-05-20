@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -54,6 +55,34 @@ class KnowledgeVaultValidationIssue(BaseModel):
 class KnowledgeVaultValidationReport(BaseModel):
     valid: bool
     issues: tuple[KnowledgeVaultValidationIssue, ...]
+
+
+class KnowledgeVaultHealthIssue(BaseModel):
+    path: str
+    code: str
+    message: str
+
+
+class KnowledgeVaultMigrationCoverageSummary(BaseModel):
+    present: bool
+    incorporated_count: int
+    skipped_count: int
+    pending_count: int
+    temporary_source_notice: str
+
+
+class KnowledgeVaultHealthReport(BaseModel):
+    vault_root: str
+    report_path: str
+    healthy: bool
+    issue_count: int
+    orphan_pages_count: int
+    weakly_sourced_pages_count: int
+    missing_source_refs_count: int
+    unconnected_data_elements_count: int
+    weak_relationship_provenance_count: int
+    migration_coverage: KnowledgeVaultMigrationCoverageSummary
+    issues: tuple[KnowledgeVaultHealthIssue, ...]
 
 
 class PacketDataElementPageStatus(BaseModel):
@@ -253,6 +282,96 @@ def list_packet_data_element_page_status(
         missing_count=sum(1 for page in pages if not page.exists),
         unconnected_count=sum(1 for page in pages if page.exists and not page.connected),
     )
+
+
+def generate_knowledge_vault_health_report(
+    vault_root: Path | str,
+) -> KnowledgeVaultHealthReport:
+    root = Path(vault_root)
+    ensure_knowledge_vault_scaffold(root)
+    pages = tuple(_health_pages(root))
+    incoming_targets = _incoming_page_targets(pages)
+    issues: list[KnowledgeVaultHealthIssue] = []
+
+    for page in pages:
+        path = page["path"]
+        frontmatter = page["frontmatter"]
+        page_type = str(frontmatter.get("page_type", "")).strip()
+        source_refs = _frontmatter_list(frontmatter.get("source_refs"))
+        relationships = _frontmatter_list(frontmatter.get("relationships"))
+        wikilinks = _wikilinks(page["body"])
+
+        if not source_refs:
+            issues.append(
+                KnowledgeVaultHealthIssue(
+                    path=path,
+                    code="missing_source_refs",
+                    message="Vault page has no source_refs frontmatter.",
+                )
+            )
+        elif _has_weak_source_refs(source_refs):
+            issues.append(
+                KnowledgeVaultHealthIssue(
+                    path=path,
+                    code="weak_source_refs",
+                    message="Vault page has placeholder or weak source_refs.",
+                )
+            )
+
+        if page_type == "global_data_element" and (not source_refs or not relationships):
+            issues.append(
+                KnowledgeVaultHealthIssue(
+                    path=path,
+                    code="unconnected_data_element",
+                    message="Global data element lacks source refs or typed relationships.",
+                )
+            )
+
+        if page_type == "relationship" and (
+            not source_refs or _has_weak_source_refs(source_refs)
+        ):
+            issues.append(
+                KnowledgeVaultHealthIssue(
+                    path=path,
+                    code="weak_relationship_provenance",
+                    message="Relationship page lacks strong provenance.",
+                )
+            )
+
+        if not relationships and not wikilinks and path not in incoming_targets:
+            issues.append(
+                KnowledgeVaultHealthIssue(
+                    path=path,
+                    code="orphan_page",
+                    message="Vault page has no typed relationships, wikilinks, or inbound links.",
+                )
+            )
+
+    report_path = "reports/vault-health.md"
+    migration_coverage = _migration_coverage_summary(root)
+    report = KnowledgeVaultHealthReport(
+        vault_root=str(root),
+        report_path=report_path,
+        healthy=not issues,
+        issue_count=len(issues),
+        orphan_pages_count=_count_issues(issues, "orphan_page"),
+        weakly_sourced_pages_count=_count_issues(issues, "weak_source_refs"),
+        missing_source_refs_count=_count_issues(issues, "missing_source_refs"),
+        unconnected_data_elements_count=_count_issues(
+            issues,
+            "unconnected_data_element",
+        ),
+        weak_relationship_provenance_count=_count_issues(
+            issues,
+            "weak_relationship_provenance",
+        ),
+        migration_coverage=migration_coverage,
+        issues=tuple(issues),
+    )
+    health_path = root / report_path
+    health_path.parent.mkdir(parents=True, exist_ok=True)
+    health_path.write_text(_health_report_template(report), encoding="utf-8")
+    return report
 
 
 def validate_knowledge_vault_pages(vault_root: Path | str) -> KnowledgeVaultValidationReport:
@@ -462,6 +581,159 @@ def _packet_data_element_relationships(
         f"candidate_reusable_insight:reusable-insights/{definition.key}",
     )
     return gate_relationships + route_relationships
+
+
+def _health_pages(root: Path) -> tuple[dict[str, object], ...]:
+    pages: list[dict[str, object]] = []
+    for page_path in sorted(root.rglob("*.md")):
+        relative_path = _relative_markdown_path(root, page_path)
+        if relative_path in _SCAFFOLD_MARKDOWN_PATHS or relative_path == "reports/vault-health.md":
+            continue
+        frontmatter = _read_frontmatter(page_path)
+        if frontmatter is None:
+            continue
+        pages.append(
+            {
+                "path": relative_path,
+                "frontmatter": frontmatter,
+                "body": _body_without_frontmatter(page_path),
+            }
+        )
+    return tuple(pages)
+
+
+def _incoming_page_targets(pages: tuple[dict[str, object], ...]) -> frozenset[str]:
+    targets: set[str] = set()
+    for page in pages:
+        frontmatter = page["frontmatter"]
+        if not isinstance(frontmatter, dict):
+            continue
+        for relationship in _frontmatter_list(frontmatter.get("relationships")):
+            target = _relationship_target_path(relationship)
+            if target:
+                targets.add(target)
+        for wikilink in _wikilinks(str(page["body"])):
+            targets.add(_normalize_link_target(wikilink))
+    return frozenset(targets)
+
+
+def _relationship_target_path(relationship: str) -> str | None:
+    _, separator, target = relationship.partition(":")
+    if not separator or not target:
+        return None
+    return _normalize_link_target(target)
+
+
+def _normalize_link_target(target: str) -> str:
+    normalized = target.split("|", 1)[0].split("#", 1)[0].strip().strip("/")
+    if not normalized or normalized.startswith(("workflow/", "capability/", "milestone_")):
+        return normalized
+    if Path(normalized).suffix:
+        return normalized
+    return f"{normalized}.md"
+
+
+def _wikilinks(body: str) -> tuple[str, ...]:
+    return tuple(match.strip() for match in re.findall(r"\[\[([^\]]+)\]\]", body))
+
+
+def _has_weak_source_refs(source_refs: tuple[str, ...]) -> bool:
+    weak_markers = ("unknown", "placeholder", "todo", "manual:unknown", "missing")
+    return any(
+        any(marker in source_ref.lower() for marker in weak_markers)
+        for source_ref in source_refs
+    )
+
+
+def _count_issues(issues: list[KnowledgeVaultHealthIssue], code: str) -> int:
+    return sum(1 for issue in issues if issue.code == code)
+
+
+def _migration_coverage_summary(root: Path) -> KnowledgeVaultMigrationCoverageSummary:
+    coverage_path = root / "migration" / "project-ariadne-coverage.md"
+    temporary_notice = "old corpus remains temporary until final retirement"
+    if not coverage_path.exists():
+        return KnowledgeVaultMigrationCoverageSummary(
+            present=False,
+            incorporated_count=0,
+            skipped_count=0,
+            pending_count=0,
+            temporary_source_notice=temporary_notice,
+        )
+    text = coverage_path.read_text(encoding="utf-8")
+    return KnowledgeVaultMigrationCoverageSummary(
+        present=True,
+        incorporated_count=_extract_coverage_count(text, "incorporated"),
+        skipped_count=_extract_coverage_count(text, "skipped"),
+        pending_count=_extract_coverage_count(text, "pending"),
+        temporary_source_notice=temporary_notice,
+    )
+
+
+def _extract_coverage_count(text: str, label: str) -> int:
+    match = re.search(rf"{re.escape(label)}:\s*(\d+)", text)
+    if not match:
+        return 0
+    return int(match.group(1))
+
+
+def _health_report_template(report: KnowledgeVaultHealthReport) -> str:
+    issue_lines = _health_issue_lines(report.issues)
+    return f"""---
+page_type: source_summary
+title: Knowledge Vault Health Report
+source_refs: [ariadne-health:knowledge-vault]
+relationships: [supports:knowledge-vault/health]
+---
+
+# Knowledge Vault Health Report
+
+## Summary
+
+- healthy: {str(report.healthy).lower()}
+- issue_count: {report.issue_count}
+- orphan_pages: {report.orphan_pages_count}
+- weakly_sourced_pages: {report.weakly_sourced_pages_count}
+- missing_source_refs: {report.missing_source_refs_count}
+- unconnected_data_elements: {report.unconnected_data_elements_count}
+- weak_relationship_provenance: {report.weak_relationship_provenance_count}
+
+## Migration Coverage
+
+- present: {str(report.migration_coverage.present).lower()}
+- incorporated: {report.migration_coverage.incorporated_count}
+- skipped: {report.migration_coverage.skipped_count}
+- pending: {report.migration_coverage.pending_count}
+- {report.migration_coverage.temporary_source_notice}
+
+## Issues
+
+{issue_lines}
+
+## Boundary
+
+This health path uses Markdown files, frontmatter, wikilinks, and typed
+relationships only. It does not require semantic retrieval, RAG, LightRAG, or a
+graph database.
+"""
+
+
+def _health_issue_lines(issues: tuple[KnowledgeVaultHealthIssue, ...]) -> str:
+    if not issues:
+        return "- None"
+    return "\n".join(
+        f"- `{issue.path}`: {issue.code} - {issue.message}" for issue in issues
+    )
+
+
+def _body_without_frontmatter(path: Path) -> str:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return "\n".join(lines)
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            return "\n".join(lines[index + 1 :])
+    return "\n".join(lines)
 
 
 def _required_paths() -> tuple[str, ...]:

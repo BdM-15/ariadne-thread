@@ -1,10 +1,12 @@
 from ariadne.knowledge_vault import (
     ensure_knowledge_vault_scaffold,
     ensure_packet_data_element_pages,
+    generate_knowledge_vault_health_report,
     validate_knowledge_vault_pages,
 )
 from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import build_default_packet_field_definitions
+from ariadne.project_ariadne_migration import migrate_project_ariadne_slice
 
 
 def test_knowledge_vault_scaffold_creates_required_wiki_shape(tmp_path) -> None:
@@ -262,3 +264,173 @@ def test_packet_data_element_api_reports_missing_and_connected_pages(
     assert scaffold_body["missing_count"] == 0
     assert scaffold_body["unconnected_count"] == 0
     assert all(page["connected"] for page in scaffold_body["pages"])
+
+
+def test_knowledge_vault_health_report_passes_connected_fixture(tmp_path) -> None:
+    vault_root = tmp_path / "vault"
+    corpus_root = tmp_path / "project-ariadne" / "knowledge"
+    source_path = "global_wiki/capture/customer-hot-button-identification.md"
+    pending_path = "global_wiki/capture/bid-no-bid-decision-framework.md"
+    (corpus_root / source_path).parent.mkdir(parents=True)
+    (corpus_root / source_path).write_text(
+        """---
+title: Customer Hot Button Identification
+entity_type: customer_priority
+---
+
+Hot buttons drive customer evaluation decisions.
+""",
+        encoding="utf-8",
+    )
+    (corpus_root / pending_path).write_text(
+        """---
+title: Bid No-Bid Decision Framework
+---
+
+Qualification discipline.
+""",
+        encoding="utf-8",
+    )
+    ensure_packet_data_element_pages(
+        vault_root,
+        build_default_packet_field_definitions(),
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+    )
+    migrate_project_ariadne_slice(
+        corpus_root,
+        vault_root,
+        source_relative_paths=(source_path,),
+    )
+
+    report = generate_knowledge_vault_health_report(vault_root)
+    report_text = (vault_root / report.report_path).read_text(encoding="utf-8")
+
+    assert report.healthy is True
+    assert report.issue_count == 0
+    assert report.migration_coverage.incorporated_count == 1
+    assert report.migration_coverage.pending_count == 1
+    assert report.migration_coverage.skipped_count == 0
+    assert "old corpus remains temporary" in report_text
+    assert "orphan_pages: 0" in report_text
+    assert "weakly_sourced_pages: 0" in report_text
+    assert "missing_source_refs: 0" in report_text
+    assert "unconnected_data_elements: 0" in report_text
+
+
+def test_knowledge_vault_health_report_flags_unhealthy_fixture(tmp_path) -> None:
+    vault_root = tmp_path / "vault"
+    ensure_knowledge_vault_scaffold(vault_root)
+    (vault_root / "capture-concepts" / "orphan.md").parent.mkdir(parents=True)
+    (vault_root / "capture-concepts" / "orphan.md").write_text(
+        """---
+page_type: capture_concept
+title: Orphan Concept
+source_refs: [project-ariadne:orphan]
+relationships: []
+---
+
+# Orphan Concept
+""",
+        encoding="utf-8",
+    )
+    (vault_root / "source-summaries").mkdir(parents=True)
+    (vault_root / "source-summaries" / "weak-source.md").write_text(
+        """---
+page_type: source_summary
+title: Weak Source
+source_refs: [manual:unknown]
+relationships: [informs:data-elements/customer]
+---
+
+# Weak Source
+""",
+        encoding="utf-8",
+    )
+    (vault_root / "source-summaries" / "missing-source.md").write_text(
+        """---
+page_type: source_summary
+title: Missing Source
+relationships: [informs:data-elements/customer]
+---
+
+# Missing Source
+""",
+        encoding="utf-8",
+    )
+    (vault_root / "data-elements" / "customer.md").write_text(
+        """---
+page_type: global_data_element
+title: Customer
+source_refs: [packet-field-definition:customer]
+relationships: []
+---
+
+# Customer
+""",
+        encoding="utf-8",
+    )
+    (vault_root / "relationships" / "weak-provenance.md").write_text(
+        """---
+page_type: relationship
+title: Weak Relationship Provenance
+source_refs: [manual:unknown]
+relationships: [supports:data-elements/customer]
+---
+
+# Weak Relationship Provenance
+""",
+        encoding="utf-8",
+    )
+
+    report = generate_knowledge_vault_health_report(vault_root)
+
+    assert report.healthy is False
+    assert {
+        issue.code for issue in report.issues
+    } >= {
+        "orphan_page",
+        "weak_source_refs",
+        "missing_source_refs",
+        "unconnected_data_element",
+        "weak_relationship_provenance",
+    }
+    assert report.orphan_pages_count >= 1
+    assert report.weakly_sourced_pages_count >= 1
+    assert report.missing_source_refs_count >= 1
+    assert report.unconnected_data_elements_count >= 1
+    assert report.weak_relationship_provenance_count >= 1
+
+
+def test_knowledge_vault_health_report_api_writes_report(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    from ariadne.config import RuntimeSettings
+    from ariadne.server import create_app
+
+    vault_root = tmp_path / "vault"
+    ensure_knowledge_vault_scaffold(vault_root)
+    (vault_root / "source-summaries").mkdir(parents=True)
+    (vault_root / "source-summaries" / "missing-source.md").write_text(
+        """---
+page_type: source_summary
+title: Missing Source
+relationships: [informs:data-elements/customer]
+---
+
+# Missing Source
+""",
+        encoding="utf-8",
+    )
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_OBSIDIAN_VAULT_DIR": str(vault_root)}
+    )
+
+    response = TestClient(create_app(settings)).post(
+        "/api/knowledge-vault/health-report"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["healthy"] is False
+    assert body["missing_source_refs_count"] == 1
+    assert (vault_root / body["report_path"]).exists()

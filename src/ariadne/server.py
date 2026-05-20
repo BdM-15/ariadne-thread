@@ -112,11 +112,13 @@ from ariadne.federal_data import (
     run_mcp_initialize_command,
 )
 from ariadne.knowledge_vault import (
+    KnowledgeVaultHealthReport,
     KnowledgeVaultReadiness,
     KnowledgeVaultSchema,
     PacketDataElementPageReport,
     ensure_knowledge_vault_scaffold,
     ensure_packet_data_element_pages,
+    generate_knowledge_vault_health_report,
     get_knowledge_vault_schema,
     inspect_knowledge_vault_readiness,
     list_packet_data_element_page_status,
@@ -640,6 +642,12 @@ def create_app(
             runtime_settings.ariadne_obsidian_vault_dir,
             build_default_packet_field_definitions(),
             current_milestone_gate=current_milestone_gate,
+        )
+
+    @app.post("/api/knowledge-vault/health-report")
+    def knowledge_vault_health_report() -> KnowledgeVaultHealthReport:
+        return generate_knowledge_vault_health_report(
+            runtime_settings.ariadne_obsidian_vault_dir
         )
 
     @app.get("/api/production-command-center/workspace")

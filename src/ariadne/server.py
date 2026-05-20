@@ -111,6 +111,11 @@ from ariadne.federal_data import (
     run_federal_data_initialize_smoke_check,
     run_mcp_initialize_command,
 )
+from ariadne.knowledge_vault import (
+    KnowledgeVaultReadiness,
+    ensure_knowledge_vault_scaffold,
+    inspect_knowledge_vault_readiness,
+)
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
 from ariadne.next_action_recommendations import (
     NextActionRecommendationStore,
@@ -593,6 +598,18 @@ def create_app(
             },
             "status": "online",
         }
+
+    @app.get("/api/knowledge-vault/readiness")
+    def knowledge_vault_readiness() -> KnowledgeVaultReadiness:
+        return inspect_knowledge_vault_readiness(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.post("/api/knowledge-vault/scaffold")
+    def knowledge_vault_scaffold() -> KnowledgeVaultReadiness:
+        return ensure_knowledge_vault_scaffold(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
 
     @app.get("/api/production-command-center/workspace")
     def production_command_center_workspace(

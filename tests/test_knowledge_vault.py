@@ -19,6 +19,11 @@ def test_knowledge_vault_scaffold_creates_required_wiki_shape(tmp_path) -> None:
     assert "typed relationships" in (
         vault_root / "foundation" / "ariadne-wiki-schema.md"
     ).read_text(encoding="utf-8")
+    schema_text = (vault_root / "foundation" / "ariadne-wiki-schema.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Project Theseus" in schema_text
+    assert "complementary capability context" in schema_text
 
     for folder in (
         "inbox",

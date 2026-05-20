@@ -172,6 +172,15 @@ includes supports, answers, informs, blocks, contradicts, derived from, evidence
 for, fills gap in, suggests route, uses capability, applies to gate, produces
 artifact block, and candidate reusable insight.
 
+## Complementary Systems
+
+Project Theseus belongs in this vault as complementary capability context: a
+solicitation parser candidate, implementation reference, and boundary/comparison
+source that can inform Ariadne workflow and adapter pages. It should be linked to
+Document Intake, Solicitation Parser Capability, Extraction Bundle, parser gap,
+and capability route pages. It does not own Ariadne opportunity-specific answers,
+trusted evidence, review decisions, or workflow state.
+
 ## Maintenance
 
 Update `index.md` for discoverability. Append `log.md` for ingests, queries,

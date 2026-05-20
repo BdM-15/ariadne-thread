@@ -212,6 +212,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 
 - An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
 - **Opportunity Intake** creates a **Standard Opportunity Scaffold** before deeper activation, research, or artifact work begins.
+- **Opportunity Intake** should ask the user for the smallest viable identification signal, usually just the Opportunity name, then let Ariadne's scaffold and activation behavior infer or queue the remaining structure.
 - An **Opportunity Activation Run** can start after an **Opportunity** is created, imported, selected, or materially refreshed, and it should produce reviewable candidates and route recommendations rather than silently creating trusted capture records.
 - An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
 - **Shipley Phases** can map to **Lifecycle States**, but **Lifecycle State** remains Ariadne's canonical maturity model.
@@ -242,6 +243,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Route-First Assisted Capture Orchestration** should be Ariadne's MVP path before broad Hermes, LangGraph, or autonomous planner behavior because the product first needs inspectable routes from knowledge and data into useful capture work.
 - An **Assisted Capture Loop** uses **Opportunity Knowledge Context** to identify capture needs, invoke or recommend **Capability Modules**, preserve **Capability Run Outputs**, and route reviewed results into the user's active capture work.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
+- A **Command Surface** should avoid detaching primary work into a persistent side rail; pulse checks, routes, and reviews belong with the Opportunity dashboard or the specific packet field, action, call plan, research, artifact, or review item they advance.
 - The **Capture Command Center** should turn data into decisions and actions rather than behaving like a passive data display.
 - **Federal Data Capabilities** can support capture analysis with public data, but their outputs remain reviewable signals until Ariadne promotes them through evidence and workflow review gates.
 - The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.

@@ -65,7 +65,8 @@ Default screen should answer:
   - Knowledge Vault entry.
   - Badges for review needs and blockers.
 
-- **Center: Living Milestone Decision Briefing Packet workspace**
+- **Main Opportunity dashboard and Living Milestone Decision Briefing Packet workspace**
+  - Descriptive pulse check signals that explain what the counts mean for capture readiness.
   - Packet readiness header.
   - Section navigation using Canonical Packet Section Model.
   - Packet Field Action Matrix with compact answer/gap/risk/recommendation blocks.
@@ -73,13 +74,18 @@ Default screen should answer:
   - Evidence status, confidence, assumptions, gaps, and source chips.
   - Inline "improve this" actions routed through Capability Modules.
 
-- **Right rail: Command and review rail**
+- **Embedded command surfaces in the main workspace**
   - Autonomy Digest for opportunity activation coverage, blockers, approvals, and next-best actions.
-  - Assisted capture goal selector.
-  - Next route recommendations.
-  - Active runs and queued work.
+  - Assisted capture goal selector connected to packet fields, action needs, call-plan needs, research needs, or artifact needs.
+  - Next route recommendations displayed with the specific Opportunity need they advance.
+  - Active runs and queued work near the route or review item they belong to.
   - Review queue grouped by destination: Evidence, Packet, Actions, Call Plan, Risk, Artifact.
   - Approval controls for external calls, broad research, final export, and sensitive actions.
+
+- **Low-friction modal command layer**
+  - Create Opportunity button opens a simple modal.
+  - The only required user input is the Opportunity name.
+  - Ariadne creates the Standard Opportunity Scaffold and initial Autonomy Digest instead of asking the user to pre-classify workstreams.
 
 - **Bottom or drawer layer: Provenance and output inspection**
   - Source drawer.
@@ -252,7 +258,7 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 ### MVP-1B Packet Field + Portfolio UI
 
 - Opportunity Portfolio list and switcher for active, future/watchlist, held, archived, won, and lost Opportunities.
-- Opportunity Intake command for creating a user-identified Opportunity and showing the generated Standard Opportunity Scaffold.
+- Opportunity Intake command for creating a user-identified Opportunity from a simple name-only modal and showing the generated Standard Opportunity Scaffold.
 - selected Opportunity summary with lifecycle state, packet readiness, source freshness, review count, and next-action urgency.
 - Opportunity Activation Run entry point and resume state after create/import/select.
 - Autonomy Digest showing coverage gained, review-ready field candidates, blocked fields, recommended skills/chains, MCP/source-provider routes, approvals needed, and next-best actions.

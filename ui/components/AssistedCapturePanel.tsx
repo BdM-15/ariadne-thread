@@ -224,19 +224,29 @@ export function AssistedCapturePanel({
   }
 
   return (
-    <section className="mt-7 border-t border-ariadne-line pt-6">
+    <section
+      className="action-route-surface"
+      aria-labelledby="action-route-title"
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-            Route
+            Opportunity Action Paths
           </p>
-          <h3 className="text-base font-semibold">Assisted Capture</h3>
+          <h3 id="action-route-title" className="text-xl font-semibold">
+            What should Ariadne advance next?
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            Pick the capture need. Ariadne prepares the next useful work and
+            returns reviewable updates for the packet, call plan, action plan,
+            research, or artifact it can improve.
+          </p>
         </div>
         <Target className="text-ariadne-cyan" size={20} aria-hidden />
       </div>
 
       <div
-        className="mt-4 space-y-2"
+        className="goal-grid mt-5"
         role="listbox"
         aria-label="Assisted capture goals"
       >
@@ -249,8 +259,11 @@ export function AssistedCapturePanel({
             onClick={() => requestRoutes(goal.id)}
             type="button"
           >
-            <span>{goal.label}</span>
-            <span>{formatLabel(goal.primary_work_product)}</span>
+            <span className="goal-title">{goal.label}</span>
+            <span className="goal-description">{goal.description}</span>
+            <span className="goal-target">
+              Improves {formatLabel(goal.primary_work_product)}
+            </span>
           </button>
         ))}
       </div>
@@ -262,13 +275,13 @@ export function AssistedCapturePanel({
         <p className="mt-4 text-sm text-ariadne-rose">{error}</p>
       ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-5 space-y-4">
         {routes.map((routeRecommendation) => (
           <article className="route-card" key={routeRecommendation.id}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">
-                  Recommended
+                  Recommended action path
                 </p>
                 <h4 className="mt-1 text-sm font-semibold text-slate-100">
                   {routeRecommendation.route_label}
@@ -276,16 +289,32 @@ export function AssistedCapturePanel({
               </div>
               <Route size={18} className="text-ariadne-copper" aria-hidden />
             </div>
-            <p className="mt-3 text-sm leading-6 text-slate-300">
-              {routeRecommendation.route_summary}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {routeRecommendation.work_product_targets.map((target) => (
-                <span className="chip" key={target}>
-                  {formatLabel(target)}
-                </span>
-              ))}
-            </div>
+            <dl className="route-context-grid">
+              <div>
+                <dt>Need it advances</dt>
+                <dd>{routeRecommendation.route_summary}</dd>
+              </div>
+              <div>
+                <dt>Output lands in</dt>
+                <dd className="chip-list">
+                  {routeRecommendation.work_product_targets.map((target) => (
+                    <span className="chip" key={target}>
+                      {formatLabel(target)}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+              <div>
+                <dt>Inputs Ariadne will use</dt>
+                <dd className="chip-list">
+                  {routeRecommendation.input_refs.map((inputRef) => (
+                    <span className="source-chip" key={inputRef}>
+                      {formatReferenceLabel(inputRef)}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            </dl>
             <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
               <ShieldCheck size={14} aria-hidden />
               <span>{formatLabel(routeRecommendation.autonomy_tier)}</span>
@@ -302,22 +331,24 @@ export function AssistedCapturePanel({
                 </div>
               ))}
             </div>
-            <button
-              className="command-button route-run-button"
-              disabled={isPending}
-              onClick={() => runRoute(routeRecommendation.id)}
-              type="button"
-            >
-              Run deterministic route
-            </button>
-            <button
-              className="command-button route-run-button"
-              disabled={isPending}
-              onClick={() => inspectProvenance(routeRecommendation.id)}
-              type="button"
-            >
-              Inspect provenance
-            </button>
+            <div className="route-action-row">
+              <button
+                className="command-button route-run-button"
+                disabled={isPending}
+                onClick={() => runRoute(routeRecommendation.id)}
+                type="button"
+              >
+                Let Ariadne prepare this
+              </button>
+              <button
+                className="command-button route-run-button"
+                disabled={isPending}
+                onClick={() => inspectProvenance(routeRecommendation.id)}
+                type="button"
+              >
+                Show reasoning and sources
+              </button>
+            </div>
             {runsByRouteId[routeRecommendation.id] !== undefined ? (
               <div className="run-output">
                 <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">
@@ -447,7 +478,23 @@ export function AssistedCapturePanel({
 
 function formatLabel(value: string): string {
   return value
+    .replace(/^ev_/, "")
+    .replace(/\./g, "_")
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatReferenceLabel(value: string): string {
+  const labels: Record<string, string> = {
+    "packet.customer_context": "Customer context in the Living Packet",
+    "packet.risks_and_gaps": "Open packet risks and gaps",
+    "evidence.ev_customer_call": "Customer call evidence",
+    "action_plan.customer_insight_backfill": "Customer insight backfill action",
+    action_plan: "Current capture action plan",
+    "packet.gaps": "Open packet gaps",
+    capability_catalog: "Available Ariadne capabilities",
+  };
+
+  return labels[value] ?? formatLabel(value);
 }

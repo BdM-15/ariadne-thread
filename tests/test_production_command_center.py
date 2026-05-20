@@ -165,7 +165,7 @@ def test_assisted_capture_goal_selection_returns_reviewable_routes(tmp_path) -> 
         "route_opp-aflcmc-recompete_prepare_customer_call_customer-call-plan"
     )
     assert primary_route["opportunity_id"] == "opp-aflcmc-recompete"
-    assert primary_route["route_label"] == "Customer call plan route"
+    assert primary_route["route_label"] == "Prepare customer call plan"
     assert primary_route["autonomy_tier"] == "human_approval_required"
     assert primary_route["requires_review"] is True
     assert primary_route["work_product_targets"] == [

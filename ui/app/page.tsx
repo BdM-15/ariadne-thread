@@ -104,6 +104,8 @@ type RendererReadinessResponse = {
   readiness: RendererReadiness;
 };
 
+type SignalTone = "cyan" | "copper" | "rose" | "signal";
+
 const modeIcons: Record<
   string,
   ComponentType<{ className?: string; size?: number }>
@@ -165,9 +167,64 @@ export default async function CommandCenterPage() {
     return <OfflineShell />;
   }
 
+  const pulseSignals = [
+    {
+      label: "Trusted context",
+      value: workspace.context_summary.trusted_count.toString(),
+      tone: "cyan" as const,
+      description:
+        "Accepted evidence, packet answers, and source-backed records Ariadne can rely on when preparing recommendations.",
+    },
+    {
+      label: "Needs review",
+      value: workspace.context_summary.reviewable_count.toString(),
+      tone: "copper" as const,
+      description:
+        "Drafts, route outputs, or candidate updates waiting for approval before they change capture work products.",
+    },
+    {
+      label: "Open gaps",
+      value: workspace.context_summary.gap_count.toString(),
+      tone: "rose" as const,
+      description:
+        "Packet or workstream questions that still block confident briefing, action, research, or call-plan decisions.",
+    },
+    {
+      label: "Source limits",
+      value: workspace.context_summary.source_limitation_count.toString(),
+      tone: "signal" as const,
+      description:
+        "Known data, document, crawl, provenance, or access limits Ariadne must work around before trusting an answer.",
+    },
+  ];
+
+  const packetSignals = [
+    {
+      label: "Supported sections",
+      value: workspace.packet.answered_section_count.toString(),
+      tone: "cyan" as const,
+      description:
+        "Sections with enough accepted support to inform the Living Milestone Decision Briefing Packet.",
+    },
+    {
+      label: "Partial sections",
+      value: workspace.packet.partial_section_count.toString(),
+      tone: "copper" as const,
+      description:
+        "Sections Ariadne can draft from current context, but where assumptions or review needs remain visible.",
+    },
+    {
+      label: "Blocked sections",
+      value: workspace.packet.gap_section_count.toString(),
+      tone: "rose" as const,
+      description:
+        "Sections that need evidence, research, customer input, or a capability route before they can carry decisions.",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-ariadne-ink text-slate-100">
-      <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+      <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="border-b border-ariadne-line bg-black/30 p-5 xl:border-b-0 xl:border-r">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded border border-ariadne-cyan/50 bg-ariadne-cyan/10 text-ariadne-cyan">
@@ -217,7 +274,7 @@ export default async function CommandCenterPage() {
           </nav>
         </aside>
 
-        <section className="p-5 sm:p-7">
+        <section className="main-workspace p-5 sm:p-7">
           <div className="flex flex-col gap-4 border-b border-ariadne-line pb-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm text-ariadne-cyan">
@@ -227,94 +284,118 @@ export default async function CommandCenterPage() {
                 {workspace.packet.title}
               </h2>
             </div>
-            <div className="inline-flex w-fit items-center gap-2 rounded border border-ariadne-signal/40 bg-ariadne-signal/10 px-3 py-2 text-sm text-ariadne-signal">
-              <ShieldCheck size={17} aria-hidden />
-              <span>{formatLabel(workspace.packet.readiness_label)}</span>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="inline-flex w-fit items-center gap-2 rounded border border-ariadne-signal/40 bg-ariadne-signal/10 px-3 py-2 text-sm text-ariadne-signal">
+                <ShieldCheck size={17} aria-hidden />
+                <span>{formatLabel(workspace.packet.readiness_label)}</span>
+              </div>
+              <OpportunityIntakePanel />
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <Metric
-              label="Supported sections"
-              value={workspace.packet.answered_section_count.toString()}
-              tone="cyan"
-            />
-            <Metric
-              label="Partial sections"
-              value={workspace.packet.partial_section_count.toString()}
-              tone="copper"
-            />
-            <Metric
-              label="Open gaps"
-              value={workspace.packet.gap_section_count.toString()}
-              tone="rose"
-            />
-          </div>
-
-          <div className="mt-7 grid gap-4 lg:grid-cols-2">
-            {workspace.layout_regions.map((region) => (
-              <article className="region-panel" key={region.id}>
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                  {formatLabel(region.id)}
+          <section
+            className="workspace-section"
+            aria-labelledby="pulse-check-title"
+          >
+            <div className="section-heading">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  Pulse Check
                 </p>
-                <h3 className="mt-2 text-base font-semibold text-slate-100">
-                  {region.label}
-                </h3>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  {region.purpose}
-                </p>
-              </article>
-            ))}
-          </div>
-
-          {rendererReadiness !== null ? (
-            <RendererReadinessPanel readiness={rendererReadiness} />
-          ) : null}
-        </section>
-
-        <aside className="border-t border-ariadne-line bg-ariadne-panel p-5 xl:border-l xl:border-t-0">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                Pulse
-              </p>
-              <h2 className="text-lg font-semibold">Capture Readiness</h2>
+                <h3 id="pulse-check-title">Capture readiness signals</h3>
+              </div>
+              <Bot className="text-ariadne-cyan" size={22} aria-hidden />
             </div>
-            <Bot className="text-ariadne-cyan" size={22} aria-hidden />
-          </div>
+            <div className="signal-grid mt-4">
+              {pulseSignals.map((signal) => (
+                <PulseSignal key={signal.label} {...signal} />
+              ))}
+            </div>
+          </section>
 
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <Metric
-              label="Trusted"
-              value={workspace.context_summary.trusted_count.toString()}
-              tone="cyan"
-            />
-            <Metric
-              label="Reviewable"
-              value={workspace.context_summary.reviewable_count.toString()}
-              tone="copper"
-            />
-            <Metric
-              label="Gaps"
-              value={workspace.context_summary.gap_count.toString()}
-              tone="rose"
-            />
-            <Metric
-              label="Limits"
-              value={workspace.context_summary.source_limitation_count.toString()}
-              tone="signal"
-            />
-          </div>
+          <section
+            className="workspace-section"
+            aria-labelledby="packet-plan-title"
+          >
+            <div className="section-heading">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  Living Packet
+                </p>
+                <h3 id="packet-plan-title">What the packet can support now</h3>
+              </div>
+              <FileText className="text-ariadne-copper" size={22} aria-hidden />
+            </div>
+            <div className="signal-grid mt-4 md:grid-cols-3">
+              {packetSignals.map((signal) => (
+                <PulseSignal key={signal.label} {...signal} />
+              ))}
+            </div>
+          </section>
 
-          <OpportunityIntakePanel />
+          <section
+            className="workspace-section"
+            aria-labelledby="work-map-title"
+          >
+            <div className="section-heading">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  Work Map
+                </p>
+                <h3 id="work-map-title">Where Ariadne can act next</h3>
+              </div>
+              <Layers3 className="text-ariadne-cyan" size={22} aria-hidden />
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {workspace.layout_regions.map((region) => (
+                <article className="region-panel" key={region.id}>
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                    {formatLabel(region.id)}
+                  </p>
+                  <h3 className="mt-2 text-base font-semibold text-slate-100">
+                    {region.label}
+                  </h3>
+                  <p className="mt-3 text-sm leading-6 text-slate-300">
+                    {region.purpose}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </section>
 
           <AssistedCapturePanel
             goals={workspace.assisted_capture_goals}
             opportunityId={workspace.opportunity.id}
           />
-        </aside>
+
+          {rendererReadiness !== null ? (
+            <RendererReadinessPanel readiness={rendererReadiness} />
+          ) : null}
+        </section>
       </div>
     </main>
+  );
+}
+
+function PulseSignal({
+  label,
+  value,
+  description,
+  tone,
+}: {
+  label: string;
+  value: string;
+  description: string;
+  tone: SignalTone;
+}) {
+  return (
+    <article className={`pulse-signal pulse-signal-${tone}`}>
+      <div>
+        <p>{label}</p>
+        <strong>{value}</strong>
+      </div>
+      <span>{description}</span>
+    </article>
   );
 }
 
@@ -385,7 +466,7 @@ function Metric({
 }: {
   label: string;
   value: string;
-  tone: "cyan" | "copper" | "rose" | "signal";
+  tone: SignalTone;
 }) {
   return (
     <div className={`metric metric-${tone}`}>

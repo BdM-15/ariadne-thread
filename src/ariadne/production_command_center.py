@@ -1144,7 +1144,7 @@ def _recommendations_for_goal(
                 id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_customer-call-plan"),
                 opportunity_id=opportunity_id,
                 goal_id=goal.id,
-                route_label="Customer call plan route",
+                route_label="Prepare customer call plan",
                 route_summary=(
                     "Review trusted context, enrich customer pain, and draft a call "
                     "plan with follow-up actions."
@@ -1158,7 +1158,7 @@ def _recommendations_for_goal(
                 ),
                 capability_route_card=_capability_route_card(
                     recommendation_id=recommendation_id,
-                    title="Customer call plan route",
+                    title="Prepare customer call plan",
                     capability_chain=(
                         "knowledge_context_review",
                         "capture_research_enrichment",
@@ -1181,7 +1181,7 @@ def _recommendations_for_goal(
                 id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_packet-gap-triage"),
                 opportunity_id=opportunity_id,
                 goal_id=goal.id,
-                route_label="Packet gap triage route",
+                route_label="Triage packet gaps",
                 route_summary=(
                     "Summarize packet gaps and propose the next evidence collection "
                     "moves before drafting engagement material."
@@ -1197,7 +1197,7 @@ def _recommendations_for_goal(
                 ),
                 capability_route_card=_capability_route_card(
                     recommendation_id=recommendation_id,
-                    title="Packet gap triage route",
+                    title="Triage packet gaps",
                     capability_chain=(
                         "packet_gap_review",
                         "next_action_recommendation",
@@ -1219,7 +1219,7 @@ def _recommendations_for_goal(
                 id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_packet-answer-draft"),
                 opportunity_id=opportunity_id,
                 goal_id=goal.id,
-                route_label="Packet answer draft route",
+                route_label="Draft packet answer",
                 route_summary="Draft a reviewable packet answer from trusted source refs.",
                 autonomy_tier=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
                 work_product_targets=goal.work_product_targets,
@@ -1229,7 +1229,7 @@ def _recommendations_for_goal(
                 ),
                 capability_route_card=_capability_route_card(
                     recommendation_id=recommendation_id,
-                    title="Packet answer draft route",
+                    title="Draft packet answer",
                     capability_chain=(
                         "knowledge_context_review",
                         "packet_answer_draft",
@@ -1247,7 +1247,7 @@ def _recommendations_for_goal(
             id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_action-plan-sequence"),
             opportunity_id=opportunity_id,
             goal_id=goal.id,
-            route_label="Action plan sequencing route",
+            route_label="Sequence capture actions",
             route_summary="Turn open workstreams and packet gaps into next capture actions.",
             autonomy_tier=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
             work_product_targets=goal.work_product_targets,
@@ -1258,7 +1258,7 @@ def _recommendations_for_goal(
             ),
             capability_route_card=_capability_route_card(
                 recommendation_id=recommendation_id,
-                title="Action plan sequencing route",
+                title="Sequence capture actions",
                 capability_chain=(
                     "knowledge_context_review",
                     "next_action_recommendation",
@@ -1275,24 +1275,24 @@ def _recommendations_for_goal(
 
 
 def _output_title_for_route(recommendation: AssistedRouteRecommendation) -> str:
-    if recommendation.route_label == "Customer call plan route":
+    if recommendation.route_label == "Prepare customer call plan":
         return "Customer call plan draft"
-    if recommendation.route_label == "Packet answer draft route":
+    if recommendation.route_label == "Draft packet answer":
         return "Packet answer draft"
-    if recommendation.route_label == "Action plan sequencing route":
+    if recommendation.route_label == "Sequence capture actions":
         return "Capture action plan update draft"
     return f"{recommendation.route_label} output draft"
 
 
 def _output_summary_for_route(recommendation: AssistedRouteRecommendation) -> str:
-    if recommendation.route_label == "Customer call plan route":
+    if recommendation.route_label == "Prepare customer call plan":
         return (
             "Draft call objective, key questions, likely customer concerns, and "
             "follow-up actions from the current packet gap and trusted context."
         )
-    if recommendation.route_label == "Packet answer draft route":
+    if recommendation.route_label == "Draft packet answer":
         return "Draft a source-backed packet answer for review before promotion."
-    if recommendation.route_label == "Action plan sequencing route":
+    if recommendation.route_label == "Sequence capture actions":
         return "Draft sequenced capture actions from packet gaps and workstream backfill."
     return recommendation.route_summary
 

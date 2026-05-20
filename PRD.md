@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.33**
+**Product Requirements Document (PRD) v1.34**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -60,7 +60,7 @@
 - Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface was reviewed by the maintainer and accepted as good enough for this stage.
 - The production Command Center UI review branch (`11-build/production-command-center-ui`) implements the first route-first tracer: a Next.js Opportunity workspace, Living Packet center surface, assisted capture goal selector, deterministic route recommendations, local route execution, explicit human review gate, provenance view, capability route cards, before/after work-product projections, renderer readiness surface, and local HTTP/browser smoke validation. This proves the interaction loop, but it is not the full capture platform.
 - Product direction clarified: once an Opportunity is identified, Ariadne should run a bounded Opportunity Activation Run that gathers as many packet-field answers, source-backed candidates, recommendations, source limitations, and skill/capability route matches as current permissions allow. The UX must present that work as compact coverage, deltas, review queues, and next-best actions rather than as a clunky pile of tools.
-- The same review branch now includes the first Opportunity Intake path: a production Command Center API and compact Next.js right-rail panel can create a user-identified Opportunity and persist a Standard Opportunity Scaffold with core workstreams, Living Packet sections, packet-field action slots, and an initial Autonomy Digest.
+- The same review branch now includes the first Opportunity Intake path: a production Command Center API and simple Next.js modal can create a user-identified Opportunity from only a name, then persist a Standard Opportunity Scaffold with core workstreams, Living Packet sections, packet-field action slots, and an initial Autonomy Digest.
 
 **Still Deferred**
 
@@ -336,18 +336,18 @@ The default screen should answer six questions quickly:
 5. What work product changed?
 6. What evidence supports it?
 
-The production desktop layout should use four stable regions:
+The production desktop layout should use three stable regions plus focused overlays:
 
 - **Left rail: Opportunity and work-mode navigation** with opportunity switcher, lifecycle/gate state, work modes, and badges for review needs or blockers.
-- **Center: Living Milestone Decision Briefing Packet workspace** with packet readiness, section navigation, compact answer/gap/risk/recommendation blocks, source chips, evidence status, assumptions, confidence, and inline actions such as "improve this".
-- **Right rail: Command and review rail** with assisted capture goal selector, route recommendations, active runs, queued work, grouped review queue, and approval controls for external calls, broad research, rendering, final export, and sensitive actions.
-- **Drawer layer: Provenance and output inspection** with source previews, Capability Run reasoning, output/artifact preview, and "why this output?" trace.
+- **Main Opportunity dashboard and Living Packet workspace** with descriptive pulse check signals, packet readiness, section navigation, compact answer/gap/risk/recommendation blocks, source chips, evidence status, assumptions, confidence, and inline actions such as "improve this".
+- **Embedded command surfaces** inside the main workspace for Autonomy Digest, assisted capture goals, route recommendations, active runs, grouped review queues, and approval controls. Routes should appear next to the packet field, action, call-plan, research, artifact, or review need they advance rather than hanging in a detached right rail.
+- **Modal/drawer layer** for low-friction Opportunity Intake, provenance and source previews, Capability Run reasoning, output/artifact preview, and "why this output?" trace.
 
 Mobile and small screens are secondary but must not break. They should use a top Opportunity header, segmented work modes, bottom action bar, and drawers for review/provenance instead of trying to recreate dense desktop parity.
 
 Core interaction loops:
 
-- **Assisted Capture Start**: user chooses a goal such as preparing a milestone review, improving the packet, preparing a call, resolving evidence gaps, researching customer/competitor/teaming/pricing questions, processing documents, or preparing export.
+- **Assisted Capture Start**: user chooses a packet field, work-product need, or goal such as preparing a milestone review, improving the packet, preparing a call, resolving evidence gaps, researching customer/competitor/teaming/pricing questions, processing documents, or preparing export.
 - **Route Recommendation**: Ariadne shows the need, route, input refs, output destination, autonomy/risk tier, approval requirement, expected cost/time if known, and actions to run, inspect, edit, defer, or discard.
 - **Capability Run and Skill Chain**: the UI shows staged progress: prepare inputs, run capability or skill, summarize output, review output, route accepted result.
 - **Review and Routing**: review cards are destination-first: Evidence candidate, Packet update, Action item, Call/Engagement prep, Risk signal, Artifact block, or Follow-up route. Each card shows summary, source support, assumptions, gaps, confidence, model/capability provenance, destination, and accept/edit/route/defer/discard/needs-evidence actions.
@@ -375,6 +375,7 @@ Design system direction:
 Anti-convolution rules:
 
 - One primary next action per panel.
+- Primary capture work should not live in a persistent right sidebar; pulse checks, routes, reviews, and next-best actions belong in the main Opportunity dashboard or in context-specific drawers/modals.
 - Product workflows first, tools second.
 - Show actionable status by default; keep details in drawers.
 - Every surfaced item must answer "so what?" or "what can I do?"
@@ -385,7 +386,7 @@ Anti-convolution rules:
 
 MVP UI sequencing:
 
-1. **MVP-1 UI Skeleton + First Route Action**: build the production-shaped Next.js Opportunity workspace, packet center panel, route/review rail, active-run drawer, provenance drawer, and one working route action. FastAPI remains fallback/debug only.
+1. **MVP-1 UI Skeleton + First Route Action**: build the production-shaped Next.js Opportunity workspace, main packet/dashboard panel, embedded route/review surfaces, active-run drawer, provenance drawer, and one working route action. FastAPI remains fallback/debug only.
 2. **MVP-2 AI/Skills UI**: add capability route cards, skill-chain stage view, model-role display, approval prompts, run progress, output summary, and provenance.
 3. **MVP-3 Work Product UI**: add packet update review, call/engagement prep, action-plan update flow, risk/follow-up routing, and work-product before/after state.
 4. **MVP-4 Production UI Hardening**: complete responsive polish, accessibility pass, keyboard navigation, empty/loading/error states, component cleanup, and explicit user review of the first real UI shape.
@@ -739,7 +740,7 @@ Goal: connect the existing foundations into one route-first operating loop.
 Deliverables:
 
 - Add a Command Center entry point such as “Start assisted capture” for one Opportunity.
-- Start the production-shaped Next.js Command Center shell in parallel with the route-first loop: Opportunity workspace, Living MS Briefing Packet center panel, route/review rail, active-run drawer, and source/provenance drawer.
+- Start the production-shaped Next.js Command Center shell in parallel with the route-first loop: Opportunity workspace, Living MS Briefing Packet center panel, main-dashboard pulse checks, embedded route/review surfaces, active-run drawer, and source/provenance drawer.
 - Implement one working route action inside that Next.js shell: selected goal -> route recommendation -> run/review -> route accepted output into packet/action or call-plan destination. Deterministic/demo data is acceptable only as a temporary backend stand-in.
 - Stop adding new primary user workflow screens to the FastAPI scaffold except as fallback/debug surfaces.
 - Use Opportunity Knowledge Context plus the user's selected goal to identify capture needs and route options.
@@ -762,7 +763,7 @@ Goal: once an Opportunity is identified, make Ariadne automatically inventory th
 Deliverables:
 
 - Add an Opportunity Portfolio surface and API for active, future, past, held, archived, won, and lost Opportunities, with lifecycle state, next-action urgency, source freshness, packet readiness, and review counts.
-- Add create/import/update/archive behavior for Opportunities with local-first persistence and deterministic tests, beginning with a Create Opportunity command that produces a Standard Opportunity Scaffold.
+- Add create/import/update/archive behavior for Opportunities with local-first persistence and deterministic tests, beginning with a low-friction Create Opportunity command that requires only the user-identified Opportunity name before Ariadne produces a Standard Opportunity Scaffold.
 - Add an Opportunity Activation Run that can start from opportunity creation/import or a user action, then evaluate required packet fields, known source profiles, accepted evidence, documents, capture research options, federal-data capabilities, local skills, source limitations, and approval requirements.
 - Allow the activation run to perform low-risk/local or pre-approved gathering automatically, while queuing external calls, paid/credit-spending providers, broad research, and sensitive/customer-facing work for explicit approval.
 - Present activation results as an Autonomy Digest: coverage gained, field candidates ready for review, blocked fields, recommended skills/chains, MCP/source-provider routes, approvals needed, and next-best actions.

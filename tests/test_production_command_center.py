@@ -100,7 +100,7 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
     )
     assert scaffold["opportunity"]["name"] == "DISA cloud sustainment watch"
     assert scaffold["opportunity"]["lifecycle_state"] == "identified"
-    assert scaffold["opportunity"]["gate_status"] == "opportunity_activation_ready"
+    assert scaffold["opportunity"]["gate_status"] == "milestone_1"
     assert scaffold["entry_reason"] == "new_lead"
     assert len(scaffold["workstreams"]) == 10
     assert {need["workstream_id"] for need in scaffold["backfill_needs"]} == {
@@ -122,6 +122,26 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
     assert digest["recommended_skill_chains"]
     assert digest["approval_required_routes"]
     assert digest["next_best_actions"]
+
+
+def test_production_command_center_accepts_explicit_milestone_gate(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+
+    response = client.post(
+        "/api/production-command-center/opportunities",
+        json={
+            "name": "DISA cloud sustainment watch",
+            "starting_lifecycle_state": "pursuing",
+            "current_milestone_gate": "milestone_4",
+        },
+    )
+
+    assert response.status_code == 200
+    scaffold = response.json()["scaffold"]
+    assert scaffold["opportunity"]["lifecycle_state"] == "pursuing"
+    assert scaffold["opportunity"]["gate_status"] == "milestone_4"
 
 
 def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:

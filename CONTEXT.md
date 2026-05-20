@@ -216,6 +216,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Relationships
 
 - An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
+- An **Opportunity** carries a current **Milestone Gate** so portfolio pulse, workspace readiness, and the **Living Milestone Decision Briefing Packet** all speak in Milestone 1-4 decision terms instead of generic workflow status.
 - **Opportunity Intake** creates a **Standard Opportunity Scaffold** before deeper activation, research, or artifact work begins.
 - **Opportunity Intake** should ask the user for the smallest viable identification signal, usually just the Opportunity name, then let Ariadne's scaffold and activation behavior infer or queue the remaining structure.
 - An **Opportunity Activation Run** can start after an **Opportunity** is created, imported, selected, or materially refreshed, and it should produce reviewable candidates and route recommendations rather than silently creating trusted capture records.

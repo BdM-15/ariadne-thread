@@ -411,7 +411,7 @@ export default async function CommandCenterPage({
               tone="cyan"
             />
             <Metric
-              label="Gate"
+              label="Milestone Gate"
               value={formatLabel(workspace.opportunity.gate_status)}
               tone="copper"
             />
@@ -719,7 +719,8 @@ function CommandCenterHome({
                 <div className="global-pulse-chip-row">
                   <span>{formatLabel(opportunity.packet_readiness_label)}</span>
                   <span>
-                    {formatLabel(opportunity.attention_route_mode ?? "packet")} route
+                    {formatLabel(opportunity.attention_route_mode ?? "packet")}{" "}
+                    route
                   </span>
                   {opportunity.blocked_field_count > 0 ? (
                     <span>{opportunity.blocked_field_count} gaps</span>
@@ -728,7 +729,9 @@ function CommandCenterHome({
                     <span>{opportunity.review_ready_count} reviews</span>
                   ) : null}
                   {opportunity.source_limitation_count > 0 ? (
-                    <span>{opportunity.source_limitation_count} source limits</span>
+                    <span>
+                      {opportunity.source_limitation_count} source limits
+                    </span>
                   ) : null}
                 </div>
                 <strong className="global-pulse-card-action">

@@ -13,6 +13,7 @@ from ariadne.opportunities import (
     EntryContext,
     EntryReason,
     LifecycleState,
+    MilestoneGate,
     create_opportunity,
 )
 from ariadne.opportunity_activation import (
@@ -78,6 +79,7 @@ class ProductionOpportunityIntakeRequest(BaseModel):
     name: str
     entry_reason: EntryReason = EntryReason.NEW_LEAD
     starting_lifecycle_state: LifecycleState = LifecycleState.IDENTIFIED
+    current_milestone_gate: MilestoneGate | None = None
     rationale: str | None = None
     missing_or_stale_workstreams: tuple[CoreCaptureWorkstream, ...] = ()
 
@@ -661,6 +663,7 @@ def create_standard_opportunity_scaffold(
     entry_context = EntryContext(
         reason=request.entry_reason,
         starting_lifecycle_state=request.starting_lifecycle_state,
+        current_milestone_gate=request.current_milestone_gate,
         rationale=rationale,
         missing_or_stale_workstreams=set(request.missing_or_stale_workstreams),
     )
@@ -695,7 +698,7 @@ def create_standard_opportunity_scaffold(
             id=opportunity_id,
             name=opportunity.name,
             lifecycle_state=opportunity.lifecycle_state.value,
-            gate_status="opportunity_activation_ready",
+            gate_status=opportunity.current_milestone_gate.value,
         ),
         entry_reason=entry_context.reason.value,
         entry_rationale=entry_context.rationale,
@@ -808,7 +811,7 @@ def build_production_command_center_workspace(
             id=DEMO_OPPORTUNITY_ID,
             name=demo.opportunity.name,
             lifecycle_state=demo.opportunity.lifecycle_state.value,
-            gate_status="capture_working_session",
+            gate_status=MilestoneGate.MILESTONE_3.value,
         ),
         packet=ProductionCommandCenterPacket(
             title="Living Milestone Decision Briefing Packet",
@@ -848,7 +851,7 @@ def list_production_opportunity_portfolio(
                 id=DEMO_OPPORTUNITY_ID,
                 name="AFLCMC recompete support",
                 lifecycle_state="pursuing",
-                gate_status="capture_working_session",
+                gate_status=MilestoneGate.MILESTONE_3.value,
                 packet_readiness_label="not_ready",
                 review_ready_count=0,
                 blocked_field_count=0,

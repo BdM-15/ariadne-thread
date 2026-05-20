@@ -25,8 +25,10 @@ from ariadne.opportunity_activation import (
     PacketFieldActionItem,
     PacketFieldActionMatrix,
     PacketFieldActionState,
+    PacketFieldRouteKind,
     run_opportunity_activation,
     recommend_packet_field_route,
+    recommend_packet_field_route_kind,
 )
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
@@ -126,6 +128,7 @@ class ProductionOpportunityPacketFieldSlot(BaseModel):
     evidence_status: str
     required_milestone_gates: tuple[str, ...] = ()
     current_gate_required: bool = True
+    route_kind: str = PacketFieldRouteKind.SOURCE_BACKED_ANSWER.value
     answer_paths: tuple[str, ...]
     recommended_route: str
 
@@ -217,6 +220,7 @@ class AssistedRouteRecommendation(BaseModel):
     opportunity_id: str
     goal_id: str
     packet_field_key: str | None = None
+    route_kind: str = "assisted_capture"
     route_label: str
     route_summary: str
     autonomy_tier: AssistedCaptureAutonomyTier
@@ -268,6 +272,7 @@ class AssistedRouteOutput(BaseModel):
     recommendation_id: str
     opportunity_id: str
     packet_field_key: str | None = None
+    route_kind: str = "assisted_capture"
     title: str
     summary: str
     recommended_destination: AssistedCaptureWorkProduct
@@ -1358,6 +1363,7 @@ def execute_assisted_capture_route(
         recommendation_id=recommendation.id,
         opportunity_id=recommendation.opportunity_id,
         packet_field_key=recommendation.packet_field_key,
+        route_kind=recommendation.route_kind,
         title=_output_title_for_route(recommendation),
         summary=_output_summary_for_route(recommendation),
         recommended_destination=recommendation.work_product_targets[0],
@@ -1451,6 +1457,11 @@ def review_assisted_route_output(
         request.decision is AssistedRouteReviewDecisionType.ACCEPT
         and answer_store is not None
         and reviewed_output.packet_field_key is not None
+        and (
+            request.accepted_destination is AssistedCaptureWorkProduct.LIVING_PACKET
+            or reviewed_output.recommended_destination
+            is AssistedCaptureWorkProduct.LIVING_PACKET
+        )
     ):
         packet_field_answer = _packet_field_answer_from_assisted_route(
             output=reviewed_output,
@@ -1623,6 +1634,7 @@ def _packet_field_slot_for_new_opportunity(
             not definition.required_milestone_gates
             or current_milestone_gate in definition.required_milestone_gates
         ),
+        route_kind=recommend_packet_field_route_kind(definition).value,
         answer_paths=tuple(path.label for path in definition.answer_paths),
         recommended_route=recommend_packet_field_route(definition),
     )
@@ -1651,6 +1663,14 @@ def _recommendations_for_goal(
     packet_field_key: str | None = None,
 ) -> tuple[AssistedRouteRecommendation, ...]:
     if goal.id == "prepare_customer_call":
+        if packet_field_key is not None:
+            return (
+                _packet_field_call_plan_recommendation(
+                    opportunity_id=opportunity_id,
+                    goal=goal,
+                    packet_field_key=packet_field_key,
+                ),
+            )
         return (
             AssistedRouteRecommendation(
                 id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_customer-call-plan"),
@@ -1809,13 +1829,15 @@ def _packet_field_gap_recommendation(
         raise ValueError(f"Unsupported packet field: {packet_field_key}") from error
 
     recommended_route = recommend_packet_field_route(definition)
+    route_kind = recommend_packet_field_route_kind(definition)
     recommendation_id = f"route_{opportunity_id}_{goal.id}_packet-field-{definition.key}"
-    capability_chain = _capability_chain_for_packet_field_route(recommended_route)
+    capability_chain = _capability_chain_for_packet_field_route(route_kind)
     return AssistedRouteRecommendation(
         id=recommendation_id,
         opportunity_id=opportunity_id,
         goal_id=goal.id,
         packet_field_key=definition.key,
+        route_kind=route_kind.value,
         route_label=f"Close packet gap: {definition.label}",
         route_summary=f"Advance {definition.label}: {recommended_route}",
         autonomy_tier=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
@@ -1839,9 +1861,65 @@ def _packet_field_gap_recommendation(
     )
 
 
-def _capability_chain_for_packet_field_route(route: str) -> tuple[str, ...]:
-    normalized_route = route.lower()
-    if any(token in normalized_route for token in ("research", "lookup")):
+def _packet_field_call_plan_recommendation(
+    *,
+    opportunity_id: str,
+    goal: AssistedCaptureGoal,
+    packet_field_key: str,
+) -> AssistedRouteRecommendation:
+    try:
+        definition = get_packet_field_definition(
+            build_default_packet_field_definitions(),
+            packet_field_key,
+        )
+    except KeyError as error:
+        raise ValueError(f"Unsupported packet field: {packet_field_key}") from error
+
+    recommendation_id = f"route_{opportunity_id}_{goal.id}_packet-field-{definition.key}-call-plan"
+    capability_chain = (
+        "knowledge_context_review",
+        "packet_gap_review",
+        "call_plan_draft",
+    )
+    return AssistedRouteRecommendation(
+        id=recommendation_id,
+        opportunity_id=opportunity_id,
+        goal_id=goal.id,
+        packet_field_key=definition.key,
+        route_kind=PacketFieldRouteKind.CUSTOMER_CALL_PLAN.value,
+        route_label=f"Prepare call plan for packet field: {definition.label}",
+        route_summary=(
+            f"Prepare customer questions and follow-up actions before treating "
+            f"{definition.label} as answered."
+        ),
+        autonomy_tier=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+        work_product_targets=goal.work_product_targets,
+        recommended_capability_chain=capability_chain,
+        capability_route_card=_capability_route_card(
+            recommendation_id=recommendation_id,
+            title=f"Prepare call plan for packet field: {definition.label}",
+            capability_chain=capability_chain,
+        ),
+        input_refs=(
+            f"packet_field.{definition.key}",
+            f"packet_section.{definition.section.value}",
+            "opportunity_activation.latest_matrix",
+        ),
+        reasoning=(
+            f"{definition.label} is not safe to treat as answered without operator or customer validation.",
+            f"Question to resolve: {definition.question}",
+            "Recommended route: prepare customer call-plan questions and follow-up actions.",
+        ),
+    )
+
+
+def _capability_chain_for_packet_field_route(
+    route_kind: PacketFieldRouteKind,
+) -> tuple[str, ...]:
+    if route_kind in {
+        PacketFieldRouteKind.RESEARCH_OR_MCP,
+        PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP,
+    }:
         return (
             "knowledge_context_review",
             "capture_research_enrichment",
@@ -1857,6 +1935,8 @@ def _capability_chain_for_packet_field_route(route: str) -> tuple[str, ...]:
 def _output_title_for_route(recommendation: AssistedRouteRecommendation) -> str:
     if recommendation.route_label == "Prepare customer call plan":
         return "Customer call plan draft"
+    if recommendation.route_kind == PacketFieldRouteKind.CUSTOMER_CALL_PLAN.value:
+        return "Packet field call-plan draft"
     if recommendation.route_label == "Draft packet answer":
         return "Packet answer draft"
     if recommendation.route_label == "Sequence capture actions":
@@ -1869,6 +1949,11 @@ def _output_summary_for_route(recommendation: AssistedRouteRecommendation) -> st
         return (
             "Draft call objective, key questions, likely customer concerns, and "
             "follow-up actions from the current packet gap and trusted context."
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.CUSTOMER_CALL_PLAN.value:
+        return (
+            "Draft customer questions, validation notes, and follow-up actions for "
+            "the selected packet field before any Packet Field Answer is promoted."
         )
     if recommendation.route_label == "Draft packet answer":
         return "Draft a source-backed packet answer for review before promotion."

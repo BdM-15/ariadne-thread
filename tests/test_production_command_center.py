@@ -395,6 +395,56 @@ def test_production_command_center_promotes_activation_field_answer(tmp_path) ->
     assert portfolio_item["attention_route_label"].startswith("Open roadmap:")
 
 
+def test_activation_field_acceptance_with_evidence_ids_is_source_backed(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Space Force source backed watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    runs_response = client.get(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    run_id = runs_response.json()["runs"][0]["run_id"]
+    customer_field = next(
+        field
+        for field in runs_response.json()["runs"][0]["packet_field_action_matrix"][
+            "fields"
+        ]
+        if field["field_key"] == "customer"
+    )
+    assert customer_field["route_kind"] == "source_backed_answer"
+
+    response = client.post(
+        f"/api/production-command-center/activation-runs/{run_id}/"
+        "fields/customer/review-decisions",
+        json={
+            "decision": "accept",
+            "value": "Space Force",
+            "evidence_ids": ["evidence.notice.customer"],
+            "reviewer_rationale": "Source notice names the customer.",
+            "confidence": 0.92,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    answer = response.json()["packet_field_answer"]
+    assert answer["evidence_status"] == "answered"
+    assert answer["evidence_ids"] == ["evidence.notice.customer"]
+    assert answer["confidence"] == 0.92
+    accepted_field = next(
+        field
+        for field in response.json()["run"]["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "customer"
+    )
+    assert accepted_field["action_state"] == "answered"
+    assert accepted_field["source_refs"] == ["evidence.notice.customer"]
+
+
 def test_production_command_center_routes_activation_field_without_answer(tmp_path) -> None:
     from fastapi.testclient import TestClient
 
@@ -471,9 +521,50 @@ def test_packet_field_card_can_request_field_specific_route(tmp_path) -> None:
     assert response.status_code == 200
     recommendation = response.json()["recommendations"][0]
     assert recommendation["packet_field_key"] == "competition"
+    assert recommendation["route_kind"] == "research_or_mcp"
     assert recommendation["route_label"] == "Close packet gap: Competition"
     assert "packet_field.competition" in recommendation["input_refs"]
+    assert "capture_research_enrichment" in recommendation[
+        "recommended_capability_chain"
+    ]
     assert "Recommended route:" in recommendation["reasoning"][2]
+
+
+def test_packet_field_can_request_customer_call_plan_route(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud customer call watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "prepare_customer_call", "packet_field_key": "primary_scope"},
+    )
+
+    assert response.status_code == 200, response.text
+    recommendation = response.json()["recommendations"][0]
+    assert recommendation["packet_field_key"] == "primary_scope"
+    assert recommendation["route_kind"] == "customer_call_plan"
+    assert recommendation["route_label"] == (
+        "Prepare call plan for packet field: Primary Scope"
+    )
+    assert recommendation["work_product_targets"] == [
+        "call_plan",
+        "living_packet",
+        "action_plan",
+    ]
+    assert recommendation["recommended_capability_chain"] == [
+        "knowledge_context_review",
+        "packet_gap_review",
+        "call_plan_draft",
+    ]
+    assert "packet_field.primary_scope" in recommendation["input_refs"]
+    assert "not safe to treat as answered" in recommendation["reasoning"][0]
 
 
 def test_field_specific_route_rejects_unknown_packet_field(tmp_path) -> None:
@@ -786,6 +877,63 @@ def test_field_specific_route_acceptance_promotes_packet_field_answer(
     )
     assert customer["action_state"] == "answered"
     assert customer["current_value"] == packet_field_answer["value"]
+
+
+def test_field_call_plan_route_acceptance_does_not_promote_packet_answer(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud call plan fallback"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    recommendation_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "prepare_customer_call", "packet_field_key": "primary_scope"},
+    )
+    recommendation = recommendation_response.json()["recommendations"][0]
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation['id']}/runs",
+        json={"approved": True},
+    )
+    output = run_response.json()["run"]["output"]
+
+    assert output["packet_field_key"] == "primary_scope"
+    assert output["route_kind"] == "customer_call_plan"
+    assert output["recommended_destination"] == "call_plan"
+
+    response = client.post(
+        f"/api/production-command-center/route-outputs/{output['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Accepted as call-plan fallback, not packet answer.",
+            "accepted_destination": "call_plan",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["packet_field_answer"] is None
+    assert body["activation_run"] is None
+    assert [update["destination"] for update in body["accepted_updates"]] == [
+        "call_plan",
+        "living_packet",
+        "action_plan",
+    ]
+
+    rerun_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    primary_scope = next(
+        field
+        for field in rerun_response.json()["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "primary_scope"
+    )
+    assert primary_scope["action_state"] == "blocked"
 
 
 def test_assisted_capture_route_provenance_includes_reasoning_and_review_trace(

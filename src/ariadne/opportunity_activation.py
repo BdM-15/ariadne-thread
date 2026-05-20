@@ -51,6 +51,14 @@ class PacketFieldActionState(StrEnum):
     BLOCKED = "blocked"
 
 
+class PacketFieldRouteKind(StrEnum):
+    SOURCE_BACKED_ANSWER = "source_backed_answer"
+    RESEARCH_OR_MCP = "research_or_mcp"
+    SOURCE_PROFILE_LOOKUP = "source_profile_lookup"
+    MODEL_SYNTHESIS = "model_synthesis"
+    CUSTOMER_CALL_PLAN = "customer_call_plan"
+
+
 class OpportunityActivationDigest(BaseModel):
     coverage_gained: tuple[str, ...]
     review_ready_count: int
@@ -73,6 +81,7 @@ class PacketFieldActionItem(BaseModel):
     answer_paths: tuple[str, ...]
     required_milestone_gates: tuple[str, ...] = ()
     current_gate_required: bool = True
+    route_kind: PacketFieldRouteKind = PacketFieldRouteKind.SOURCE_BACKED_ANSWER
     recommended_route: str
     route_rationale: str
     requires_review: bool = True
@@ -410,16 +419,39 @@ def build_activation_digest(
 
 
 def recommend_packet_field_route(definition: PacketFieldDefinition) -> str:
+    route_kind = recommend_packet_field_route_kind(definition)
+    return {
+        PacketFieldRouteKind.RESEARCH_OR_MCP: (
+            "Recommend a capability or skill-backed research route."
+        ),
+        PacketFieldRouteKind.SOURCE_BACKED_ANSWER: (
+            "Inspect source material and extract a reviewable answer candidate."
+        ),
+        PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP: (
+            "Import or lookup source-profile data before synthesis."
+        ),
+        PacketFieldRouteKind.MODEL_SYNTHESIS: (
+            "Synthesize a reviewable answer from accepted evidence and gaps."
+        ),
+        PacketFieldRouteKind.CUSTOMER_CALL_PLAN: (
+            "Prepare a customer call-plan question set before treating this field as answered."
+        ),
+    }[route_kind]
+
+
+def recommend_packet_field_route_kind(
+    definition: PacketFieldDefinition,
+) -> PacketFieldRouteKind:
     kinds = {path.kind for path in definition.answer_paths}
     if AnswerPathKind.CAPABILITY_MODULE in kinds:
-        return "Recommend a capability or skill-backed research route."
+        return PacketFieldRouteKind.RESEARCH_OR_MCP
     if AnswerPathKind.EVIDENCE_EXTRACTION in kinds:
-        return "Inspect source material and extract a reviewable answer candidate."
+        return PacketFieldRouteKind.SOURCE_BACKED_ANSWER
     if AnswerPathKind.IMPORTED_DATA in kinds:
-        return "Import or lookup source-profile data before synthesis."
+        return PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP
     if AnswerPathKind.MODEL_SYNTHESIS in kinds:
-        return "Synthesize a reviewable answer from accepted evidence and gaps."
-    return "Ask the capture lead or prepare a customer follow-up question."
+        return PacketFieldRouteKind.MODEL_SYNTHESIS
+    return PacketFieldRouteKind.CUSTOMER_CALL_PLAN
 
 
 def _action_item_for_definition(
@@ -461,6 +493,7 @@ def _action_item_for_definition(
         answer_paths=answer_path_labels,
         required_milestone_gates=required_gates,
         current_gate_required=current_gate_required,
+        route_kind=recommend_packet_field_route_kind(definition),
         recommended_route=recommend_packet_field_route(definition),
         route_rationale=_route_rationale(definition),
         requires_review=action_state is not PacketFieldActionState.ANSWERED,

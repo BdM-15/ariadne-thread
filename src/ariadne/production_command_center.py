@@ -86,15 +86,75 @@ class AssistedRouteRecommendation(BaseModel):
     status: str = "recommended"
 
 
+class AssistedRouteRunStatus(StrEnum):
+    NEEDS_REVIEW = "needs_review"
+    FAILED = "failed"
+
+
+class AssistedRouteRunStageStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class AssistedRouteOutputReviewState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class AssistedRouteRunStage(BaseModel):
+    id: str
+    label: str
+    status: AssistedRouteRunStageStatus
+    summary: str
+
+
+class AssistedRouteOutput(BaseModel):
+    id: str
+    recommendation_id: str
+    opportunity_id: str
+    title: str
+    summary: str
+    recommended_destination: AssistedCaptureWorkProduct
+    work_product_targets: tuple[AssistedCaptureWorkProduct, ...]
+    capability_chain: tuple[str, ...]
+    source_refs: tuple[str, ...]
+    assumptions: tuple[str, ...]
+    gaps: tuple[str, ...]
+    review_state: AssistedRouteOutputReviewState = (
+        AssistedRouteOutputReviewState.PENDING_REVIEW
+    )
+
+
+class AssistedRouteRun(BaseModel):
+    id: str
+    recommendation_id: str
+    opportunity_id: str
+    status: AssistedRouteRunStatus
+    executor_kind: str = "deterministic_python"
+    network_required: bool = False
+    model_required: bool = False
+    stages: tuple[AssistedRouteRunStage, ...]
+    output: AssistedRouteOutput
+
+
 class AssistedRouteRecommendationRequest(BaseModel):
     goal_id: str
     operator_intent: str | None = None
+
+
+class AssistedRouteRunRequest(BaseModel):
+    approved: bool = False
 
 
 class AssistedRouteRecommendationResponse(BaseModel):
     selection_prompt: AssistedCaptureSelectionPrompt
     goal: AssistedCaptureGoal
     recommendations: tuple[AssistedRouteRecommendation, ...]
+
+
+class AssistedRouteRunResponse(BaseModel):
+    run: AssistedRouteRun
 
 
 class ProductionCommandCenterWorkspace(BaseModel):
@@ -116,7 +176,6 @@ class WorkflowRoutingStore:
         self,
         recommendations: tuple[AssistedRouteRecommendation, ...],
     ) -> tuple[AssistedRouteRecommendation, ...]:
-        self.root.mkdir(parents=True, exist_ok=True)
         for recommendation in recommendations:
             self._recommendation_path(recommendation.id).write_text(
                 recommendation.model_dump_json(indent=2),
@@ -129,10 +188,47 @@ class WorkflowRoutingStore:
             self._recommendation_path(recommendation_id).read_text(encoding="utf-8")
         )
 
+    def write_run(self, run: AssistedRouteRun) -> AssistedRouteRun:
+        self._run_path(run.id).write_text(run.model_dump_json(indent=2), encoding="utf-8")
+        self.write_output(run.output)
+        return run
+
+    def read_run(self, run_id: str) -> AssistedRouteRun:
+        return AssistedRouteRun.model_validate_json(
+            self._run_path(run_id).read_text(encoding="utf-8")
+        )
+
+    def write_output(self, output: AssistedRouteOutput) -> AssistedRouteOutput:
+        self._output_path(output.id).write_text(
+            output.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return output
+
+    def read_output(self, output_id: str) -> AssistedRouteOutput:
+        return AssistedRouteOutput.model_validate_json(
+            self._output_path(output_id).read_text(encoding="utf-8")
+        )
+
     def _recommendation_path(self, recommendation_id: str) -> Path:
         if not recommendation_id or recommendation_id != Path(recommendation_id).name:
             raise ValueError("recommendation_id must be a file-safe identifier")
-        return self.root / f"{recommendation_id}.json"
+        return self._child_path("recommendations", recommendation_id)
+
+    def _run_path(self, run_id: str) -> Path:
+        if not run_id or run_id != Path(run_id).name:
+            raise ValueError("run_id must be a file-safe identifier")
+        return self._child_path("runs", run_id)
+
+    def _output_path(self, output_id: str) -> Path:
+        if not output_id or output_id != Path(output_id).name:
+            raise ValueError("output_id must be a file-safe identifier")
+        return self._child_path("outputs", output_id)
+
+    def _child_path(self, child_dir: str, record_id: str) -> Path:
+        directory = self.root / child_dir
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"{record_id}.json"
 
 
 ASSISTED_CAPTURE_GOALS: tuple[AssistedCaptureGoal, ...] = (
@@ -268,6 +364,63 @@ def recommend_assisted_capture_routes(
     )
 
 
+def execute_assisted_capture_route(
+    *,
+    store: WorkflowRoutingStore,
+    recommendation_id: str,
+    approved: bool,
+) -> AssistedRouteRun:
+    if not approved:
+        raise PermissionError("Route execution requires explicit operator approval")
+    recommendation = store.read_recommendation(recommendation_id)
+    output = AssistedRouteOutput(
+        id=f"output_{recommendation.id}_reviewable-draft",
+        recommendation_id=recommendation.id,
+        opportunity_id=recommendation.opportunity_id,
+        title=_output_title_for_route(recommendation),
+        summary=_output_summary_for_route(recommendation),
+        recommended_destination=recommendation.work_product_targets[0],
+        work_product_targets=recommendation.work_product_targets,
+        capability_chain=recommendation.recommended_capability_chain,
+        source_refs=recommendation.input_refs,
+        assumptions=(
+            "Draft content remains reviewable until the capture operator accepts it.",
+            "No external model or network call was used for this deterministic run.",
+        ),
+        gaps=(
+            "Validate customer decision-maker map before treating call-plan content as trusted.",
+        ),
+    )
+    run = AssistedRouteRun(
+        id=f"run_{recommendation.id}_deterministic-draft",
+        recommendation_id=recommendation.id,
+        opportunity_id=recommendation.opportunity_id,
+        status=AssistedRouteRunStatus.NEEDS_REVIEW,
+        stages=(
+            AssistedRouteRunStage(
+                id="inspect_inputs",
+                label="Inspect route inputs",
+                status=AssistedRouteRunStageStatus.SUCCEEDED,
+                summary="Loaded the recommended route and source references.",
+            ),
+            AssistedRouteRunStage(
+                id="apply_capability_chain",
+                label="Apply deterministic capability chain",
+                status=AssistedRouteRunStageStatus.SUCCEEDED,
+                summary="Applied route-specific capture drafting heuristics.",
+            ),
+            AssistedRouteRunStage(
+                id="prepare_reviewable_output",
+                label="Prepare reviewable output",
+                status=AssistedRouteRunStageStatus.SUCCEEDED,
+                summary="Created one review-gated work product draft.",
+            ),
+        ),
+        output=output,
+    )
+    return store.write_run(run)
+
+
 def _goal_by_id(goal_id: str) -> AssistedCaptureGoal:
     for goal in ASSISTED_CAPTURE_GOALS:
         if goal.id == goal_id:
@@ -380,3 +533,26 @@ def _recommendations_for_goal(
             ),
         ),
     )
+
+
+def _output_title_for_route(recommendation: AssistedRouteRecommendation) -> str:
+    if recommendation.route_label == "Customer call plan route":
+        return "Customer call plan draft"
+    if recommendation.route_label == "Packet answer draft route":
+        return "Packet answer draft"
+    if recommendation.route_label == "Action plan sequencing route":
+        return "Capture action plan update draft"
+    return f"{recommendation.route_label} output draft"
+
+
+def _output_summary_for_route(recommendation: AssistedRouteRecommendation) -> str:
+    if recommendation.route_label == "Customer call plan route":
+        return (
+            "Draft call objective, key questions, likely customer concerns, and "
+            "follow-up actions from the current packet gap and trusted context."
+        )
+    if recommendation.route_label == "Packet answer draft route":
+        return "Draft a source-backed packet answer for review before promotion."
+    if recommendation.route_label == "Action plan sequencing route":
+        return "Draft sequenced capture actions from packet gaps and workstream backfill."
+    return recommendation.route_summary

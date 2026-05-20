@@ -26,9 +26,28 @@ type AssistedRouteRecommendation = {
   status: string;
 };
 
+type AssistedRouteRun = {
+  id: string;
+  status: string;
+  executor_kind: string;
+  network_required: boolean;
+  model_required: boolean;
+  output: {
+    id: string;
+    title: string;
+    summary: string;
+    recommended_destination: string;
+    review_state: string;
+  };
+};
+
 type RecommendationResponse = {
   goal: AssistedCaptureGoal;
   recommendations: AssistedRouteRecommendation[];
+};
+
+type RouteRunResponse = {
+  run: AssistedRouteRun;
 };
 
 export function AssistedCapturePanel({
@@ -40,6 +59,7 @@ export function AssistedCapturePanel({
 }) {
   const [selectedGoalId, setSelectedGoalId] = useState(goals[0]?.id ?? "");
   const [routes, setRoutes] = useState<AssistedRouteRecommendation[]>([]);
+  const [runsByRouteId, setRunsByRouteId] = useState<Record<string, AssistedRouteRun>>({});
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -62,6 +82,30 @@ export function AssistedCapturePanel({
       }
       const body = (await response.json()) as RecommendationResponse;
       setRoutes(body.recommendations);
+      setRunsByRouteId({});
+    });
+  }
+
+  function runRoute(recommendationId: string) {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch(
+        `/api/production-command-center/routes/${recommendationId}/runs`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ approved: true }),
+        },
+      );
+      if (!response.ok) {
+        setError("Route execution is unavailable.");
+        return;
+      }
+      const body = (await response.json()) as RouteRunResponse;
+      setRunsByRouteId((currentRuns) => ({
+        ...currentRuns,
+        [recommendationId]: body.run,
+      }));
     });
   }
 
@@ -117,6 +161,26 @@ export function AssistedCapturePanel({
               <ShieldCheck size={14} aria-hidden />
               <span>{formatLabel(routeRecommendation.autonomy_tier)}</span>
             </div>
+            <button
+              className="command-button route-run-button"
+              onClick={() => runRoute(routeRecommendation.id)}
+              type="button"
+            >
+              Run deterministic route
+            </button>
+            {runsByRouteId[routeRecommendation.id] !== undefined ? (
+              <div className="run-output">
+                <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">
+                  {formatLabel(runsByRouteId[routeRecommendation.id].status)}
+                </p>
+                <h5 className="mt-1 text-sm font-semibold">
+                  {runsByRouteId[routeRecommendation.id].output.title}
+                </h5>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  {runsByRouteId[routeRecommendation.id].output.summary}
+                </p>
+              </div>
+            ) : null}
           </article>
         ))}
       </div>

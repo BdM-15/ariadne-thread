@@ -44,11 +44,22 @@ from ariadne.quick_capture_demo import build_quick_capture_demo_thread
 DEMO_OPPORTUNITY_ID = "opp-aflcmc-recompete"
 
 
+class OpportunityPortfolioStatus(StrEnum):
+    FUTURE = "future"
+    WATCHLIST = "watchlist"
+    ACTIVE = "active"
+    HELD = "held"
+    ARCHIVED = "archived"
+    WON = "won"
+    LOST = "lost"
+
+
 class ProductionCommandCenterOpportunity(BaseModel):
     id: str
     name: str
     lifecycle_state: str
     gate_status: str
+    portfolio_status: str = OpportunityPortfolioStatus.ACTIVE.value
 
 
 class ProductionCommandCenterPacket(BaseModel):
@@ -83,6 +94,7 @@ class ProductionOpportunityIntakeRequest(BaseModel):
     entry_reason: EntryReason = EntryReason.NEW_LEAD
     starting_lifecycle_state: LifecycleState = LifecycleState.IDENTIFIED
     current_milestone_gate: MilestoneGate | None = None
+    portfolio_status: OpportunityPortfolioStatus | None = None
     rationale: str | None = None
     missing_or_stale_workstreams: tuple[CoreCaptureWorkstream, ...] = ()
 
@@ -132,6 +144,18 @@ class ProductionOpportunityScaffold(BaseModel):
 
 class ProductionOpportunityCreateResponse(BaseModel):
     scaffold: ProductionOpportunityScaffold
+
+
+class ProductionOpportunityPortfolioUpdateRequest(BaseModel):
+    lifecycle_state: LifecycleState | None = None
+    current_milestone_gate: MilestoneGate | None = None
+    portfolio_status: OpportunityPortfolioStatus | None = None
+    rationale: str | None = None
+
+
+class ProductionOpportunityPortfolioUpdateResponse(BaseModel):
+    scaffold: ProductionOpportunityScaffold
+    activation_run: OpportunityActivationRun
 
 
 class AssistedCaptureWorkProduct(StrEnum):
@@ -403,6 +427,7 @@ class ProductionOpportunityPortfolioItem(BaseModel):
     name: str
     lifecycle_state: str
     gate_status: str
+    portfolio_status: str
     packet_readiness_label: str
     review_ready_count: int
     blocked_field_count: int
@@ -670,9 +695,13 @@ def create_standard_opportunity_scaffold(
         else "Capture operator identified this Opportunity for Ariadne activation."
     )
     opportunity_id = _opportunity_id_from_name(opportunity_name)
+    starting_lifecycle_state = _lifecycle_for_portfolio_status(
+        request.portfolio_status,
+        fallback=request.starting_lifecycle_state,
+    )
     entry_context = EntryContext(
         reason=request.entry_reason,
-        starting_lifecycle_state=request.starting_lifecycle_state,
+        starting_lifecycle_state=starting_lifecycle_state,
         current_milestone_gate=request.current_milestone_gate,
         rationale=rationale,
         missing_or_stale_workstreams=set(request.missing_or_stale_workstreams),
@@ -711,6 +740,10 @@ def create_standard_opportunity_scaffold(
             name=opportunity.name,
             lifecycle_state=opportunity.lifecycle_state.value,
             gate_status=opportunity.current_milestone_gate.value,
+            portfolio_status=_portfolio_status_for_lifecycle(
+                opportunity.lifecycle_state,
+                requested_status=request.portfolio_status,
+            ).value,
         ),
         entry_reason=entry_context.reason.value,
         entry_rationale=entry_context.rationale,
@@ -751,6 +784,74 @@ def create_standard_opportunity_scaffold(
         activation_digest=activation_run.activation_digest,
     )
     return store.write_scaffold(scaffold)
+
+
+def update_production_opportunity_portfolio_state(
+    *,
+    opportunity_id: str,
+    request: ProductionOpportunityPortfolioUpdateRequest,
+    store: OpportunityScaffoldStore,
+    activation_store: OpportunityActivationRunStore,
+    answer_store: PacketFieldAnswerStore | None = None,
+) -> ProductionOpportunityPortfolioUpdateResponse:
+    if opportunity_id == DEMO_OPPORTUNITY_ID or not store.has_scaffold(opportunity_id):
+        raise ValueError(f"Opportunity context not found: {opportunity_id}")
+
+    scaffold = store.read_scaffold(opportunity_id)
+    current_lifecycle = LifecycleState(scaffold.opportunity.lifecycle_state)
+    lifecycle_state = request.lifecycle_state or _lifecycle_for_portfolio_status(
+        request.portfolio_status,
+        fallback=current_lifecycle,
+    )
+    current_gate = _milestone_gate_from_scaffold_opportunity(scaffold.opportunity)
+    milestone_gate = request.current_milestone_gate or (
+        milestone_gate_for_lifecycle(lifecycle_state)
+        if request.lifecycle_state is not None
+        or request.portfolio_status
+        in {
+            OpportunityPortfolioStatus.ARCHIVED,
+            OpportunityPortfolioStatus.WON,
+            OpportunityPortfolioStatus.LOST,
+        }
+        else current_gate
+    )
+    portfolio_status = (
+        request.portfolio_status
+        or (
+            _portfolio_status_for_lifecycle(lifecycle_state)
+            if request.lifecycle_state is not None
+            else OpportunityPortfolioStatus(scaffold.opportunity.portfolio_status)
+        )
+    )
+
+    updated_opportunity = scaffold.opportunity.model_copy(
+        update={
+            "lifecycle_state": lifecycle_state.value,
+            "gate_status": milestone_gate.value,
+            "portfolio_status": portfolio_status.value,
+        }
+    )
+    updated_scaffold = scaffold.model_copy(
+        update={
+            "opportunity": updated_opportunity,
+            "packet_fields": _packet_field_slots_for_gate(
+                scaffold.packet_fields,
+                milestone_gate,
+            ),
+        }
+    )
+    stored_scaffold = store.write_scaffold(updated_scaffold)
+    activation_run = run_production_opportunity_activation(
+        opportunity_id=opportunity_id,
+        opportunity_store=store,
+        activation_store=activation_store,
+        answer_store=answer_store,
+        trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+    )
+    return ProductionOpportunityPortfolioUpdateResponse(
+        scaffold=stored_scaffold,
+        activation_run=activation_run,
+    )
 
 
 def run_production_opportunity_activation(
@@ -831,6 +932,7 @@ def build_production_command_center_workspace(
             name=demo.opportunity.name,
             lifecycle_state=demo.opportunity.lifecycle_state.value,
             gate_status=MilestoneGate.MILESTONE_3.value,
+            portfolio_status=OpportunityPortfolioStatus.ACTIVE.value,
         ),
         packet=ProductionCommandCenterPacket(
             title="Living Milestone Decision Briefing Packet",
@@ -871,6 +973,7 @@ def list_production_opportunity_portfolio(
                 name="AFLCMC recompete support",
                 lifecycle_state="pursuing",
                 gate_status=MilestoneGate.MILESTONE_3.value,
+                portfolio_status=OpportunityPortfolioStatus.ACTIVE.value,
                 packet_readiness_label="not_ready",
                 review_ready_count=0,
                 blocked_field_count=0,
@@ -910,6 +1013,7 @@ def _portfolio_item_from_scaffold(
         name=scaffold.opportunity.name,
         lifecycle_state=scaffold.opportunity.lifecycle_state,
         gate_status=scaffold.opportunity.gate_status,
+        portfolio_status=scaffold.opportunity.portfolio_status,
         packet_readiness_label=_packet_readiness_label(
             matrix
         ),
@@ -1418,6 +1522,66 @@ def list_work_product_update_projections(
     for update in updates:
         summary[update.destination.value] = summary.get(update.destination.value, 0) + 1
     return WorkProductUpdateListResponse(updates=updates, summary=summary)
+
+
+def _portfolio_status_for_lifecycle(
+    lifecycle_state: LifecycleState,
+    *,
+    requested_status: OpportunityPortfolioStatus | None = None,
+) -> OpportunityPortfolioStatus:
+    if requested_status is not None:
+        return requested_status
+    if lifecycle_state is LifecycleState.IDENTIFIED:
+        return OpportunityPortfolioStatus.WATCHLIST
+    if lifecycle_state is LifecycleState.AWARDED:
+        return OpportunityPortfolioStatus.WON
+    if lifecycle_state is LifecycleState.LOST:
+        return OpportunityPortfolioStatus.LOST
+    if lifecycle_state is LifecycleState.ARCHIVED:
+        return OpportunityPortfolioStatus.ARCHIVED
+    return OpportunityPortfolioStatus.ACTIVE
+
+
+def _lifecycle_for_portfolio_status(
+    portfolio_status: OpportunityPortfolioStatus | None,
+    *,
+    fallback: LifecycleState,
+) -> LifecycleState:
+    if portfolio_status is OpportunityPortfolioStatus.ARCHIVED:
+        return LifecycleState.ARCHIVED
+    if portfolio_status is OpportunityPortfolioStatus.WON:
+        return LifecycleState.AWARDED
+    if portfolio_status is OpportunityPortfolioStatus.LOST:
+        return LifecycleState.LOST
+    return fallback
+
+
+def _packet_field_slots_for_gate(
+    slots: tuple[ProductionOpportunityPacketFieldSlot, ...],
+    current_milestone_gate: MilestoneGate,
+) -> tuple[ProductionOpportunityPacketFieldSlot, ...]:
+    definitions_by_key = {
+        definition.key: definition
+        for definition in build_default_packet_field_definitions()
+    }
+    updated_slots: list[ProductionOpportunityPacketFieldSlot] = []
+    for slot in slots:
+        definition = definitions_by_key.get(slot.key)
+        if definition is None:
+            updated_slots.append(slot)
+            continue
+        updated_slots.append(
+            slot.model_copy(
+                update={
+                    "current_gate_required": (
+                        not definition.required_milestone_gates
+                        or current_milestone_gate
+                        in definition.required_milestone_gates
+                    )
+                }
+            )
+        )
+    return tuple(updated_slots)
 
 
 def _opportunity_id_from_name(name: str) -> str:

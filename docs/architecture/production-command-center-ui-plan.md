@@ -68,9 +68,12 @@ Default screen should answer:
 - **Main Opportunity dashboard and Living Milestone Decision Briefing Packet workspace**
   - Descriptive pulse check signals that explain what the counts mean for capture readiness.
   - Packet readiness header.
+  - Living Packet Live View as the next polished packet target: the packet itself should appear as a visual decision-brief surface, not just a table or list.
   - Section navigation using Canonical Packet Section Model.
+  - Section blocks connected to required data elements, with answer/gap/source/review state visible in-place.
   - Packet Field Action Matrix with compact answer/gap/risk/recommendation blocks.
   - Field-level answer status, evidence status, answer paths, recommended routes, and action menu.
+  - Field action trace showing whether the value came from user review, Assisted Capture, accepted evidence, document/source material, research, call-plan recommendation, or another route.
   - Evidence status, confidence, assumptions, gaps, and source chips.
   - Inline "improve this" actions routed through Capability Modules.
 
@@ -196,6 +199,18 @@ After review, UI should show what changed:
 - export readiness changed.
 
 Use visible "before -> after" for important updates.
+
+### 6. Living Packet Live View
+
+The next packet UI slice should make the Living Packet the visual center of the Opportunity workspace. The user should be able to scan a polished packet-like surface, click a section or data element, and immediately see:
+
+- the required data element and milestone-gate relevance.
+- whether the field is answered, weak, stale, assumption-based, review-ready, or blocked.
+- source/evidence chips and confidence state.
+- actions already taken to fill it, including Assisted Capture route runs and human review decisions.
+- the next recommended route when the element is still missing or weak.
+
+This view should remain connected to the Packet Field Action Matrix underneath. The matrix is the control system; the Live View is the user's mental model of the packet.
 
 ## Production UI Information Architecture
 

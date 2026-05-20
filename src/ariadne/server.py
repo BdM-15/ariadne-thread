@@ -203,6 +203,8 @@ from ariadne.production_command_center import (
     ProductionOpportunityCreateResponse,
     ProductionOpportunityIntakeRequest,
     ProductionOpportunityPortfolioResponse,
+    ProductionOpportunityPortfolioUpdateRequest,
+    ProductionOpportunityPortfolioUpdateResponse,
     OpportunityScaffoldStore,
     WorkflowRoutingStore,
     WorkProductUpdateListResponse,
@@ -219,6 +221,7 @@ from ariadne.production_command_center import (
     recommend_assisted_capture_routes,
     review_assisted_route_output,
     run_production_opportunity_activation,
+    update_production_opportunity_portfolio_state,
 )
 
 
@@ -642,6 +645,26 @@ def create_app(
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return ProductionOpportunityCreateResponse(scaffold=scaffold)
+
+    @app.patch("/api/production-command-center/opportunities/{opportunity_id}")
+    def production_command_center_update_opportunity(
+        opportunity_id: str,
+        request: ProductionOpportunityPortfolioUpdateRequest,
+    ) -> ProductionOpportunityPortfolioUpdateResponse:
+        try:
+            return update_production_opportunity_portfolio_state(
+                opportunity_id=opportunity_id,
+                request=request,
+                store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.get(
         "/api/production-command-center/opportunities/{opportunity_id}/"

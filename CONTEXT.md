@@ -28,6 +28,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Work Mode: a focused Command Center area for one product workflow or work-product family, such as packet fields, activation, assisted capture, research, documents, action plans, engagement, artifacts, knowledge, or capability routes.
 - Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
 - Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
+- Opportunity Portfolio Status: the portfolio management label for whether an Opportunity is future, watchlist, active, held, archived, won, or lost; it is related to but distinct from Lifecycle State so the portfolio can manage attention and outcomes without confusing packet gate maturity.
 - Global Opportunity Pulse: the portfolio-level status view that lets the user quickly see which Opportunities need attention by packet readiness, milestone gate urgency, source freshness, blockers, review needs, and next-action urgency before opening one Opportunity roadmap.
 - Opportunity Intake: the command surface and API flow where the user identifies an Opportunity and Ariadne creates the standardized local workspace for capture work.
 - Standard Opportunity Scaffold: the generated starting structure for one Opportunity, including the Opportunity record, core capture workstreams, backfill needs, Living Packet sections, packet-field action slots, and initial Autonomy Digest.
@@ -194,6 +195,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Packet Field Review: a view of packet field answers and shared-entity connections that provides context without treating another opportunity's answer as valid for the current opportunity.
 - Canonical Packet Section Model: Ariadne's company-agnostic internal packet-section structure, inspired by the user's private briefing packet needs but kept separate from private output formatting.
 - Living Briefing Packet: the UI-native working view of a **Living Milestone Decision Briefing Packet**.
+- Living Packet Live View: the polished visual Command Center view of the Living Milestone Decision Briefing Packet itself, where packet sections connect to required data elements, field answer/gap/source/review state, and the actions or routes taken to fill each item.
 - Briefing View: the user-facing view of a living briefing packet as a decision briefing.
 - Coverage View: the supporting view that shows milestone intelligence checklist coverage, evidence status, gaps, assumptions, and supporting sources.
 - Milestone Intelligence Checklist: a reusable, company-agnostic question set for gathering and validating the information needed to produce milestone decision briefing packets.
@@ -221,6 +223,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Opportunity Intake** should ask the user for the smallest viable identification signal, usually just the Opportunity name, then let Ariadne's scaffold and activation behavior infer or queue the remaining structure.
 - An **Opportunity Activation Run** can start after an **Opportunity** is created, imported, selected, or materially refreshed, and it should produce reviewable candidates and route recommendations rather than silently creating trusted capture records.
 - An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
+- An **Opportunity Portfolio Status** can move an **Opportunity** through portfolio management states such as future, watchlist, active, held, archived, won, or lost while keeping **Lifecycle State** focused on capture maturity and **Milestone Gate** focused on decision readiness.
 - **Shipley Phases** can map to **Lifecycle States**, but **Lifecycle State** remains Ariadne's canonical maturity model.
 - A later **Lifecycle State** does not imply all earlier **Capture Workstreams** are complete; the **Entry Context** can create **Backfill Needs**.
 - Every **Opportunity** has the same **Core Capture Workstreams**, even when some workstreams are lightweight, inactive, or need backfill.
@@ -246,6 +249,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Workflow Routing** connects capture needs and capability outputs back into the right review path so useful assistance can improve packets, call plans, action plans, evidence, research, or follow-up work without bypassing human gates.
 - A **Packet Field Action Matrix** should ensure every required **Packet Field Definition** has an answer path or fallback route, even when the fallback is a user action such as preparing a customer call plan with suggested questions.
 - A **Packet Field Action Matrix** records the **Milestone Gate** it was built for, marks which **Packet Field Definitions** are required for that current gate, and keeps future-gate fields visible as context without letting them distort current-gate readiness.
+- The **Living Packet Live View** should be built from the **Packet Field Action Matrix** and **Packet Field Answers** so the user sees the packet as a visual decision-brief artifact while Ariadne keeps the field/action/source state traceable underneath.
 - An **Opportunity Activation Run** should use the **Packet Field Action Matrix** and **Capability Catalog** to identify which answers can be gathered automatically, which skill or MCP routes should be recommended, and which gaps need human/customer follow-up.
 - When a field-specific **Assisted Capture Loop** promotes a **Packet Field Answer**, Ariadne should record a material-refresh **Opportunity Activation Run** so the **Packet Field Action Matrix** and **Living Briefing Packet** roadmap reflect the newly supported answer.
 - **Route-First Assisted Capture Orchestration** should be Ariadne's MVP path before broad Hermes, LangGraph, or autonomous planner behavior because the product first needs inspectable routes from knowledge and data into useful capture work.

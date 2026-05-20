@@ -101,6 +101,7 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
     assert scaffold["opportunity"]["name"] == "DISA cloud sustainment watch"
     assert scaffold["opportunity"]["lifecycle_state"] == "identified"
     assert scaffold["opportunity"]["gate_status"] == "milestone_1"
+    assert scaffold["opportunity"]["portfolio_status"] == "watchlist"
     assert scaffold["entry_reason"] == "new_lead"
     assert len(scaffold["workstreams"]) == 10
     assert {need["workstream_id"] for need in scaffold["backfill_needs"]} == {
@@ -154,6 +155,111 @@ def test_production_command_center_accepts_explicit_milestone_gate(tmp_path) -> 
     assert scaffold["opportunity"]["lifecycle_state"] == "pursuing"
     assert scaffold["opportunity"]["gate_status"] == "milestone_4"
     assert all(field["current_gate_required"] for field in scaffold["packet_fields"])
+
+
+def test_production_command_center_updates_portfolio_state_and_gate(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={
+            "name": "DISA cloud sustainment watch",
+            "portfolio_status": "future",
+        },
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    assert (
+        create_response.json()["scaffold"]["opportunity"]["portfolio_status"]
+        == "future"
+    )
+
+    active_response = client.patch(
+        f"/api/production-command-center/opportunities/{opportunity_id}",
+        json={
+            "lifecycle_state": "pursuing",
+            "current_milestone_gate": "milestone_3",
+            "portfolio_status": "active",
+            "rationale": "Capture lead moved this into active pursuit.",
+        },
+    )
+
+    assert active_response.status_code == 200, active_response.text
+    active_body = active_response.json()
+    active_scaffold = active_body["scaffold"]
+    assert active_scaffold["opportunity"]["lifecycle_state"] == "pursuing"
+    assert active_scaffold["opportunity"]["gate_status"] == "milestone_3"
+    assert active_scaffold["opportunity"]["portfolio_status"] == "active"
+    fields_by_key = {field["key"]: field for field in active_scaffold["packet_fields"]}
+    assert fields_by_key["rfp_release_date"]["current_gate_required"] is True
+    assert fields_by_key["evaluation_methodology"]["current_gate_required"] is True
+    assert active_body["activation_run"]["trigger"] == "material_refresh"
+    assert (
+        active_body["activation_run"]["packet_field_action_matrix"][
+            "current_milestone_gate"
+        ]
+        == "milestone_3"
+    )
+
+    archive_response = client.patch(
+        f"/api/production-command-center/opportunities/{opportunity_id}",
+        json={"portfolio_status": "archived"},
+    )
+
+    assert archive_response.status_code == 200, archive_response.text
+    archived = archive_response.json()["scaffold"]["opportunity"]
+    assert archived["lifecycle_state"] == "archived"
+    assert archived["gate_status"] == "milestone_4"
+    assert archived["portfolio_status"] == "archived"
+
+    portfolio_response = client.get("/api/production-command-center/opportunities")
+    portfolio_item = next(
+        opportunity
+        for opportunity in portfolio_response.json()["opportunities"]
+        if opportunity["id"] == opportunity_id
+    )
+    assert portfolio_item["portfolio_status"] == "archived"
+    assert portfolio_item["lifecycle_state"] == "archived"
+
+
+def test_portfolio_lists_representative_lifecycle_statuses(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    expected = {
+        "Future recompete watch": "future",
+        "Active cyber pursuit": "active",
+        "Archived cloud pursuit": "archived",
+    }
+    client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Future recompete watch", "portfolio_status": "future"},
+    )
+    client.post(
+        "/api/production-command-center/opportunities",
+        json={
+            "name": "Active cyber pursuit",
+            "starting_lifecycle_state": "pursuing",
+        },
+    )
+    client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Archived cloud pursuit", "portfolio_status": "archived"},
+    )
+
+    response = client.get("/api/production-command-center/opportunities")
+
+    assert response.status_code == 200
+    portfolio_by_name = {
+        opportunity["name"]: opportunity
+        for opportunity in response.json()["opportunities"]
+        if opportunity["name"] in expected
+    }
+    assert {
+        name: opportunity["portfolio_status"]
+        for name, opportunity in portfolio_by_name.items()
+    } == expected
+    assert portfolio_by_name["Archived cloud pursuit"]["lifecycle_state"] == "archived"
 
 
 def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:

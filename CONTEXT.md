@@ -24,6 +24,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Domain Language
 
 - Capture Command Center: the single working surface where opportunity data, evidence, recommendations, decisions, actions, HITL sessions, plans, agents, and artifacts are connected for active capture work.
+- Command Center Home: the pulse-and-routing view for one selected Opportunity, showing state, blockers, review needs, next best actions, recent changes, and links into focused Work Modes rather than hosting every detailed action surface.
+- Work Mode: a focused Command Center area for one product workflow or work-product family, such as packet fields, activation, assisted capture, research, documents, action plans, engagement, artifacts, knowledge, or capability routes.
 - Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
 - Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
 - Opportunity Intake: the command surface and API flow where the user identifies an Opportunity and Ariadne creates the standardized local workspace for capture work.

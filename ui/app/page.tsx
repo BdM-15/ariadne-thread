@@ -62,6 +62,10 @@ type WorkMode = {
   pending_count: number;
 };
 
+type CommandMode = WorkMode & {
+  description: string;
+};
+
 type Workspace = {
   production_ui_contract: string;
   scaffold_role: string;
@@ -132,9 +136,17 @@ type OpportunityActivationRunListResponse = {
 
 type SignalTone = "cyan" | "copper" | "rose" | "signal";
 
+type PulseSignalModel = {
+  label: string;
+  value: string;
+  description: string;
+  tone: SignalTone;
+};
+
 type CommandCenterSearchParams = {
   opportunity_id?: string | string[];
   created?: string | string[];
+  mode?: string | string[];
 };
 
 type CommandCenterPageProps = {
@@ -145,13 +157,29 @@ const modeIcons: Record<
   string,
   ComponentType<{ className?: string; size?: number }>
 > = {
+  pulse: ShieldCheck,
   packet: FileText,
+  activation: SearchCheck,
+  capture: Bot,
   actions: ClipboardCheck,
   engagement: MessageSquareText,
   research: SearchCheck,
   documents: FileStack,
   artifacts: Archive,
   capability_studio: Bot,
+};
+
+const workModeDescriptions: Record<string, string> = {
+  pulse: "Readiness, blockers, review needs, and next best routes.",
+  packet: "Living Packet coverage, support, gaps, and field-level routes.",
+  activation: "Autonomy Digest, Packet Field Action Matrix, and review gate.",
+  capture: "Goal-led assisted capture route recommendation and review loop.",
+  actions: "Outcome tasks, urgency, owners, and action-plan AI support.",
+  engagement: "Call plans, customer prep, meetings, and follow-up commitments.",
+  research: "Capture research briefs, findings, lenses, and review candidates.",
+  documents: "Document intake, extraction bundles, source spans, and parser gaps.",
+  artifacts: "Draft readiness, renderer status, and future export paths.",
+  capability_studio: "Advanced capability inventory, validation, runs, and provenance.",
 };
 
 const apiBaseUrl = process.env.ARIADNE_API_BASE_URL ?? "http://127.0.0.1:9622";
@@ -249,6 +277,7 @@ export default async function CommandCenterPage({
   const selectedOpportunityId = firstSearchParam(
     resolvedSearchParams.opportunity_id,
   );
+  const requestedMode = firstSearchParam(resolvedSearchParams.mode);
   const createdWorkspace =
     firstSearchParam(resolvedSearchParams.created) === "1";
   const [workspace, rendererReadiness, portfolio] = await Promise.all([
@@ -264,6 +293,10 @@ export default async function CommandCenterPage({
   const latestActivationRun = await loadLatestActivationRun(
     workspace.opportunity.id,
   );
+  const commandModes = buildCommandModes(workspace.work_modes);
+  const selectedModeId = normalizeCommandMode(requestedMode, commandModes);
+  const selectedMode =
+    commandModes.find((mode) => mode.id === selectedModeId) ?? commandModes[0];
 
   const pulseSignals = [
     {
@@ -361,10 +394,15 @@ export default async function CommandCenterPage({
             className="mt-7 space-y-2"
             aria-label="Command Center work modes"
           >
-            {workspace.work_modes.map((mode) => {
+            {commandModes.map((mode) => {
               const ModeIcon = modeIcons[mode.id] ?? Layers3;
               return (
-                <button className="mode-button" key={mode.id} type="button">
+                <a
+                  aria-current={mode.id === selectedModeId ? "page" : undefined}
+                  className={`mode-button${mode.id === selectedModeId ? " active" : ""}`}
+                  href={modeHref(mode.id, workspace.opportunity.id)}
+                  key={mode.id}
+                >
                   <span className="flex items-center gap-3">
                     <ModeIcon size={18} aria-hidden />
                     <span>{mode.label}</span>
@@ -372,7 +410,7 @@ export default async function CommandCenterPage({
                   {mode.pending_count > 0 ? (
                     <span className="mode-count">{mode.pending_count}</span>
                   ) : null}
-                </button>
+                </a>
               );
             })}
           </nav>
@@ -417,89 +455,48 @@ export default async function CommandCenterPage({
             </section>
           ) : null}
 
-          <section
-            className="workspace-section"
-            aria-labelledby="pulse-check-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Pulse Check
-                </p>
-                <h3 id="pulse-check-title">Capture readiness signals</h3>
-              </div>
-              <Bot className="text-ariadne-cyan" size={22} aria-hidden />
+          <section className="mode-surface-heading" aria-live="polite">
+            <div>
+              <p>Work Mode</p>
+              <h3>{selectedMode.label}</h3>
             </div>
-            <div className="signal-grid mt-4">
-              {pulseSignals.map((signal) => (
-                <PulseSignal key={signal.label} {...signal} />
-              ))}
-            </div>
+            <span>{selectedMode.description}</span>
           </section>
 
-          <section
-            className="workspace-section"
-            aria-labelledby="packet-plan-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Living Packet
-                </p>
-                <h3 id="packet-plan-title">What the packet can support now</h3>
-              </div>
-              <FileText className="text-ariadne-copper" size={22} aria-hidden />
-            </div>
-            <div className="signal-grid mt-4 md:grid-cols-3">
-              {packetSignals.map((signal) => (
-                <PulseSignal key={signal.label} {...signal} />
-              ))}
-            </div>
-          </section>
+          {selectedModeId === "pulse" ? (
+            <CommandCenterHome
+              packetSignals={packetSignals}
+              pulseSignals={pulseSignals}
+              regions={workspace.layout_regions}
+              selectedOpportunityId={workspace.opportunity.id}
+            />
+          ) : null}
 
-          <section
-            className="workspace-section"
-            aria-labelledby="work-map-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Work Map
-                </p>
-                <h3 id="work-map-title">Where Ariadne can act next</h3>
-              </div>
-              <Layers3 className="text-ariadne-cyan" size={22} aria-hidden />
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {workspace.layout_regions.map((region) => (
-                <article className="region-panel" key={region.id}>
-                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                    {formatLabel(region.id)}
-                  </p>
-                  <h3 className="mt-2 text-base font-semibold text-slate-100">
-                    {region.label}
-                  </h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-300">
-                    {region.purpose}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </section>
+          {selectedModeId === "packet" ? (
+            <PacketMode packetSignals={packetSignals} />
+          ) : null}
 
-          <OpportunityActivationPanel
-            opportunityId={workspace.opportunity.id}
-            run={latestActivationRun}
-          />
+          {selectedModeId === "activation" ? (
+            <OpportunityActivationPanel
+              opportunityId={workspace.opportunity.id}
+              run={latestActivationRun}
+            />
+          ) : null}
 
-          <AssistedCapturePanel
-            goals={workspace.assisted_capture_goals}
-            key={workspace.opportunity.id}
-            opportunityId={workspace.opportunity.id}
-          />
+          {selectedModeId === "capture" ? (
+            <AssistedCapturePanel
+              goals={workspace.assisted_capture_goals}
+              key={workspace.opportunity.id}
+              opportunityId={workspace.opportunity.id}
+            />
+          ) : null}
 
-          {rendererReadiness !== null ? (
+          {selectedModeId === "artifacts" && rendererReadiness !== null ? (
             <RendererReadinessPanel readiness={rendererReadiness} />
+          ) : null}
+
+          {isPlaceholderMode(selectedModeId) ? (
+            <FocusedModePlaceholder mode={selectedMode} />
           ) : null}
         </section>
       </div>
@@ -588,17 +585,176 @@ function OpportunityPortfolioSwitcher({
   );
 }
 
+function CommandCenterHome({
+  packetSignals,
+  pulseSignals,
+  regions,
+  selectedOpportunityId,
+}: {
+  packetSignals: PulseSignalModel[];
+  pulseSignals: PulseSignalModel[];
+  regions: LayoutRegion[];
+  selectedOpportunityId: string;
+}) {
+  const entryPoints = [
+    {
+      id: "activation",
+      label: "Review activation matrix",
+      description: "Inspect Autonomy Digest, field routes, and review-ready answers.",
+    },
+    {
+      id: "capture",
+      label: "Start assisted capture",
+      description: "Pick a goal, inspect routes, run a bounded capture loop.",
+    },
+    {
+      id: "artifacts",
+      label: "Check artifact readiness",
+      description: "See renderer readiness and blocked export paths.",
+    },
+  ];
+
+  return (
+    <>
+      <section
+        className="workspace-section"
+        aria-labelledby="pulse-check-title"
+      >
+        <div className="section-heading">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+              Pulse Check
+            </p>
+            <h3 id="pulse-check-title">Capture readiness signals</h3>
+          </div>
+          <Bot className="text-ariadne-cyan" size={22} aria-hidden />
+        </div>
+        <div className="signal-grid mt-4">
+          {pulseSignals.map((signal) => (
+            <PulseSignal key={signal.label} {...signal} />
+          ))}
+        </div>
+      </section>
+
+      <section className="workspace-section" aria-labelledby="home-route-title">
+        <div className="section-heading">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+              Next Routes
+            </p>
+            <h3 id="home-route-title">Focused places to act</h3>
+          </div>
+          <Layers3 className="text-ariadne-cyan" size={22} aria-hidden />
+        </div>
+        <div className="mode-entry-grid">
+          {entryPoints.map((entry) => (
+            <a
+              className="mode-entry-card"
+              href={modeHref(entry.id, selectedOpportunityId)}
+              key={entry.id}
+            >
+              <strong>{entry.label}</strong>
+              <span>{entry.description}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <PacketMode packetSignals={packetSignals} compact />
+
+      <section className="workspace-section" aria-labelledby="work-map-title">
+        <div className="section-heading">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+              Work Map
+            </p>
+            <h3 id="work-map-title">Where Ariadne can act next</h3>
+          </div>
+          <Layers3 className="text-ariadne-cyan" size={22} aria-hidden />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {regions.map((region) => (
+            <article className="region-panel" key={region.id}>
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                {formatLabel(region.id)}
+              </p>
+              <h3 className="mt-2 text-base font-semibold text-slate-100">
+                {region.label}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
+                {region.purpose}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function PacketMode({
+  compact = false,
+  packetSignals,
+}: {
+  compact?: boolean;
+  packetSignals: PulseSignalModel[];
+}) {
+  return (
+    <>
+      <section
+        className="workspace-section"
+        aria-labelledby="packet-plan-title"
+      >
+        <div className="section-heading">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+              Living Packet
+            </p>
+            <h3 id="packet-plan-title">What the packet can support now</h3>
+          </div>
+          <FileText className="text-ariadne-copper" size={22} aria-hidden />
+        </div>
+        <div className="signal-grid mt-4 md:grid-cols-3">
+          {packetSignals.map((signal) => (
+            <PulseSignal key={signal.label} {...signal} />
+          ))}
+        </div>
+      </section>
+
+      {!compact ? (
+        <section className="focused-mode-placeholder">
+          <p>Focused packet field workspace</p>
+          <h3>Detailed Packet Field view comes next.</h3>
+          <span>
+            Current field-level answer review lives in Activation mode. This
+            Packet mode is reserved for section coverage, accepted answers,
+            assumptions, gaps, and source support.
+          </span>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
+  return (
+    <section className="focused-mode-placeholder">
+      <p>{mode.label}</p>
+      <h3>Focused surface not built yet.</h3>
+      <span>
+        {mode.description} This mode is now routed separately so future work can
+        land here without expanding Command Center Home into one huge page.
+      </span>
+    </section>
+  );
+}
+
 function PulseSignal({
   label,
   value,
   description,
   tone,
-}: {
-  label: string;
-  value: string;
-  description: string;
-  tone: SignalTone;
-}) {
+}: PulseSignalModel) {
   return (
     <article className={`pulse-signal pulse-signal-${tone}`}>
       <div>
@@ -718,6 +874,69 @@ function firstSearchParam(
     return value[0];
   }
   return value;
+}
+
+function buildCommandModes(workModes: WorkMode[]): CommandMode[] {
+  const backendModes = new Map(workModes.map((mode) => [mode.id, mode]));
+  const orderedIds = [
+    "pulse",
+    "packet",
+    "activation",
+    "capture",
+    "actions",
+    "engagement",
+    "research",
+    "documents",
+    "artifacts",
+  ];
+  const orderedModes = orderedIds.map((id) => {
+    const backendMode = backendModes.get(id);
+    return {
+      id,
+      label: backendMode?.label ?? formatLabel(id),
+      pending_count: backendMode?.pending_count ?? 0,
+      description: workModeDescriptions[id] ?? "Focused Command Center work mode.",
+    };
+  });
+  const extraModes = workModes
+    .filter((mode) => !orderedIds.includes(mode.id))
+    .map((mode) => ({
+      ...mode,
+      description:
+        workModeDescriptions[mode.id] ?? "Focused Command Center work mode.",
+    }));
+  return [...orderedModes, ...extraModes];
+}
+
+function normalizeCommandMode(
+  requestedMode: string | undefined,
+  commandModes: CommandMode[],
+): string {
+  if (
+    requestedMode !== undefined &&
+    commandModes.some((mode) => mode.id === requestedMode)
+  ) {
+    return requestedMode;
+  }
+  return "pulse";
+}
+
+function modeHref(modeId: string, opportunityId: string): string {
+  const params = new URLSearchParams({
+    opportunity_id: opportunityId,
+    mode: modeId,
+  });
+  return `/?${params.toString()}`;
+}
+
+function isPlaceholderMode(modeId: string): boolean {
+  return [
+    "actions",
+    "engagement",
+    "research",
+    "documents",
+    "capability_studio",
+  ].includes(modeId);
 }
 
 function activationTimestamp(run: OpportunityActivationRun): number {

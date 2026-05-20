@@ -596,9 +596,7 @@ function OpportunityPortfolioSwitcher({
           {opportunities.length > 0 ? (
             opportunities.map((opportunity) => {
               const isSelected = opportunity.id === selectedOpportunityId;
-              const href = opportunity.is_demo
-                ? "/"
-                : `/?opportunity_id=${encodeURIComponent(opportunity.id)}`;
+              const href = opportunityAttentionHref(opportunity);
               return (
                 <a
                   aria-current={isSelected ? "page" : undefined}
@@ -713,48 +711,51 @@ function CommandCenterHome({
         </div>
         <div className="global-pulse-grid">
           {globalPulse.length > 0 ? (
-            globalPulse.map((opportunity) => (
-              <a
-                className={`global-pulse-card ${opportunityPulseToneClass(opportunity.urgency)}`}
-                href={modeHref("packet", opportunity.id)}
-                key={opportunity.id}
-                aria-current={
-                  opportunity.id === selectedOpportunityId ? "page" : undefined
-                }
-              >
-                <div className="global-pulse-card-heading">
-                  <div>
-                    <p>{formatLabel(opportunity.lifecycle_state)}</p>
-                    <h4>{opportunity.name}</h4>
+            globalPulse.map((opportunity) => {
+              const attentionHref = opportunityAttentionHref(opportunity);
+              const routeLabel = opportunity.attention_field_key
+                ? "Assisted capture"
+                : formatLabel(opportunityAttentionMode(opportunity));
+              return (
+                <a
+                  className={`global-pulse-card ${opportunityPulseToneClass(opportunity.urgency)}`}
+                  href={attentionHref}
+                  key={opportunity.id}
+                  aria-current={
+                    opportunity.id === selectedOpportunityId ? "page" : undefined
+                  }
+                >
+                  <div className="global-pulse-card-heading">
+                    <div>
+                      <p>{formatLabel(opportunity.lifecycle_state)}</p>
+                      <h4>{opportunity.name}</h4>
+                    </div>
+                    <span>{opportunity.urgencyLabel}</span>
                   </div>
-                  <span>{opportunity.urgencyLabel}</span>
-                </div>
-                <span className="global-pulse-reason">
-                  {opportunity.reason}
-                </span>
-                <div className="global-pulse-chip-row">
-                  <span>{formatLabel(opportunity.packet_readiness_label)}</span>
-                  <span>
-                    {formatLabel(opportunity.attention_route_mode ?? "packet")}{" "}
-                    route
+                  <span className="global-pulse-reason">
+                    {opportunity.reason}
                   </span>
-                  {opportunity.blocked_field_count > 0 ? (
-                    <span>{opportunity.blocked_field_count} gaps</span>
-                  ) : null}
-                  {opportunity.review_ready_count > 0 ? (
-                    <span>{opportunity.review_ready_count} reviews</span>
-                  ) : null}
-                  {opportunity.source_limitation_count > 0 ? (
-                    <span>
-                      {opportunity.source_limitation_count} source limits
-                    </span>
-                  ) : null}
-                </div>
-                <strong className="global-pulse-card-action">
-                  {opportunity.attention_route_label ?? "Open roadmap"}
-                </strong>
-              </a>
-            ))
+                  <div className="global-pulse-chip-row">
+                    <span>{formatLabel(opportunity.packet_readiness_label)}</span>
+                    <span>{routeLabel} route</span>
+                    {opportunity.blocked_field_count > 0 ? (
+                      <span>{opportunity.blocked_field_count} gaps</span>
+                    ) : null}
+                    {opportunity.review_ready_count > 0 ? (
+                      <span>{opportunity.review_ready_count} reviews</span>
+                    ) : null}
+                    {opportunity.source_limitation_count > 0 ? (
+                      <span>
+                        {opportunity.source_limitation_count} source limits
+                      </span>
+                    ) : null}
+                  </div>
+                  <strong className="global-pulse-card-action">
+                    {opportunity.attention_route_label ?? "Open roadmap"}
+                  </strong>
+                </a>
+              );
+            })
           ) : (
             <article className="global-pulse-empty">
               No managed Opportunities yet. Create one to begin activation.
@@ -1303,6 +1304,23 @@ function modeHref(
     }
   });
   return `/?${params.toString()}`;
+}
+
+function opportunityAttentionHref(opportunity: PortfolioOpportunity): string {
+  if (opportunity.attention_field_key) {
+    return modeHref("capture", opportunity.id, {
+      packet_field_key: opportunity.attention_field_key,
+      route_goal: "close_packet_gap",
+    });
+  }
+  return modeHref(opportunityAttentionMode(opportunity), opportunity.id);
+}
+
+function opportunityAttentionMode(opportunity: PortfolioOpportunity): string {
+  return (
+    opportunity.attention_route_mode ??
+    modeForPacketRoute(opportunity.attention_reason ?? "")
+  );
 }
 
 function isPlaceholderMode(modeId: string): boolean {

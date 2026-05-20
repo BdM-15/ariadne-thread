@@ -347,7 +347,11 @@ export function AssistedCapturePanel({
                   <div className="mt-3 space-y-2">
                     {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id].map((update) => (
                       <div className="update-projection" key={update.id}>
-                        <span>{formatLabel(update.destination)}</span>
+                        <div>
+                          <span>{formatLabel(update.destination)}</span>
+                          <p>{update.before_summary}</p>
+                          <p>{update.after_summary}</p>
+                        </div>
                         <span>{formatLabel(update.state)}</span>
                       </div>
                     ))}

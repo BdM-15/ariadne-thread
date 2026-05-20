@@ -243,8 +243,16 @@ button {
   padding: 8px 10px;
 }
 
+.update-projection p {
+  color: #98a6b3;
+  line-height: 1.45;
+  margin: 6px 0 0;
+}
+
 .update-projection span:last-child {
   color: #4dd8cf;
+  min-width: 92px;
+  text-align: right;
 }
 
 .provenance-panel {

@@ -26,6 +26,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Command Center: the single working surface where opportunity data, evidence, recommendations, decisions, actions, HITL sessions, plans, agents, and artifacts are connected for active capture work.
 - Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
 - Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
+- Opportunity Activation Run: a bounded autonomous sweep Ariadne performs after opportunity identification or on user request to gather permitted context, evaluate required packet fields, run low-risk or pre-approved capabilities, identify skills/chains/MCP routes, record source limitations, and queue reviewable candidates or approval requests.
+- Autonomy Digest: the compact UX summary of autonomous or background work, showing coverage gained, field candidates ready for review, blocked fields, source limitations, recommended skills/chains, approvals needed, and next-best actions while keeping raw tool traces secondary.
 - Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate. Pasted text and supported text or Markdown uploads should preserve source metadata.
@@ -207,6 +209,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Relationships
 
 - An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
+- An **Opportunity Activation Run** can start after an **Opportunity** is created, imported, selected, or materially refreshed, and it should produce reviewable candidates and route recommendations rather than silently creating trusted capture records.
 - An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
 - **Shipley Phases** can map to **Lifecycle States**, but **Lifecycle State** remains Ariadne's canonical maturity model.
 - A later **Lifecycle State** does not imply all earlier **Capture Workstreams** are complete; the **Entry Context** can create **Backfill Needs**.
@@ -232,6 +235,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Capability Module Integration** should make skills, skill chains, CLI harnesses, model workflows, and adapters usable from **Product Workflows** without making the user manage the toolchain first.
 - **Workflow Routing** connects capture needs and capability outputs back into the right review path so useful assistance can improve packets, call plans, action plans, evidence, research, or follow-up work without bypassing human gates.
 - A **Packet Field Action Matrix** should ensure every required **Packet Field Definition** has an answer path or fallback route, even when the fallback is a user action such as preparing a customer call plan with suggested questions.
+- An **Opportunity Activation Run** should use the **Packet Field Action Matrix** and **Capability Catalog** to identify which answers can be gathered automatically, which skill or MCP routes should be recommended, and which gaps need human/customer follow-up.
 - **Route-First Assisted Capture Orchestration** should be Ariadne's MVP path before broad Hermes, LangGraph, or autonomous planner behavior because the product first needs inspectable routes from knowledge and data into useful capture work.
 - An **Assisted Capture Loop** uses **Opportunity Knowledge Context** to identify capture needs, invoke or recommend **Capability Modules**, preserve **Capability Run Outputs**, and route reviewed results into the user's active capture work.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
@@ -246,6 +250,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Capability Reasoning View** presents **Capability Provenance** for a **Capability Run Output** without making the toolchain the primary capture workflow.
 - A **Capability Reasoning View** can include a **Model Rationale Summary**, but Ariadne should not depend on storing raw hidden model reasoning as the source of truth.
 - **Graduated Autonomy** can move low-risk **Capability Run Outputs** toward automatic handling only when provenance, confidence, reversibility, sensitivity, and user-approved autonomy rules support it.
+- An **Autonomy Digest** is the required user-facing shape for autonomous or background work; Ariadne should not expose autonomous progress as raw logs, scattered tool cards, or a separate tool maze unless the user opens provenance details.
 - An **Interactive Capability Session** supports capability modules that require conversational input, clarification, critique, or staged decisions.
 - An **Interactive Capability Session** can run in different **Capability Session Contexts** without changing the underlying **Capability Module**.
 - An **Exploratory Capture Session** can later produce **Reusable Capture Insight**, **Raw Capture Items**, **Action Plan Items**, or a new **Opportunity**.

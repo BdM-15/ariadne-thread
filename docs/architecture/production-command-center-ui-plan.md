@@ -5,7 +5,7 @@ Status: planning baseline for MVP-1 through MVP-4
 
 ## Purpose
 
-Make Ariadne's UI/UX a real capture command and management workspace, not another scaffold or passive dashboard. The production Command Center should let one capture professional see the state of an Opportunity, understand what matters next, approve AI/capability work, review outputs, route results, and improve the Living Milestone Decision Briefing Packet, call/engagement prep, actions, risks, evidence, and artifacts without tool sprawl.
+Make Ariadne's UI/UX a real capture command and management workspace, not another scaffold or passive dashboard. The production Command Center should let one capture professional see the state of an Opportunity, understand what matters next, let Ariadne perform bounded autonomous activation work, approve AI/capability work, review outputs, route results, and improve the Living Milestone Decision Briefing Packet, call/engagement prep, actions, risks, evidence, and artifacts without tool sprawl.
 
 ## Readiness Judgment
 
@@ -46,11 +46,12 @@ Default screen should answer:
 
 1. What is the state of this Opportunity?
 2. Where does this Opportunity sit in my broader portfolio?
-3. Which Living Packet fields are answered, weak, stale, or missing?
-4. What can Ariadne do now for each important gap?
-5. What needs my review?
-6. What work product changed?
-7. What evidence or vault knowledge supports it?
+3. What did Ariadne already gather or queue after activation?
+4. Which Living Packet fields are answered, weak, stale, or missing?
+5. What can Ariadne do now for each important gap?
+6. What needs my review?
+7. What work product changed?
+8. What evidence or vault knowledge supports it?
 
 ## Primary Workspace Shape
 
@@ -73,6 +74,7 @@ Default screen should answer:
   - Inline "improve this" actions routed through Capability Modules.
 
 - **Right rail: Command and review rail**
+  - Autonomy Digest for opportunity activation coverage, blockers, approvals, and next-best actions.
   - Assisted capture goal selector.
   - Next route recommendations.
   - Active runs and queued work.
@@ -90,6 +92,31 @@ Default screen should answer:
 Mobile is secondary but should not break. Use top opportunity header, segmented work modes, bottom action bar, and drawers for provenance/review. Do not attempt dense command-center parity on small screens.
 
 ## Core Interaction Loops
+
+### 0. Opportunity Activation
+
+After an Opportunity is created, imported, selected, or materially refreshed, Ariadne should be able to run a bounded activation sweep.
+
+Ariadne gathers or queues:
+
+- known opportunity context and source profiles.
+- required packet-field coverage.
+- accepted evidence and document-derived candidates.
+- permitted federal-data/source-provider checks.
+- recommended skills, skill chains, MCP routes, and model roles.
+- source limitations, blocked fields, and approval needs.
+
+The UI returns an Autonomy Digest, not a tool log:
+
+- coverage gained.
+- candidates ready for review.
+- packet fields still blocked.
+- recommended next routes.
+- approvals required.
+- source limitations.
+- next-best action.
+
+Primary actions: review digest, approve queued work, inspect provenance, start next route, defer.
 
 ### 1. Assisted Capture Start
 
@@ -195,6 +222,7 @@ Default landing should be Command Center, not a marketing page or static dashboa
 ## Anti-Convoluted Rules
 
 - One primary next action per panel.
+- Autonomous work should appear as digest, coverage, review queue, and next-best action, not as a swarm of cards, logs, popups, or tool-specific screens.
 - Product workflows first, tools second.
 - Show only actionable status by default; details in drawers.
 - Every surfaced item must answer "so what?" or "what can I do?"
@@ -225,6 +253,8 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 
 - Opportunity Portfolio list and switcher for active, future/watchlist, held, archived, won, and lost Opportunities.
 - selected Opportunity summary with lifecycle state, packet readiness, source freshness, review count, and next-action urgency.
+- Opportunity Activation Run entry point and resume state after create/import/select.
+- Autonomy Digest showing coverage gained, review-ready field candidates, blocked fields, recommended skills/chains, MCP/source-provider routes, approvals needed, and next-best actions.
 - Living Packet rendered as required packet fields, not only section aggregates.
 - field-level action surfaces showing answer status, answer paths, source support, gaps, confidence, recommended route, and action menu.
 - field routes for accepted evidence/source-backed answer, research or MCP-backed answer candidate, and customer-call-plan recommendation when Ariadne cannot safely answer from data.
@@ -278,6 +308,8 @@ Production UI is good enough for MVP only when user can:
 
 - open one Opportunity.
 - switch among multiple Opportunities in active, future/watchlist, and past/archive states.
+- launch or resume an Opportunity Activation Run without entering separate tool screens.
+- understand the Autonomy Digest in under 30 seconds.
 - understand readiness in 30 seconds.
 - see which required packet fields are answered, weak, stale, or missing.
 - start a field-level route from a packet data element.
@@ -289,10 +321,12 @@ Production UI is good enough for MVP only when user can:
 - see work-product change.
 - export DOCX, XLSX, and first huashu-design output from reviewed content.
 - recover from errors without losing context.
+- use autonomous features without losing the main packet/action/review workflow.
 
 ## Open Questions
 
 1. Which artifact should huashu-design produce first: packet visual/PPTX output, engagement artifact, or executive gate-review visual?
 2. Which packet fields should be mandatory in the first Packet Field Action Matrix demo?
 3. Which portfolio states should be editable in the first UI slice versus read-only/system-derived?
-4. Should Capability Studio stay fully separate, or appear as an advanced drawer inside Command Center for the single-user developer workflow?
+4. Which activation actions should auto-run by default versus require approval in the first demo?
+5. Should Capability Studio stay fully separate, or appear as an advanced drawer inside Command Center for the single-user developer workflow?

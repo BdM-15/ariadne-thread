@@ -183,9 +183,12 @@ from ariadne.usaspending import (
 from ariadne.production_command_center import (
     AssistedRouteRecommendationRequest,
     AssistedRouteRecommendationResponse,
+    AssistedRouteRunRequest,
+    AssistedRouteRunResponse,
     ProductionCommandCenterWorkspace,
     WorkflowRoutingStore,
     build_production_command_center_workspace,
+    execute_assisted_capture_route,
     recommend_assisted_capture_routes,
 )
 
@@ -585,6 +588,25 @@ def create_app(
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/production-command-center/routes/{recommendation_id}/runs")
+    def production_command_center_execute_route(
+        recommendation_id: str,
+        request: AssistedRouteRunRequest,
+    ) -> AssistedRouteRunResponse:
+        try:
+            run = execute_assisted_capture_route(
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                recommendation_id=recommendation_id,
+                approved=request.approved,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Route recommendation not found") from error
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return AssistedRouteRunResponse(run=run)
 
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:

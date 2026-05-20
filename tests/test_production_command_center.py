@@ -105,3 +105,40 @@ def test_assisted_capture_goal_selection_returns_reviewable_routes(tmp_path) -> 
         "call_plan_draft",
     ]
     assert "Customer context gap" in primary_route["reasoning"][0]
+
+
+def test_assisted_capture_route_execution_creates_reviewable_output(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    recommendation_response = client.post(
+        "/api/production-command-center/opportunities/"
+        "opp-aflcmc-recompete/route-recommendations",
+        json={"goal_id": "prepare_customer_call"},
+    )
+    recommendation_id = recommendation_response.json()["recommendations"][0]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/routes/{recommendation_id}/runs",
+        json={"approved": True},
+    )
+
+    assert response.status_code == 200
+    run = response.json()["run"]
+    assert run["id"] == f"run_{recommendation_id}_deterministic-draft"
+    assert run["recommendation_id"] == recommendation_id
+    assert run["opportunity_id"] == "opp-aflcmc-recompete"
+    assert run["status"] == "needs_review"
+    assert run["executor_kind"] == "deterministic_python"
+    assert run["network_required"] is False
+    assert run["model_required"] is False
+    assert [stage["status"] for stage in run["stages"]] == [
+        "succeeded",
+        "succeeded",
+        "succeeded",
+    ]
+    assert run["output"]["id"] == f"output_{recommendation_id}_reviewable-draft"
+    assert run["output"]["review_state"] == "pending_review"
+    assert run["output"]["recommended_destination"] == "call_plan"
+    assert "Customer call plan" in run["output"]["title"]
+    assert "knowledge_context_review" in run["output"]["capability_chain"]

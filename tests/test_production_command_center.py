@@ -12,6 +12,9 @@ def _command_center_settings(tmp_path):
                 tmp_path / "next-action-recommendations"
             ),
             "ARIADNE_OPPORTUNITIES_DIR": str(tmp_path / "opportunities"),
+            "ARIADNE_OPPORTUNITY_ACTIVATION_DIR": str(
+                tmp_path / "opportunity-activation"
+            ),
             "ARIADNE_WORKFLOW_ROUTING_DIR": str(tmp_path / "workflow-routing"),
         }
     )
@@ -112,9 +115,61 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
     assert digest["blocked_field_count"] == len(scaffold["packet_fields"])
     assert digest["review_ready_count"] == 0
     assert "Created 10 standard capture workstreams." in digest["coverage_gained"]
+    assert "Analyzed 10 packet fields for answer paths." in digest["coverage_gained"]
     assert digest["recommended_skill_chains"]
     assert digest["approval_required_routes"]
     assert digest["next_best_actions"]
+
+
+def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.get(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+
+    assert response.status_code == 200
+    runs = response.json()["runs"]
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["trigger"] == "initial_scaffold"
+    assert run["status"] == "needs_review"
+    assert run["packet_field_count"] == len(
+        create_response.json()["scaffold"]["packet_fields"]
+    )
+    assert run["packet_field_action_matrix"]["blocked_field_count"] == len(
+        create_response.json()["scaffold"]["packet_fields"]
+    )
+    assert run["provenance"]["trusted_downstream_writes"] is False
+
+
+def test_production_command_center_can_run_activation_on_request(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Space Force cyber sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+
+    assert response.status_code == 200
+    run = response.json()
+    assert run["trigger"] == "user_request"
+    assert run["opportunity_id"] == opportunity_id
+    assert run["packet_field_action_matrix"]["fields"]
+    assert run["activation_digest"]["next_best_actions"]
 
 
 def test_created_opportunity_can_receive_route_recommendations(tmp_path) -> None:

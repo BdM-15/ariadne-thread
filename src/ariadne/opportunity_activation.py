@@ -1,0 +1,442 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from hashlib import sha256
+from pathlib import Path
+
+from pydantic import BaseModel, Field
+
+from ariadne.packet_knowledge import (
+    AnswerPathKind,
+    PacketFieldAnswer,
+    PacketFieldAnswerStatus,
+    PacketFieldDefinition,
+)
+from ariadne.packets import EvidenceStatus
+
+
+class OpportunityActivationRunTrigger(StrEnum):
+    INITIAL_SCAFFOLD = "initial_scaffold"
+    USER_REQUEST = "user_request"
+    MATERIAL_REFRESH = "material_refresh"
+
+
+class OpportunityActivationRunStatus(StrEnum):
+    NEEDS_REVIEW = "needs_review"
+    FAILED = "failed"
+
+
+class OpportunityActivationReviewState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ACCEPTED = "accepted"
+    DISCARDED = "discarded"
+
+
+class PacketFieldActionState(StrEnum):
+    ANSWERED = "answered"
+    REVIEW_READY = "review_ready"
+    BLOCKED = "blocked"
+
+
+class OpportunityActivationDigest(BaseModel):
+    coverage_gained: tuple[str, ...]
+    review_ready_count: int
+    blocked_field_count: int
+    recommended_skill_chains: tuple[str, ...]
+    approval_required_routes: tuple[str, ...]
+    source_limitations: tuple[str, ...]
+    next_best_actions: tuple[str, ...]
+
+
+class PacketFieldActionItem(BaseModel):
+    field_key: str
+    label: str
+    question: str
+    section: str
+    value_kind: str
+    current_status: str
+    evidence_status: str
+    action_state: PacketFieldActionState
+    answer_paths: tuple[str, ...]
+    recommended_route: str
+    route_rationale: str
+    requires_review: bool = True
+    approval_required: bool = False
+    source_refs: tuple[str, ...] = ()
+    gap_summary: str | None = None
+    current_value: str | None = None
+
+
+class PacketFieldActionMatrix(BaseModel):
+    opportunity_id: str
+    fields: tuple[PacketFieldActionItem, ...]
+    blocked_field_count: int
+    review_ready_count: int
+    answered_field_count: int
+    approval_required_count: int
+    source_ref_count: int
+
+
+class OpportunityActivationRunOutput(BaseModel):
+    output_id: str
+    field_key: str
+    title: str
+    summary: str
+    recommended_destination: str = "packet_field_action_surface"
+    recommended_route: str
+    review_state: OpportunityActivationReviewState = (
+        OpportunityActivationReviewState.PENDING_REVIEW
+    )
+
+
+class OpportunityActivationRun(BaseModel):
+    run_id: str
+    opportunity_id: str
+    trigger: OpportunityActivationRunTrigger
+    status: OpportunityActivationRunStatus
+    review_state: OpportunityActivationReviewState
+    packet_field_count: int
+    packet_field_gaps: int
+    activation_digest: OpportunityActivationDigest
+    packet_field_action_matrix: PacketFieldActionMatrix
+    outputs: tuple[OpportunityActivationRunOutput, ...]
+    provenance: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+
+
+class OpportunityActivationRunListResponse(BaseModel):
+    runs: tuple[OpportunityActivationRun, ...]
+
+
+class OpportunityActivationRunStore:
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root)
+
+    def write(self, run: OpportunityActivationRun) -> OpportunityActivationRun:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._path(run.run_id).write_text(
+            run.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return run
+
+    def read(self, run_id: str) -> OpportunityActivationRun:
+        return OpportunityActivationRun.model_validate_json(
+            self._path(run_id).read_text(encoding="utf-8")
+        )
+
+    def list(
+        self,
+        *,
+        opportunity_id: str | None = None,
+    ) -> tuple[OpportunityActivationRun, ...]:
+        if not self.root.exists():
+            return ()
+        runs = tuple(
+            self.read(path.name.removesuffix(".json"))
+            for path in sorted(self.root.glob("*.json"))
+        )
+        if opportunity_id is None:
+            return runs
+        return tuple(run for run in runs if run.opportunity_id == opportunity_id)
+
+    def _path(self, run_id: str) -> Path:
+        if not run_id or run_id != Path(run_id).name:
+            raise ValueError("run_id must be a file-safe identifier")
+        return self.root / f"{run_id}.json"
+
+
+def run_opportunity_activation(
+    *,
+    opportunity_id: str,
+    definitions: tuple[PacketFieldDefinition, ...],
+    answers: tuple[PacketFieldAnswer, ...] = (),
+    trigger: OpportunityActivationRunTrigger = OpportunityActivationRunTrigger.USER_REQUEST,
+    store: OpportunityActivationRunStore | None = None,
+    created_at: datetime | None = None,
+    initial_coverage: tuple[str, ...] = (),
+    run_id: str | None = None,
+) -> OpportunityActivationRun:
+    completed_at = created_at or datetime.now(UTC)
+    matrix = build_packet_field_action_matrix(
+        opportunity_id=opportunity_id,
+        definitions=definitions,
+        answers=answers,
+    )
+    digest = build_activation_digest(
+        matrix=matrix,
+        initial_coverage=initial_coverage,
+    )
+    outputs = tuple(
+        _output_from_action_item(item)
+        for item in matrix.fields
+        if item.action_state is not PacketFieldActionState.ANSWERED
+    )
+    run = OpportunityActivationRun(
+        run_id=run_id
+        or _activation_run_id(
+            opportunity_id=opportunity_id,
+            trigger=trigger,
+            matrix=matrix,
+        ),
+        opportunity_id=opportunity_id,
+        trigger=trigger,
+        status=OpportunityActivationRunStatus.NEEDS_REVIEW,
+        review_state=OpportunityActivationReviewState.PENDING_REVIEW,
+        packet_field_count=len(matrix.fields),
+        packet_field_gaps=matrix.blocked_field_count,
+        activation_digest=digest,
+        packet_field_action_matrix=matrix,
+        outputs=outputs,
+        provenance={
+            "executor": "deterministic_python",
+            "network_required": False,
+            "model_required": False,
+            "trusted_downstream_writes": False,
+            "analyzed_at": completed_at.isoformat(),
+        },
+        created_at=completed_at,
+        completed_at=completed_at,
+    )
+    if store is not None:
+        return store.write(run)
+    return run
+
+
+def build_packet_field_action_matrix(
+    *,
+    opportunity_id: str,
+    definitions: tuple[PacketFieldDefinition, ...],
+    answers: tuple[PacketFieldAnswer, ...] = (),
+) -> PacketFieldActionMatrix:
+    actions = tuple(
+        _action_item_for_definition(
+            opportunity_id=opportunity_id,
+            definition=definition,
+            answer=_answer_for_field(
+                answers=answers,
+                opportunity_id=opportunity_id,
+                field_key=definition.key,
+            ),
+        )
+        for definition in definitions
+    )
+    return PacketFieldActionMatrix(
+        opportunity_id=opportunity_id,
+        fields=actions,
+        blocked_field_count=sum(
+            1 for item in actions if item.action_state is PacketFieldActionState.BLOCKED
+        ),
+        review_ready_count=sum(
+            1
+            for item in actions
+            if item.action_state is PacketFieldActionState.REVIEW_READY
+        ),
+        answered_field_count=sum(
+            1 for item in actions if item.action_state is PacketFieldActionState.ANSWERED
+        ),
+        approval_required_count=sum(1 for item in actions if item.approval_required),
+        source_ref_count=sum(len(item.source_refs) for item in actions),
+    )
+
+
+def build_activation_digest(
+    *,
+    matrix: PacketFieldActionMatrix,
+    initial_coverage: tuple[str, ...] = (),
+) -> OpportunityActivationDigest:
+    coverage = initial_coverage + (
+        f"Analyzed {len(matrix.fields)} packet fields for answer paths.",
+        f"Mapped {matrix.blocked_field_count} blocked fields to recommended routes.",
+    )
+    if matrix.review_ready_count:
+        coverage += (
+            f"Found {matrix.review_ready_count} field candidates ready for review.",
+        )
+    return OpportunityActivationDigest(
+        coverage_gained=coverage,
+        review_ready_count=matrix.review_ready_count,
+        blocked_field_count=matrix.blocked_field_count,
+        recommended_skill_chains=_recommended_skill_chains(matrix),
+        approval_required_routes=_approval_required_routes(matrix),
+        source_limitations=_source_limitations(matrix),
+        next_best_actions=_next_best_actions(matrix),
+    )
+
+
+def recommend_packet_field_route(definition: PacketFieldDefinition) -> str:
+    kinds = {path.kind for path in definition.answer_paths}
+    if AnswerPathKind.CAPABILITY_MODULE in kinds:
+        return "Recommend a capability or skill-backed research route."
+    if AnswerPathKind.EVIDENCE_EXTRACTION in kinds:
+        return "Inspect source material and extract a reviewable answer candidate."
+    if AnswerPathKind.IMPORTED_DATA in kinds:
+        return "Import or lookup source-profile data before synthesis."
+    if AnswerPathKind.MODEL_SYNTHESIS in kinds:
+        return "Synthesize a reviewable answer from accepted evidence and gaps."
+    return "Ask the capture lead or prepare a customer follow-up question."
+
+
+def _action_item_for_definition(
+    *,
+    opportunity_id: str,
+    definition: PacketFieldDefinition,
+    answer: PacketFieldAnswer | None,
+) -> PacketFieldActionItem:
+    current_status = (
+        answer.status if answer is not None else PacketFieldAnswerStatus.UNANSWERED
+    )
+    evidence_status = answer.evidence_status if answer is not None else EvidenceStatus.GAP
+    action_state = _action_state_for_answer(
+        current_status=current_status,
+        evidence_status=evidence_status,
+    )
+    answer_path_labels = tuple(path.label for path in definition.answer_paths)
+    return PacketFieldActionItem(
+        field_key=definition.key,
+        label=definition.label,
+        question=definition.question,
+        section=definition.section.value,
+        value_kind=definition.value_kind.value,
+        current_status=current_status.value,
+        evidence_status=evidence_status.value,
+        action_state=action_state,
+        answer_paths=answer_path_labels,
+        recommended_route=recommend_packet_field_route(definition),
+        route_rationale=_route_rationale(definition),
+        requires_review=action_state is not PacketFieldActionState.ANSWERED,
+        approval_required=_approval_required(definition),
+        source_refs=answer.evidence_ids if answer is not None else (),
+        gap_summary=(
+            answer.gap_summary
+            if answer is not None and answer.gap_summary
+            else f"{definition.label} is not answered for this Opportunity."
+        ),
+        current_value=answer.value if answer is not None else None,
+    )
+
+
+def _answer_for_field(
+    *,
+    answers: tuple[PacketFieldAnswer, ...],
+    opportunity_id: str,
+    field_key: str,
+) -> PacketFieldAnswer | None:
+    for answer in answers:
+        if answer.opportunity_id == opportunity_id and answer.field_key == field_key:
+            return answer
+    return None
+
+
+def _action_state_for_answer(
+    *,
+    current_status: PacketFieldAnswerStatus,
+    evidence_status: EvidenceStatus,
+) -> PacketFieldActionState:
+    if (
+        current_status is PacketFieldAnswerStatus.ANSWERED
+        and evidence_status is EvidenceStatus.ANSWERED
+    ):
+        return PacketFieldActionState.ANSWERED
+    if current_status is PacketFieldAnswerStatus.NEEDS_REVIEW:
+        return PacketFieldActionState.REVIEW_READY
+    return PacketFieldActionState.BLOCKED
+
+
+def _route_rationale(definition: PacketFieldDefinition) -> str:
+    kinds = {path.kind for path in definition.answer_paths}
+    if AnswerPathKind.CAPABILITY_MODULE in kinds:
+        return "Capability-backed work can gather missing context, then return a reviewable field candidate."
+    if AnswerPathKind.EVIDENCE_EXTRACTION in kinds:
+        return "Source material can produce a traceable candidate before any packet answer changes."
+    if AnswerPathKind.IMPORTED_DATA in kinds:
+        return "Source-profile data should be loaded before synthesis or user judgment."
+    if AnswerPathKind.MODEL_SYNTHESIS in kinds:
+        return "Synthesis is useful only after accepted evidence or explicit assumptions exist."
+    return "Ariadne cannot safely infer this field without capture lead or customer input."
+
+
+def _approval_required(definition: PacketFieldDefinition) -> bool:
+    return any(path.kind is AnswerPathKind.CAPABILITY_MODULE for path in definition.answer_paths)
+
+
+def _output_from_action_item(
+    item: PacketFieldActionItem,
+) -> OpportunityActivationRunOutput:
+    return OpportunityActivationRunOutput(
+        output_id=f"actout_{item.field_key}",
+        field_key=item.field_key,
+        title=f"Advance {item.label}",
+        summary=f"{item.label}: {item.recommended_route}",
+        recommended_route=item.recommended_route,
+    )
+
+
+def _recommended_skill_chains(
+    matrix: PacketFieldActionMatrix,
+) -> tuple[str, ...]:
+    chains: list[str] = []
+    if any("source material" in item.recommended_route.lower() for item in matrix.fields):
+        chains.append("source extraction -> packet field review")
+    if any("source-profile" in item.recommended_route.lower() for item in matrix.fields):
+        chains.append("source-profile lookup -> packet implication")
+    if any("capability" in item.recommended_route.lower() for item in matrix.fields):
+        chains.append("capability route -> reviewable packet candidate")
+    if any("capture lead" in item.recommended_route.lower() for item in matrix.fields):
+        chains.append("customer question -> call-plan prep")
+    return tuple(chains)
+
+
+def _approval_required_routes(
+    matrix: PacketFieldActionMatrix,
+) -> tuple[str, ...]:
+    routes = tuple(
+        f"{item.label}: approve capability-backed work before live collection or external research."
+        for item in matrix.fields
+        if item.approval_required
+    )
+    if routes:
+        return routes
+    return ("Review generated packet-field candidates before any trusted answer changes.",)
+
+
+def _source_limitations(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
+    limitations: list[str] = []
+    if matrix.source_ref_count == 0:
+        limitations.append("No accepted source evidence is attached to these fields yet.")
+    if matrix.blocked_field_count:
+        limitations.append(
+            f"{matrix.blocked_field_count} packet fields still need evidence, import, synthesis, or user input."
+        )
+    return tuple(limitations)
+
+
+def _next_best_actions(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
+    blocked_fields = tuple(
+        item for item in matrix.fields if item.action_state is PacketFieldActionState.BLOCKED
+    )
+    actions = tuple(
+        f"Advance {item.label}: {item.recommended_route}"
+        for item in blocked_fields[:3]
+    )
+    if not actions:
+        return ("Review field candidates and accept trusted packet answers.",)
+    return actions + ("Review the Packet Field Action Matrix before trusted writes.",)
+
+
+def _activation_run_id(
+    *,
+    opportunity_id: str,
+    trigger: OpportunityActivationRunTrigger,
+    matrix: PacketFieldActionMatrix,
+) -> str:
+    fingerprint = "|".join(
+        f"{item.field_key}:{item.current_status}:{item.evidence_status}:{item.action_state}"
+        for item in matrix.fields
+    )
+    digest = sha256(
+        f"{opportunity_id}:{trigger.value}:{fingerprint}".encode("utf-8")
+    ).hexdigest()[:10]
+    return f"actrun_{opportunity_id}_{trigger.value}_{digest}"

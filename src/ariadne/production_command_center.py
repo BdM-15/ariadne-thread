@@ -15,8 +15,15 @@ from ariadne.opportunities import (
     LifecycleState,
     create_opportunity,
 )
+from ariadne.opportunity_activation import (
+    OpportunityActivationDigest,
+    OpportunityActivationRun,
+    OpportunityActivationRunStore,
+    OpportunityActivationRunTrigger,
+    run_opportunity_activation,
+    recommend_packet_field_route,
+)
 from ariadne.packet_knowledge import (
-    AnswerPathKind,
     PacketFieldAnswerStatus,
     PacketFieldDefinition,
     build_default_packet_field_definitions,
@@ -98,16 +105,6 @@ class ProductionOpportunityPacketFieldSlot(BaseModel):
     evidence_status: str
     answer_paths: tuple[str, ...]
     recommended_route: str
-
-
-class OpportunityActivationDigest(BaseModel):
-    coverage_gained: tuple[str, ...]
-    review_ready_count: int
-    blocked_field_count: int
-    recommended_skill_chains: tuple[str, ...]
-    approval_required_routes: tuple[str, ...]
-    source_limitations: tuple[str, ...]
-    next_best_actions: tuple[str, ...]
 
 
 class ProductionOpportunityScaffold(BaseModel):
@@ -641,6 +638,7 @@ def create_standard_opportunity_scaffold(
     *,
     request: ProductionOpportunityIntakeRequest,
     store: OpportunityScaffoldStore,
+    activation_store: OpportunityActivationRunStore | None = None,
 ) -> ProductionOpportunityScaffold:
     opportunity_name = request.name.strip()
     if not opportunity_name:
@@ -671,6 +669,17 @@ def create_standard_opportunity_scaffold(
             definition=definition,
         )
         for definition in definitions
+    )
+    activation_run = run_opportunity_activation(
+        opportunity_id=opportunity_id,
+        definitions=definitions,
+        trigger=OpportunityActivationRunTrigger.INITIAL_SCAFFOLD,
+        store=activation_store,
+        initial_coverage=(
+            f"Created {len(opportunity.workstreams)} standard capture workstreams.",
+            f"Created {len(packet_states)} Living Packet sections.",
+            f"Created {len(packet_field_slots)} packet field action slots.",
+        ),
     )
 
     scaffold = ProductionOpportunityScaffold(
@@ -716,13 +725,28 @@ def create_standard_opportunity_scaffold(
             for state in packet_states
         ),
         packet_fields=packet_field_slots,
-        activation_digest=_activation_digest_for_new_opportunity(
-            packet_field_count=len(packet_field_slots),
-            packet_section_count=len(packet_states),
-            workstream_count=len(opportunity.workstreams),
-        ),
+        activation_digest=activation_run.activation_digest,
     )
     return store.write_scaffold(scaffold)
+
+
+def run_production_opportunity_activation(
+    *,
+    opportunity_id: str,
+    opportunity_store: OpportunityScaffoldStore,
+    activation_store: OpportunityActivationRunStore,
+    trigger: OpportunityActivationRunTrigger = OpportunityActivationRunTrigger.USER_REQUEST,
+) -> OpportunityActivationRun:
+    if opportunity_id != DEMO_OPPORTUNITY_ID and not opportunity_store.has_scaffold(
+        opportunity_id
+    ):
+        raise ValueError(f"Opportunity context not found: {opportunity_id}")
+    return run_opportunity_activation(
+        opportunity_id=opportunity_id,
+        definitions=build_default_packet_field_definitions(),
+        trigger=trigger,
+        store=activation_store,
+    )
 
 
 def build_production_command_center_workspace(
@@ -1186,56 +1210,7 @@ def _packet_field_slot_for_new_opportunity(
         status=answer.status.value,
         evidence_status=answer.evidence_status.value,
         answer_paths=tuple(path.label for path in definition.answer_paths),
-        recommended_route=_recommended_route_for_definition(definition),
-    )
-
-
-def _recommended_route_for_definition(definition: PacketFieldDefinition) -> str:
-    kinds = {path.kind for path in definition.answer_paths}
-    if AnswerPathKind.CAPABILITY_MODULE in kinds:
-        return "Recommend a capability or skill-backed research route."
-    if AnswerPathKind.EVIDENCE_EXTRACTION in kinds:
-        return "Inspect source material and extract a reviewable answer candidate."
-    if AnswerPathKind.IMPORTED_DATA in kinds:
-        return "Import or lookup source-profile data before synthesis."
-    if AnswerPathKind.MODEL_SYNTHESIS in kinds:
-        return "Synthesize a reviewable answer from accepted evidence and gaps."
-    return "Ask the capture lead or prepare a customer follow-up question."
-
-
-def _activation_digest_for_new_opportunity(
-    *,
-    packet_field_count: int,
-    packet_section_count: int,
-    workstream_count: int,
-) -> OpportunityActivationDigest:
-    return OpportunityActivationDigest(
-        coverage_gained=(
-            f"Created {workstream_count} standard capture workstreams.",
-            f"Created {packet_section_count} Living Packet sections.",
-            f"Created {packet_field_count} packet field action slots.",
-        ),
-        review_ready_count=0,
-        blocked_field_count=packet_field_count,
-        recommended_skill_chains=(
-            "source-profile lookup -> packet implication -> action recommendation",
-            "research brief -> customer insight -> call-plan prep",
-            "requirements fit -> packet implication -> action recommendation",
-        ),
-        approval_required_routes=(
-            "Approve live source collection before public web research runs.",
-            "Approve official attachment downloads before document intake.",
-            "Review customer-facing material before export or delivery.",
-        ),
-        source_limitations=(
-            "No accepted source evidence is attached to this Opportunity yet.",
-            "No source profile has been selected for deterministic lookup yet.",
-        ),
-        next_best_actions=(
-            "Attach source material or approve source discovery.",
-            "Run the Packet Field Action Matrix against the new scaffold.",
-            "Prepare customer questions for fields Ariadne cannot answer safely.",
-        ),
+        recommended_route=recommend_packet_field_route(definition),
     )
 
 

@@ -65,6 +65,12 @@ from ariadne.command_center import (
     render_sam_gov_enrichment_profile_shell,
 )
 from ariadne.config import RuntimeSettings
+from ariadne.opportunity_activation import (
+    OpportunityActivationRun,
+    OpportunityActivationRunListResponse,
+    OpportunityActivationRunStore,
+    OpportunityActivationRunTrigger,
+)
 from ariadne.draft_promotion import (
     DraftPartPromotionDecision,
     discard_draft_part_promotion,
@@ -208,6 +214,7 @@ from ariadne.production_command_center import (
     production_command_center_health,
     recommend_assisted_capture_routes,
     review_assisted_route_output,
+    run_production_opportunity_activation,
 )
 
 
@@ -618,10 +625,47 @@ def create_app(
             scaffold = create_standard_opportunity_scaffold(
                 request=request,
                 store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return ProductionOpportunityCreateResponse(scaffold=scaffold)
+
+    @app.get(
+        "/api/production-command-center/opportunities/{opportunity_id}/"
+        "activation-runs"
+    )
+    def production_command_center_activation_runs(
+        opportunity_id: str,
+    ) -> OpportunityActivationRunListResponse:
+        return OpportunityActivationRunListResponse(
+            runs=OpportunityActivationRunStore(
+                runtime_settings.ariadne_opportunity_activation_dir
+            ).list(opportunity_id=opportunity_id)
+        )
+
+    @app.post(
+        "/api/production-command-center/opportunities/{opportunity_id}/"
+        "activation-runs"
+    )
+    def production_command_center_run_activation(
+        opportunity_id: str,
+    ) -> OpportunityActivationRun:
+        try:
+            return run_production_opportunity_activation(
+                opportunity_id=opportunity_id,
+                opportunity_store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                trigger=OpportunityActivationRunTrigger.USER_REQUEST,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.post(
         "/api/production-command-center/opportunities/{opportunity_id}/"

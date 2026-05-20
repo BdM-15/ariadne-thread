@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+import os
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -23,6 +24,11 @@ from ariadne.artifact_assembly import (
     summarize_artifact_source_package,
 )
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
+from ariadne.capability_relationship_pages import (
+    CapabilityRelationshipPageReport,
+    ensure_capability_relationship_pages,
+    inspect_capability_relationship_pages,
+)
 from ariadne.capability_runs import (
     CapabilityRun,
     CapabilityRunReviewDecisionType,
@@ -582,6 +588,7 @@ class ProductionCommandCenterWorkspaceResponse(BaseModel):
 def create_app(
     settings: RuntimeSettings | None = None,
     *,
+    workspace_root: Path | str | None = None,
     federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
     usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
     sam_gov_entity_runner: SamGovMcpToolRunner | None = None,
@@ -593,6 +600,7 @@ def create_app(
     source_provider_smoke_runner: SourceProviderSmokeRunner | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
+    resolved_workspace_root = Path(workspace_root) if workspace_root else Path.cwd()
     app = FastAPI(title=runtime_settings.public_app_name)
 
     @app.get("/api/runtime")
@@ -665,6 +673,20 @@ def create_app(
     def knowledge_vault_mirror_update_proposal_scan() -> MirrorUpdateProposalReport:
         return scan_vault_for_mirror_update_proposals(
             runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.get("/api/knowledge-vault/capability-relationships")
+    def knowledge_vault_capability_relationships() -> CapabilityRelationshipPageReport:
+        return inspect_capability_relationship_pages(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.post("/api/knowledge-vault/capability-relationships")
+    def knowledge_vault_capability_relationship_scaffold() -> CapabilityRelationshipPageReport:
+        return ensure_capability_relationship_pages(
+            runtime_settings.ariadne_obsidian_vault_dir,
+            workspace_root=resolved_workspace_root,
+            env=dict(os.environ),
         )
 
     @app.get("/api/production-command-center/workspace")

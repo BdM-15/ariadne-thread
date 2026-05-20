@@ -146,6 +146,15 @@ type PacketRoadmapSection = {
   blocked: number;
 };
 
+type GlobalOpportunityPulseUrgency = "critical" | "review" | "watch" | "steady";
+
+type GlobalOpportunityPulseItem = PortfolioOpportunity & {
+  reason: string;
+  score: number;
+  urgency: GlobalOpportunityPulseUrgency;
+  urgencyLabel: string;
+};
+
 type SignalTone = "cyan" | "copper" | "rose" | "signal";
 
 type PulseSignalModel = {
@@ -481,6 +490,7 @@ export default async function CommandCenterPage({
             <CommandCenterHome
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
+              portfolio={portfolio}
               pulseSignals={pulseSignals}
               regions={workspace.layout_regions}
               selectedOpportunityId={workspace.opportunity.id}
@@ -607,16 +617,22 @@ function OpportunityPortfolioSwitcher({
 function CommandCenterHome({
   latestActivationRun,
   packetSignals,
+  portfolio,
   pulseSignals,
   regions,
   selectedOpportunityId,
 }: {
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
+  portfolio: PortfolioOpportunity[];
   pulseSignals: PulseSignalModel[];
   regions: LayoutRegion[];
   selectedOpportunityId: string;
 }) {
+  const globalPulse = buildGlobalOpportunityPulse(
+    portfolio,
+    selectedOpportunityId,
+  );
   const entryPoints = [
     {
       id: "activation",
@@ -655,6 +671,69 @@ function CommandCenterHome({
           {pulseSignals.map((signal) => (
             <PulseSignal key={signal.label} {...signal} />
           ))}
+        </div>
+      </section>
+
+      <section
+        className="workspace-section"
+        aria-labelledby="global-pulse-title"
+      >
+        <div className="section-heading">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+              Global Opportunity Pulse
+            </p>
+            <h3 id="global-pulse-title">Which roadmaps need attention</h3>
+          </div>
+          <BriefcaseBusiness
+            className="text-ariadne-cyan"
+            size={22}
+            aria-hidden
+          />
+        </div>
+        <div className="global-pulse-grid">
+          {globalPulse.length > 0 ? (
+            globalPulse.map((opportunity) => (
+              <a
+                className={`global-pulse-card ${opportunityPulseToneClass(opportunity.urgency)}`}
+                href={modeHref("packet", opportunity.id)}
+                key={opportunity.id}
+                aria-current={
+                  opportunity.id === selectedOpportunityId ? "page" : undefined
+                }
+              >
+                <div className="global-pulse-card-heading">
+                  <div>
+                    <p>{formatLabel(opportunity.lifecycle_state)}</p>
+                    <h4>{opportunity.name}</h4>
+                  </div>
+                  <span>{opportunity.urgencyLabel}</span>
+                </div>
+                <span className="global-pulse-reason">
+                  {opportunity.reason}
+                </span>
+                <div className="global-pulse-chip-row">
+                  <span>{formatLabel(opportunity.packet_readiness_label)}</span>
+                  {opportunity.blocked_field_count > 0 ? (
+                    <span>{opportunity.blocked_field_count} gaps</span>
+                  ) : null}
+                  {opportunity.review_ready_count > 0 ? (
+                    <span>{opportunity.review_ready_count} reviews</span>
+                  ) : null}
+                  {opportunity.source_limitation_count > 0 ? (
+                    <span>{opportunity.source_limitation_count} source limits</span>
+                  ) : null}
+                </div>
+                <strong className="global-pulse-card-action">
+                  Open roadmap
+                </strong>
+              </a>
+            ))
+          ) : (
+            <article className="global-pulse-empty">
+              No managed Opportunities yet. Create one to begin activation.
+            </article>
+          )}
         </div>
       </section>
 
@@ -770,9 +849,7 @@ function PacketMode({
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                   Milestone Roadmap
                 </p>
-                <h3 id="packet-roadmap-title">
-                  Data elements for this gate
-                </h3>
+                <h3 id="packet-roadmap-title">Data elements for this gate</h3>
               </div>
               <ClipboardCheck
                 className="text-ariadne-cyan"
@@ -1127,6 +1204,116 @@ function isPlaceholderMode(modeId: string): boolean {
     "documents",
     "capability_studio",
   ].includes(modeId);
+}
+
+function buildGlobalOpportunityPulse(
+  opportunities: PortfolioOpportunity[],
+  selectedOpportunityId: string,
+): GlobalOpportunityPulseItem[] {
+  const managedOpportunities = opportunities.filter(
+    (opportunity) => !opportunity.is_demo,
+  );
+  const pulseCandidates =
+    managedOpportunities.length > 0 ? managedOpportunities : opportunities;
+
+  return pulseCandidates
+    .map((opportunity) => {
+      const score = opportunityPulseScore(opportunity);
+      return {
+        ...opportunity,
+        reason: opportunityPulseReason(opportunity),
+        score,
+        urgency: opportunityPulseUrgency(opportunity, score),
+        urgencyLabel: opportunityPulseUrgencyLabel(opportunity, score),
+      };
+    })
+    .sort((firstOpportunity, secondOpportunity) => {
+      const scoreDifference = secondOpportunity.score - firstOpportunity.score;
+      if (scoreDifference !== 0) {
+        return scoreDifference;
+      }
+      if (firstOpportunity.id === selectedOpportunityId) {
+        return -1;
+      }
+      if (secondOpportunity.id === selectedOpportunityId) {
+        return 1;
+      }
+      return firstOpportunity.name.localeCompare(secondOpportunity.name);
+    })
+    .slice(0, 6);
+}
+
+function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
+  const readinessScore =
+    opportunity.packet_readiness_label === "not_ready"
+      ? 4
+      : opportunity.packet_readiness_label === "draft_ready"
+        ? 2
+        : 0;
+  return (
+    opportunity.blocked_field_count * 5 +
+    opportunity.review_ready_count * 3 +
+    opportunity.source_limitation_count * 2 +
+    readinessScore
+  );
+}
+
+function opportunityPulseReason(opportunity: PortfolioOpportunity): string {
+  if (opportunity.blocked_field_count > 0) {
+    return `${opportunity.blocked_field_count} packet fields still block this roadmap.`;
+  }
+  if (opportunity.review_ready_count > 0) {
+    return `${opportunity.review_ready_count} review items can improve packet readiness.`;
+  }
+  if (opportunity.source_limitation_count > 0) {
+    return `${opportunity.source_limitation_count} source limits need review before trusting answers.`;
+  }
+  if (opportunity.packet_readiness_label !== "decision_ready") {
+    return `${formatLabel(opportunity.packet_readiness_label)} packet. Open roadmap for next gaps.`;
+  }
+  return "Roadmap has no urgent gaps in current pulse data.";
+}
+
+function opportunityPulseUrgency(
+  opportunity: PortfolioOpportunity,
+  score: number,
+): GlobalOpportunityPulseUrgency {
+  if (opportunity.blocked_field_count > 0 || score >= 8) {
+    return "critical";
+  }
+  if (opportunity.review_ready_count > 0) {
+    return "review";
+  }
+  if (
+    opportunity.source_limitation_count > 0 ||
+    opportunity.packet_readiness_label !== "decision_ready"
+  ) {
+    return "watch";
+  }
+  return "steady";
+}
+
+function opportunityPulseUrgencyLabel(
+  opportunity: PortfolioOpportunity,
+  score: number,
+): string {
+  const urgency = opportunityPulseUrgency(opportunity, score);
+  if (urgency === "critical") {
+    return "Needs action";
+  }
+  if (urgency === "review") {
+    return "Review ready";
+  }
+  if (urgency === "watch") {
+    return "Watch";
+  }
+  return "Steady";
+}
+
+function opportunityPulseToneClass(
+  urgency: GlobalOpportunityPulseUrgency,
+): string {
+  return `global-pulse-card-${urgency}`;
 }
 
 function buildRoadmapSections(

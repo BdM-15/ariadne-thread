@@ -405,6 +405,128 @@ button {
   color: #f2c94c;
 }
 
+.global-pulse-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  margin-top: 14px;
+}
+
+.global-pulse-card {
+  background: #10151b;
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  min-height: 154px;
+  padding: 16px;
+  text-decoration: none;
+}
+
+.global-pulse-card:hover,
+.global-pulse-card:focus-visible {
+  border-color: #4dd8cf;
+  outline: none;
+}
+
+.global-pulse-card:focus-visible {
+  box-shadow: 0 0 0 3px rgba(77, 216, 207, 0.16);
+}
+
+.global-pulse-card[aria-current="page"] {
+  border-color: rgba(77, 216, 207, 0.68);
+}
+
+.global-pulse-card-critical {
+  border-left: 3px solid #e85d75;
+}
+
+.global-pulse-card-review {
+  border-left: 3px solid #d88a36;
+}
+
+.global-pulse-card-watch {
+  border-left: 3px solid #f2c94c;
+}
+
+.global-pulse-card-steady {
+  border-left: 3px solid #4dd8cf;
+}
+
+.global-pulse-card-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.global-pulse-card-heading p {
+  color: #98a6b3;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.global-pulse-card-heading h4 {
+  color: #f8fafc;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.global-pulse-card-heading span {
+  border: 1px solid rgba(77, 216, 207, 0.36);
+  border-radius: 999px;
+  color: #4dd8cf;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.global-pulse-reason {
+  color: #d8e0e8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.global-pulse-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.global-pulse-chip-row span {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid #26313c;
+  border-radius: 999px;
+  color: #98a6b3;
+  font-size: 11px;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.global-pulse-card-action {
+  color: #4dd8cf;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.global-pulse-empty {
+  background: #10151b;
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #98a6b3;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 16px;
+}
+
 .region-panel {
   background: #10151b;
   border: 1px solid #26313c;

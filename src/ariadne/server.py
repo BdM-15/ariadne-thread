@@ -190,9 +190,11 @@ from ariadne.production_command_center import (
     AssistedRouteRunResponse,
     ProductionCommandCenterWorkspace,
     WorkflowRoutingStore,
+    WorkProductUpdateListResponse,
     build_production_command_center_workspace,
     execute_assisted_capture_route,
     get_assisted_route_provenance,
+    list_work_product_update_projections,
     recommend_assisted_capture_routes,
     review_assisted_route_output,
 )
@@ -644,6 +646,12 @@ def create_app(
             raise HTTPException(status_code=404, detail="Route recommendation not found") from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/production-command-center/work-product-updates")
+    def production_command_center_work_product_updates() -> WorkProductUpdateListResponse:
+        return list_work_product_update_projections(
+            store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir)
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:

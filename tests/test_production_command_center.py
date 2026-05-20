@@ -289,3 +289,50 @@ def test_assisted_capture_route_output_rejection_keeps_updates_empty(tmp_path) -
     assert body["decision"]["review_gate"] == "human_rejected"
     assert body["output"]["review_state"] == "rejected"
     assert body["accepted_updates"] == []
+
+
+def test_work_product_updates_api_lists_before_after_projection_surfaces(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    recommendation_response = client.post(
+        "/api/production-command-center/opportunities/"
+        "opp-aflcmc-recompete/route-recommendations",
+        json={"goal_id": "prepare_customer_call"},
+    )
+    recommendation_id = recommendation_response.json()["recommendations"][0]["id"]
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation_id}/runs",
+        json={"approved": True},
+    )
+    output_id = run_response.json()["run"]["output"]["id"]
+    client.post(
+        f"/api/production-command-center/route-outputs/{output_id}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Accepted for before/after review.",
+            "accepted_destination": "call_plan",
+        },
+    )
+
+    response = client.get("/api/production-command-center/work-product-updates")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"] == {
+        "call_plan": 1,
+        "living_packet": 1,
+        "action_plan": 1,
+    }
+    updates_by_destination = {
+        update["destination"]: update for update in body["updates"]
+    }
+    assert updates_by_destination["call_plan"]["before_summary"].startswith(
+        "No accepted call-plan draft"
+    )
+    assert "Draft call objective" in updates_by_destination["call_plan"][
+        "after_summary"
+    ]
+    assert updates_by_destination["living_packet"]["state"] == "ready_for_apply"

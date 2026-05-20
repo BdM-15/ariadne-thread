@@ -244,6 +244,11 @@ class AssistedRouteProvenanceResponse(BaseModel):
     provenance: AssistedRouteProvenanceView
 
 
+class WorkProductUpdateListResponse(BaseModel):
+    updates: tuple[WorkProductUpdateProjection, ...]
+    summary: dict[str, int]
+
+
 class ProductionCommandCenterWorkspace(BaseModel):
     production_ui_contract: str
     scaffold_role: str
@@ -692,6 +697,17 @@ def get_assisted_route_provenance(
     )
 
 
+def list_work_product_update_projections(
+    *,
+    store: WorkflowRoutingStore,
+) -> WorkProductUpdateListResponse:
+    updates = _ordered_work_product_updates(store.list_work_product_updates())
+    summary: dict[str, int] = {}
+    for update in updates:
+        summary[update.destination.value] = summary.get(update.destination.value, 0) + 1
+    return WorkProductUpdateListResponse(updates=updates, summary=summary)
+
+
 def _goal_by_id(goal_id: str) -> AssistedCaptureGoal:
     for goal in ASSISTED_CAPTURE_GOALS:
         if goal.id == goal_id:
@@ -916,6 +932,27 @@ def _ordered_updates_for_output(
         updates_by_destination[destination]
         for destination in output.work_product_targets
         if destination in updates_by_destination
+    )
+
+
+def _ordered_work_product_updates(
+    updates: tuple[WorkProductUpdateProjection, ...],
+) -> tuple[WorkProductUpdateProjection, ...]:
+    destination_order = {
+        AssistedCaptureWorkProduct.CALL_PLAN: 0,
+        AssistedCaptureWorkProduct.LIVING_PACKET: 1,
+        AssistedCaptureWorkProduct.ACTION_PLAN: 2,
+        AssistedCaptureWorkProduct.CAPTURE_RESEARCH: 3,
+        AssistedCaptureWorkProduct.MARKETING_SKILL: 4,
+    }
+    return tuple(
+        sorted(
+            updates,
+            key=lambda update: (
+                destination_order.get(update.destination, 99),
+                update.id,
+            ),
+        )
     )
 
 

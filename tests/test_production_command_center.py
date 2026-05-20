@@ -187,3 +187,54 @@ def test_assisted_capture_route_output_acceptance_projects_work_updates(
     )
     assert body["accepted_updates"][0]["source_output_id"] == output_id
     assert "Accepted for call prep" in body["decision"]["reviewer_rationale"]
+
+
+def test_assisted_capture_route_provenance_includes_reasoning_and_review_trace(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    recommendation_response = client.post(
+        "/api/production-command-center/opportunities/"
+        "opp-aflcmc-recompete/route-recommendations",
+        json={"goal_id": "prepare_customer_call"},
+    )
+    recommendation = recommendation_response.json()["recommendations"][0]
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation['id']}/runs",
+        json={"approved": True},
+    )
+    run = run_response.json()["run"]
+    review_response = client.post(
+        "/api/production-command-center/route-outputs/"
+        f"{run['output']['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Accepted for provenance test.",
+            "accepted_destination": "call_plan",
+        },
+    )
+
+    response = client.get(
+        f"/api/production-command-center/routes/{recommendation['id']}/provenance"
+    )
+
+    assert review_response.status_code == 200
+    assert response.status_code == 200
+    provenance = response.json()["provenance"]
+    assert provenance["recommendation"]["id"] == recommendation["id"]
+    assert provenance["input_refs"] == recommendation["input_refs"]
+    assert provenance["capability_chain"] == recommendation[
+        "recommended_capability_chain"
+    ]
+    assert "Customer context gap" in provenance["reasoning"][0]
+    assert provenance["run"]["id"] == run["id"]
+    assert provenance["run"]["network_required"] is False
+    assert provenance["run"]["model_required"] is False
+    assert provenance["output"]["id"] == run["output"]["id"]
+    assert provenance["output"]["review_state"] == "accepted"
+    assert provenance["output"]["assumptions"]
+    assert provenance["output"]["gaps"]
+    assert provenance["review_decisions"][0]["review_gate"] == "human_accepted"
+    assert provenance["work_product_updates"][0]["destination"] == "call_plan"

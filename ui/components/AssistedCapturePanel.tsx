@@ -63,6 +63,20 @@ type ReviewDecisionResponse = {
   output: AssistedRouteRun["output"];
 };
 
+type ProvenanceView = {
+  input_refs: string[];
+  capability_chain: string[];
+  reasoning: string[];
+  run: AssistedRouteRun | null;
+  output: AssistedRouteRun["output"] | null;
+  review_decisions: Array<{ id: string; review_gate: string }>;
+  work_product_updates: WorkProductUpdateProjection[];
+};
+
+type ProvenanceResponse = {
+  provenance: ProvenanceView;
+};
+
 export function AssistedCapturePanel({
   goals,
   opportunityId,
@@ -74,6 +88,7 @@ export function AssistedCapturePanel({
   const [routes, setRoutes] = useState<AssistedRouteRecommendation[]>([]);
   const [runsByRouteId, setRunsByRouteId] = useState<Record<string, AssistedRouteRun>>({});
   const [updatesByOutputId, setUpdatesByOutputId] = useState<Record<string, WorkProductUpdateProjection[]>>({});
+  const [provenanceByRouteId, setProvenanceByRouteId] = useState<Record<string, ProvenanceView>>({});
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -98,6 +113,7 @@ export function AssistedCapturePanel({
       setRoutes(body.recommendations);
       setRunsByRouteId({});
       setUpdatesByOutputId({});
+      setProvenanceByRouteId({});
     });
   }
 
@@ -147,6 +163,25 @@ export function AssistedCapturePanel({
       setUpdatesByOutputId((currentUpdates) => ({
         ...currentUpdates,
         [outputId]: body.accepted_updates,
+      }));
+    });
+  }
+
+  function inspectProvenance(recommendationId: string) {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch(
+        `/api/production-command-center/routes/${recommendationId}/provenance`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        setError("Route provenance is unavailable.");
+        return;
+      }
+      const body = (await response.json()) as ProvenanceResponse;
+      setProvenanceByRouteId((currentProvenance) => ({
+        ...currentProvenance,
+        [recommendationId]: body.provenance,
       }));
     });
   }
@@ -210,6 +245,13 @@ export function AssistedCapturePanel({
             >
               Run deterministic route
             </button>
+            <button
+              className="command-button route-run-button"
+              onClick={() => inspectProvenance(routeRecommendation.id)}
+              type="button"
+            >
+              Inspect provenance
+            </button>
             {runsByRouteId[routeRecommendation.id] !== undefined ? (
               <div className="run-output">
                 <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">
@@ -238,6 +280,27 @@ export function AssistedCapturePanel({
                     ))}
                   </div>
                 ) : null}
+              </div>
+            ) : null}
+            {provenanceByRouteId[routeRecommendation.id] !== undefined ? (
+              <div className="provenance-panel">
+                <p className="text-xs uppercase tracking-[0.16em] text-ariadne-cyan">
+                  Provenance
+                </p>
+                <dl className="mt-2 space-y-2 text-xs text-slate-300">
+                  <div>
+                    <dt>Inputs</dt>
+                    <dd>{provenanceByRouteId[routeRecommendation.id].input_refs.join(", ")}</dd>
+                  </div>
+                  <div>
+                    <dt>Capability chain</dt>
+                    <dd>{provenanceByRouteId[routeRecommendation.id].capability_chain.join(" -> ")}</dd>
+                  </div>
+                  <div>
+                    <dt>Reasoning</dt>
+                    <dd>{provenanceByRouteId[routeRecommendation.id].reasoning[0]}</dd>
+                  </div>
+                </dl>
               </div>
             ) : null}
           </article>

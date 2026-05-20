@@ -24,6 +24,16 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Domain Language
 
 - Capture Command Center: the single working surface where opportunity data, evidence, recommendations, decisions, actions, HITL sessions, plans, agents, and artifacts are connected for active capture work.
+- Command Center Home: the pulse-and-routing view for one selected Opportunity, showing state, blockers, review needs, next best actions, recent changes, and links into focused Work Modes rather than hosting every detailed action surface.
+- Work Mode: a focused Command Center area for one product workflow or work-product family, such as packet fields, activation, assisted capture, research, documents, action plans, engagement, artifacts, knowledge, or capability routes.
+- Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
+- Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
+- Opportunity Portfolio Status: the portfolio management label for whether an Opportunity is future, watchlist, active, held, archived, won, or lost; it is related to but distinct from Lifecycle State so the portfolio can manage attention and outcomes without confusing packet gate maturity.
+- Global Opportunity Pulse: the portfolio-level status view that lets the user quickly see which Opportunities need attention by packet readiness, milestone gate urgency, source freshness, blockers, review needs, and next-action urgency before opening one Opportunity roadmap.
+- Opportunity Intake: the command surface and API flow where the user identifies an Opportunity and Ariadne creates the standardized local workspace for capture work.
+- Standard Opportunity Scaffold: the generated starting structure for one Opportunity, including the Opportunity record, core capture workstreams, backfill needs, Living Packet sections, packet-field action slots, and initial Autonomy Digest.
+- Opportunity Activation Run: a bounded autonomous sweep Ariadne performs after opportunity identification or on user request to gather permitted context, evaluate required packet fields, run low-risk or pre-approved capabilities, identify skills/chains/MCP routes, record source limitations, and queue reviewable candidates or approval requests.
+- Autonomy Digest: the compact UX summary of autonomous or background work, showing coverage gained, field candidates ready for review, blocked fields, source limitations, recommended skills/chains, approvals needed, and next-best actions while keeping raw tool traces secondary.
 - Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate. Pasted text and supported text or Markdown uploads should preserve source metadata.
@@ -44,7 +54,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Knowledge Foundation: a shared set of capture entities, relationships, provenance rules, and data patterns that can support capture intelligence, milestone briefings, risk registers, call plans, solicitation parsing, and later proposal workflows without creating separate phase-specific knowledge structures.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
 - Pursuit: the active capture phase of an opportunity once serious work begins toward a bid decision and award.
-- Decision Gate: a disciplined checkpoint that turns evidence into a go/no-go/hold action.
+- Decision Gate: a disciplined Milestone 1, Milestone 2, Milestone 3, or Milestone 4 checkpoint that turns evidence into a go/no-go/hold action for an Opportunity.
+- Milestone Gate: one of the four primary Opportunity decision checkpoints Ariadne supports through the Living Milestone Decision Briefing Packet.
 - Lifecycle State: the current maturity position of an opportunity in the capture lifecycle.
 - Shipley Phase: a methodology phase label that can map onto Ariadne lifecycle work without becoming the canonical Ariadne lifecycle model.
 - Entry Context: the starting maturity context for an opportunity when it is first entered into Ariadne.
@@ -111,6 +122,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Marketing Insight Candidate: a reviewable interpretation of deterministic context and Source Findings into positioning, value proposition, competitor, customer pain, messaging, call-plan, packet, risk, or action implications.
 - Web Enrichment Support: the web-source collection lane within Capture Research Enrichment, using approved source providers over accessible public customer, competitor, partner, news, article, or agency pages when official identifiers are missing, program names changed, descriptions are fuzzy, or context outside deterministic data sources is needed.
 - Knowledge Layer: the local-first retrieval and graph context behind opportunity-specific reasoning.
+- Ariadne Knowledge Vault: the local-first authoritative knowledge workspace made from Ariadne source-of-truth stores and explicit projections, including accepted evidence, source material, packet answers, source profiles, action items, capability runs, workflow-route outputs, artifact drafts, reusable insights, Reference Wiki context, and optional Knowledge Mirror projections. It is not only Obsidian, not only RAG, and not a replacement for source-specific stores.
 - Knowledge Layer Foundation: the foundational retrieval and relationship capability that connects accepted capture knowledge across product workflows before richer graph, RAG, agent memory, or artifact workflows depend on it.
 - Structured Knowledge Index: a deterministic projection of accepted Ariadne records and their relationships that supports exact lookup, traversal, provenance summaries, and gap/source-limitation queries before semantic retrieval is added.
 - Knowledge Context Panel: the first Command Center proof surface for the Knowledge Layer Foundation, showing connected records, supporting evidence, gaps, limitations, pending reviews, and next command surfaces for a selected capture object.
@@ -131,6 +143,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Intelligence Workflow: a structured workflow that gathers, aggregates, and synthesizes capture data into insights, recommendations, and actions.
 - Product Workflow: a user-facing outcome workflow in Ariadne, such as building a briefing packet, creating a call plan, or researching competitors.
 - Capability Module: an underlying skill, skill chain, CLI harness, MCP tool, parser, renderer, model workflow, or adapter that a product workflow can use.
+- Capability Module Integration: the connection that lets a Product Workflow invoke an appropriate Capability Module, preserve its provenance, and return outputs to review.
+- Workflow Routing: the review-gated act of sending a capture need, recommendation, question, or capability output to the right Product Workflow, Capability Module, Action Plan, packet field, evidence review, call plan, or follow-up path.
+- Route-First Assisted Capture Orchestration: an MVP orchestration pattern where Ariadne connects user goals, Opportunity Knowledge Context, Capability Modules, AI assistance, and Product Workflows through explicit inspectable routes before adding broad autonomous planning.
 - Federal Data Capability: a read-only capability module that gathers public federal contracting, spending, wage, rate, policy, or regulatory data for capture analysis.
 - Capability Studio: an advanced workspace for adding, testing, refining, and validating capability modules without making capability management the main capture experience.
 - Capability Run Store: the local-first structured home for Capability Runs, Capability Run Outputs, review decisions, iterations, and provenance.
@@ -165,16 +180,23 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Call Plan Action Commitment: a follow-up action, deliverable, owner, and due date created or confirmed through a customer meeting.
 - Autonomy Tier: the permission level that determines whether Ariadne can run work automatically, ask before running, or require human approval.
 - Assisted Execution: AI-supported completion of capture work that reduces manual effort while keeping the user in control of strategic, sensitive, and external-facing decisions.
-- Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a milestone or gate review.
+- Assisted Capture Loop: the end-to-end cycle where Ariadne identifies a capture need, recommends or runs assistance, records the output, routes it through review, and improves the user's capture work product.
+- Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a Milestone 1, 2, 3, or 4 gate review.
+- Living Milestone Decision Briefing Packet: the continuously updated in-product milestone packet and primary Opportunity roadmap that accumulates reviewed capture knowledge, assumptions, gaps, risks, recommendations, readiness signals, and source support during active capture work.
 - Packet Readiness: the maturity label for a milestone decision briefing packet, such as not ready, draft ready, review ready, or decision ready.
 - Packet Section: a user-facing section of a living briefing packet that corresponds to part of the decision briefing experience.
-- Packet Field Definition: a reusable strategic question or data slot in a living briefing packet, such as customer, RFP release date, pWin, competition, or approval criteria.
+- Packet Field Definition: a reusable strategic question or data slot in a living briefing packet, such as customer, RFP release date, pWin, competition, or approval criteria, with explicit Milestone Gate scope for when the field is required.
 - Packet Field Answer: an opportunity-specific answer to a packet field definition, carrying value, evidence, assumptions, confidence, status, gaps, and action links.
+- Packet Field Action Surface: the command surface for one packet data element, showing current answer state, answer paths, source support, gaps, confidence, recommended AI/capability routes, and user actions to answer or advance the field.
+- Packet Field Action Matrix: the complete map of required Living Packet data elements to answer paths, route recommendations, supporting sources, skills, MCP tools, model roles, call-plan/user-action fallbacks, review destinations, and current-gate applicability.
+- Packet Field Route Kind: the typed route family for a packet data element, such as source-backed answer extraction, research or MCP-backed answer candidate, source-profile lookup, model synthesis, or customer-call-plan fallback.
+- Packet Content Opportunity: a reviewable recommendation or user-added request for additional packet content, such as an infographic, comparison visual, timeline, capability map, customer-org visual, opportunity synopsis add-on, partner ecosystem view, or other explanatory block tied to a packet section and milestone gate.
 - Answer Path: metadata describing how Ariadne is likely to answer or maintain a packet field, such as human input, imported data, evidence extraction, model synthesis, or a capability module.
 - Shared Knowledge Entity: a structured Ariadne knowledge node, such as a customer, competitor, incumbent, contract vehicle, scope area, evaluation method, source document, reusable insight, or capture pattern, that can connect answers across opportunities.
 - Packet Field Review: a view of packet field answers and shared-entity connections that provides context without treating another opportunity's answer as valid for the current opportunity.
 - Canonical Packet Section Model: Ariadne's company-agnostic internal packet-section structure, inspired by the user's private briefing packet needs but kept separate from private output formatting.
-- Living Briefing Packet: the UI-native, continuously updated working view of a milestone decision briefing packet.
+- Living Briefing Packet: the UI-native working view of a **Living Milestone Decision Briefing Packet**.
+- Living Packet Live View: the polished visual Command Center view of the Living Milestone Decision Briefing Packet itself, where packet sections connect to required data elements, field answer/gap/source/review state, and the actions or routes taken to fill each item.
 - Briefing View: the user-facing view of a living briefing packet as a decision briefing.
 - Coverage View: the supporting view that shows milestone intelligence checklist coverage, evidence status, gaps, assumptions, and supporting sources.
 - Milestone Intelligence Checklist: a reusable, company-agnostic question set for gathering and validating the information needed to produce milestone decision briefing packets.
@@ -188,7 +210,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Artifact Content Block: a typed renderer-neutral unit inside an Artifact Section, such as narrative, decision summary, evidence table, action list, risk list, assumption list, gap list, or source appendix.
 - Artifact Block Review: the human review decision to accept, edit, discard, route, or exclude an Artifact Content Block before it contributes to a reviewed artifact draft or final deliverable.
 - Artifact Export Profile: a private mapping from Ariadne artifact content into a user- or organization-specific output format.
-- Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, presentation, and visual deliverables.
+- Artifact Renderer: the module family responsible for previewing and exporting DOCX, XLSX, and huashu-design visual or PPTX-capable deliverables from reviewed artifact content.
+- huashu-design: the visual artifact renderer path for reviewed Ariadne content, including PPTX-capable outputs.
 - Hermes Agent: the local-first persistent operator that coordinates skills, memory, and execution.
 - Global Knowledge Reference: commit-safe source material that informs product behavior and terminology without implying a specific retrieval/indexing implementation.
 - Agent-Native CLI Harness: a Python CLI surface with machine-readable JSON output that exposes repeatable Ariadne or external-tool capabilities to agents, scripts, and optionally the UI.
@@ -196,18 +219,24 @@ Build one elegant, powerful capture command center that lets a single capture pr
 ## Relationships
 
 - An **Opportunity** can enter **Pursuit** as a phase of the same durable record; **Pursuit** is not a separate record.
+- An **Opportunity** carries a current **Milestone Gate** so portfolio pulse, workspace readiness, and the **Living Milestone Decision Briefing Packet** all speak in Milestone 1-4 decision terms instead of generic workflow status.
+- **Opportunity Intake** creates a **Standard Opportunity Scaffold** before deeper activation, research, or artifact work begins.
+- **Opportunity Intake** should ask the user for the smallest viable identification signal, usually just the Opportunity name, then let Ariadne's scaffold and activation behavior infer or queue the remaining structure.
+- An **Opportunity Activation Run** can start after an **Opportunity** is created, imported, selected, or materially refreshed, and it should produce reviewable candidates and route recommendations rather than silently creating trusted capture records.
 - An **Opportunity** has one **Lifecycle State** at a time and can enter Ariadne at different **Lifecycle States** depending on its **Entry Context**.
+- An **Opportunity Portfolio Status** can move an **Opportunity** through portfolio management states such as future, watchlist, active, held, archived, won, or lost while keeping **Lifecycle State** focused on capture maturity and **Milestone Gate** focused on decision readiness.
 - **Shipley Phases** can map to **Lifecycle States**, but **Lifecycle State** remains Ariadne's canonical maturity model.
 - A later **Lifecycle State** does not imply all earlier **Capture Workstreams** are complete; the **Entry Context** can create **Backfill Needs**.
 - Every **Opportunity** has the same **Core Capture Workstreams**, even when some workstreams are lightweight, inactive, or need backfill.
 - **Opportunity Knowledge** can become **Reusable Capture Insight** when it remains useful beyond the original opportunity.
+- An **Opportunity Portfolio** contains multiple **Opportunities**, but **Packet Field Answers** remain scoped to one selected Opportunity unless explicitly promoted into reusable context.
 - **Insight Promotion** preserves the source **Opportunity**, related **Core Capture Workstream**, freshness, confidence, sensitivity, and use context.
 - A **Capture Intelligence Workflow** can produce **Reusable Capture Insight**, a **Capture Action Plan**, an **Engagement Artifact**, or a **Milestone Decision Briefing Packet**.
 - The **Artifact Assembly Foundation** prepares **Artifact Drafts** from accepted and reviewable Ariadne knowledge before an **Artifact Renderer** turns reviewed content into exported deliverables.
 - **Artifact Assembly Capabilities** can contribute draft artifact content from knowledge, data, research, actions, and reviewable analysis, while final rendering and export remain separate responsibilities.
 - **Artifact Drafts** preserve evidence, provenance, assumptions, gaps, and review decisions so final artifacts remain traceable back to Ariadne's capture knowledge.
 - The first **Artifact Assembly Foundation** tracer should assemble a reviewable **Milestone Decision Briefing Packet** draft before building final export or visual rendering workflows.
-- **Artifact Drafts** should be section-based, and **Artifact Sections** should contain typed **Artifact Content Blocks** so future previews, DOCX exports, presentation exports, spreadsheet appendices, and visual renderers can transform the same reviewed content.
+- **Artifact Drafts** should be section-based, and **Artifact Sections** should contain typed **Artifact Content Blocks** so future previews, DOCX exports, spreadsheet appendices, and **huashu-design** visual or PPTX-capable renderers can transform the same reviewed content.
 - **Artifact Content Blocks** should move through **Artifact Block Review** independently because different blocks can have different evidence strength, audience fit, sensitivity, assumptions, and follow-up needs.
 - Accepted **Artifact Content Blocks** become reviewed artifact content for preview or export; they do not automatically become **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, **Reusable Capture Insights**, or other trusted source-of-truth records.
 - Low-risk, transactional **Artifact Block Review** decisions can later become candidates for **Graduated Autonomy** when provenance, reversibility, sensitivity, and repeated user approval patterns support it.
@@ -217,7 +246,18 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - An **Artifact Source Package** should be created before draft generation so AI-assisted and deterministic assembly work from explicit, inspectable inputs rather than loose access to all available Ariadne context.
 - An **Artifact Source Package** can include trusted and reviewable context, but reviewable context must be explicitly labeled and constrained to draft, gap, assumption, limitation, or needs-review use until the relevant **Artifact Content Blocks** are reviewed.
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
+- **Capability Module Integration** should make skills, skill chains, CLI harnesses, model workflows, and adapters usable from **Product Workflows** without making the user manage the toolchain first.
+- **Workflow Routing** connects capture needs and capability outputs back into the right review path so useful assistance can improve packets, call plans, action plans, evidence, research, or follow-up work without bypassing human gates.
+- A **Packet Field Action Matrix** should ensure every required **Packet Field Definition** has an answer path or fallback route, even when the fallback is a user action such as preparing a customer call plan with suggested questions.
+- A **Packet Field Route Kind** should be carried as structured metadata so the UI can show source-backed, research/MCP, source-profile, model-synthesis, and customer-call-plan paths without parsing display text.
+- A **Packet Field Action Matrix** records the **Milestone Gate** it was built for, marks which **Packet Field Definitions** are required for that current gate, and keeps future-gate fields visible as context without letting them distort current-gate readiness.
+- The **Living Packet Live View** is built from the **Packet Field Action Matrix** and **Packet Field Answers** so the user sees the packet as a visual decision-brief artifact while Ariadne keeps the field/action/source state traceable underneath.
+- An **Opportunity Activation Run** should use the **Packet Field Action Matrix** and **Capability Catalog** to identify which answers can be gathered automatically, which skill or MCP routes should be recommended, and which gaps need human/customer follow-up.
+- When a field-specific **Assisted Capture Loop** promotes a **Packet Field Answer**, Ariadne should record a material-refresh **Opportunity Activation Run** so the **Packet Field Action Matrix** and **Living Briefing Packet** roadmap reflect the newly supported answer.
+- **Route-First Assisted Capture Orchestration** should be Ariadne's MVP path before broad Hermes, LangGraph, or autonomous planner behavior because the product first needs inspectable routes from knowledge and data into useful capture work.
+- An **Assisted Capture Loop** uses **Opportunity Knowledge Context** to identify capture needs, invoke or recommend **Capability Modules**, preserve **Capability Run Outputs**, and route reviewed results into the user's active capture work.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
+- A **Command Surface** should avoid detaching primary work into a persistent side rail; pulse checks, routes, and reviews belong with the Opportunity dashboard or the specific packet field, action, call plan, research, artifact, or review item they advance.
 - The **Capture Command Center** should turn data into decisions and actions rather than behaving like a passive data display.
 - **Federal Data Capabilities** can support capture analysis with public data, but their outputs remain reviewable signals until Ariadne promotes them through evidence and workflow review gates.
 - The **Capability Studio** supports the single user-developer by making plugin installation, testing, refinement, validation, **Capability Runs**, the **Capability Artifact Library**, and **Capability Provenance** available without cluttering capture workflows.
@@ -225,10 +265,12 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.
 - The **Capability Run Store** records what happened when a **Capability Module** ran, while the **Capability Catalog** records what can run and the **Evidence Store** records trusted support.
 - **Capability Run Outputs** land in review before becoming **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, **Reusable Capture Insight** candidates, or final artifacts.
+- Accepted field-specific **Assisted Capture Loop** outputs can create **Packet Field Answers** for the selected **Opportunity** and **Packet Field Definition**, preserving source refs, assumptions, confidence, route output ID, and review decision provenance.
 - **Capability Run Outputs** can move through **Capability Iterations** before acceptance or promotion.
 - A **Capability Reasoning View** presents **Capability Provenance** for a **Capability Run Output** without making the toolchain the primary capture workflow.
 - A **Capability Reasoning View** can include a **Model Rationale Summary**, but Ariadne should not depend on storing raw hidden model reasoning as the source of truth.
 - **Graduated Autonomy** can move low-risk **Capability Run Outputs** toward automatic handling only when provenance, confidence, reversibility, sensitivity, and user-approved autonomy rules support it.
+- An **Autonomy Digest** is the required user-facing shape for autonomous or background work; Ariadne should not expose autonomous progress as raw logs, scattered tool cards, or a separate tool maze unless the user opens provenance details.
 - An **Interactive Capability Session** supports capability modules that require conversational input, clarification, critique, or staged decisions.
 - An **Interactive Capability Session** can run in different **Capability Session Contexts** without changing the underlying **Capability Module**.
 - An **Exploratory Capture Session** can later produce **Reusable Capture Insight**, **Raw Capture Items**, **Action Plan Items**, or a new **Opportunity**.
@@ -289,7 +331,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Grokipedia or similar public reference sources can be used as source targets for **Capture Research Enrichment** when relevant, but their findings still need provenance, source limitations, and review before becoming trusted capture knowledge.
 - A **Marketing Insight Candidate** can interpret **Source Findings** and deterministic context into capture implications, but trusted downstream writes remain review-gated.
 - **Skill Chain Recommendations**, future agent orchestration, or Hermes-supported research can coordinate **Capture Research Enrichment** later, but they do not replace the product workflow's source, interpretation, and review boundaries.
-- A **PIID Contract Intelligence Profile** can later feed **Artifact Renderer** capabilities such as DOCX, XLSX, presentation, or visual exports without making those rendered artifacts the source of truth.
+- A **PIID Contract Intelligence Profile** can later feed **Artifact Renderer** capabilities such as DOCX, XLSX, or **huashu-design** visual/PPTX-capable exports without making those rendered artifacts the source of truth.
 - **Capture Reference Context** can guide a **Capture Intelligence Draft**, but it does not replace the **Evidence Items** needed for opportunity-specific claims.
 - A **Reference Wiki** can organize **Capture Reference Context** for lightweight retrieval without becoming the primary **Knowledge Layer** or a **Knowledge Mirror**.
 - A **Knowledge Processing Workflow** can turn **Raw Capture Items** into **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, or **Insight Promotion** candidates.
@@ -325,6 +367,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - An **Action Plan Dashboard** lets the user manage outcomes while Ariadne maintains supporting details and recommended next steps.
 - A **Milestone Intelligence Checklist** informs a **Milestone Decision Briefing Packet** and can create **Backfill Needs** or **Capture Action Plan** items.
 - A **Milestone Decision Briefing Packet** contains **Traceable Recommendations** and **Evidence Status** for key answers.
+- A **Living Milestone Decision Briefing Packet** is the main accumulating work product and roadmap for Milestone 1-4 gate readiness during MVP, while rendered exports are downstream views of reviewed packet content.
+- A **Global Opportunity Pulse** helps the user choose which Opportunity needs attention, then the **Living Milestone Decision Briefing Packet** shows the stage-relative roadmap for closing that Opportunity's packet gaps.
 - A **Packet Field Definition** belongs to a **Canonical Packet Section Model** and represents the reusable question Ariadne should answer, not the one-off answer text.
 - A **Packet Field Answer** belongs to one **Opportunity** and may connect to **Evidence Items**, assumptions, confidence, gaps, **Action Plan Items**, and **Shared Knowledge Entities**.
 - **Packet Field Answers** can connect across opportunities through **Shared Knowledge Entities**, but those connections provide context only; they do not make one opportunity's answer valid for another opportunity.
@@ -334,12 +378,15 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Living Briefing Packet** is navigated through the **Canonical Packet Section Model**, while **Core Capture Workstreams** and **Evidence Items** provide the underlying readiness and evidence structure.
 - The **Milestone Intelligence Checklist** guides the intelligence needed to populate the **Canonical Packet Section Model**.
 - A **Living Briefing Packet** has a **Briefing View** for decision-making and a **Coverage View** for checklist coverage, evidence status, and source traceability.
+- A **Packet Content Opportunity** can become an **Artifact Draft** or renderer recommendation, including a huashu-design route when visual or PPTX-capable content would improve the packet.
 - A **Managed Capture Task** lets the user steer the capture outcome while Ariadne handles supporting execution through **Capture Intelligence Workflows**.
 - An **Artifact Export Profile** lets the **Artifact Renderer** produce organization-specific artifacts without making private templates part of Ariadne's public domain model.
+- MVP **Artifact Renderer** work should produce DOCX, XLSX, and first **huashu-design** visual/PPTX-capable outputs from reviewed **Artifact Drafts**, while richer rendering polish can follow later.
 - A **Traceable Recommendation** is supported by one or more **Evidence Items**.
 - **Evidence Items** live in the **Evidence Store** and can support **Opportunity Knowledge**, **Reusable Capture Insight**, and **Milestone Decision Briefing Packets**.
 - **Derived Evidence** should point back to the **Source Evidence** or earlier **Derived Evidence** that produced it.
 - The **Knowledge Layer Foundation** connects accepted **Evidence Items**, **Opportunity Knowledge**, **Packet Field Answers**, **Action Plan Items**, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, and **Capability Runs** without making RAG, graph visualization, or agent memory the source of truth.
+- The **Ariadne Knowledge Vault** is the user's cross-opportunity capture memory, but it must preserve authority, provenance, freshness, sensitivity, and Opportunity scope so reused knowledge informs new work without becoming an unreviewed answer.
 - The first **Knowledge Layer Foundation** uses a **Structured Knowledge Index** before semantic search, embeddings, RAG engines, graph databases, graph visualization, or Hermes memory depend on the knowledge layer.
 - The first **Structured Knowledge Index** includes already-built Ariadne records such as **Opportunities**, accepted **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, accepted document-intake evidence links, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, **Capability Runs**, and **Capability Run Outputs**.
 - The first **Structured Knowledge Index** rebuilds on demand from existing Ariadne source records rather than becoming a separate durable source of truth.
@@ -392,6 +439,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "LLM-wiki/Obsidian style" was used to mean a lightweight pseudo knowledge graph or vector database for connected sensemaking — resolved: use **Knowledge Note Projection** for one-way readable notes over accepted Ariadne knowledge, while retrieval engines remain future **Knowledge Layer** adapters.
 - "edit in Obsidian" could imply direct writes to Ariadne knowledge — resolved: mirror edits become **Mirror Update Proposals** that Ariadne can classify, validate, and apply.
 - "skills" was used to mean repeatable AI/tool workflows — resolved: use **Capture Intelligence Workflow** for the domain workflow, with implementation left open to skills, skill chaining, agents, CLI harnesses, or UI actions.
+- "skills integration" was used to mean making skills, skill chains, CLIs, MCPs, model workflows, and adapters useful inside capture work — resolved: use **Capability Module Integration** for the product-to-capability connection.
+- "workflow routing" was used to mean moving generated or recommended work into packets, call plans, action plans, evidence review, research, or follow-up — resolved: use **Workflow Routing** for review-gated routing between capture needs, capability outputs, and product workflows.
+- "general orchestration" was narrowed for MVP — resolved: use **Route-First Assisted Capture Orchestration** before broad autonomous Hermes, LangGraph, or hidden planner behavior.
 - "skills page" was used to mean advanced management of underlying tool capabilities — resolved: use **Capability Studio** for managing **Capability Modules** outside the main capture workflow.
 - "plugin" was used generically for underlying capabilities, not as a promise of portable app-plugin packaging — resolved: use **Capability Module** as the architecture-neutral term.
 - "Command Center as data center" was rejected — resolved: the **Capture Command Center** is data connected to recommendations, decisions, and actions, not passive reporting.
@@ -403,6 +453,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "gap" was used for both missing capture information and missing product capability — resolved: use **Backfill Need** for capture-work gaps and **Capability Gap** for platform gaps.
 - "company format" was used for private output templates — resolved: use **Artifact Export Profile** for private mappings from Ariadne artifacts into user- or organization-specific formats.
 - "skin" and "brain" were used to describe packet UI versus capture structure — resolved: **Packet Sections** are the user-facing navigation, while **Core Capture Workstreams** and **Evidence Items** are the underlying structure.
+- "living MS briefing packet" or "Living Milestone Gate Briefing Packet" was used to mean the main accumulating gate-review artifact and Opportunity roadmap — resolved: use **Living Milestone Decision Briefing Packet**, surfaced through the **Living Briefing Packet** view.
 - "packet sections" and "questions" were used as different parts of the same workflow — resolved: the **Canonical Packet Section Model** defines the briefing shape, while the **Milestone Intelligence Checklist** defines the questions that gather supporting intelligence.
 - "manage the task" was used to mean steering outcomes while AI performs supporting work — resolved: use **Managed Capture Task** for outcome-level work the user controls while Ariadne performs under-the-hood execution.
 - "task completing drone" was used to describe AI doing boring work while mentoring the user — resolved: use **Assisted Execution** plus **Guided Capture Mentor**.

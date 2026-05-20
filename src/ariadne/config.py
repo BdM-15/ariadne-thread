@@ -19,6 +19,13 @@ class RuntimeSettings(BaseModel):
     public_app_name: str = "Ariadne Thread"
     ariadne_env: str = "development"
     ariadne_workspace: str = "default"
+    ariadne_opportunities_dir: Path = Field(default=Path(".ariadne/opportunities"))
+    ariadne_packet_field_answers_dir: Path = Field(
+        default=Path(".ariadne/packet-field-answers")
+    )
+    ariadne_opportunity_activation_dir: Path = Field(
+        default=Path(".ariadne/opportunity-activation")
+    )
     ariadne_evidence_dir: Path = Field(default=Path(".ariadne/evidence"))
     ariadne_document_intake_dir: Path = Field(default=Path(".ariadne/document-intake"))
     ariadne_piid_profiles_dir: Path = Field(default=Path(".ariadne/piid-profiles"))
@@ -36,6 +43,9 @@ class RuntimeSettings(BaseModel):
     )
     ariadne_next_action_recommendations_dir: Path = Field(
         default=Path(".ariadne/next-action-recommendations")
+    )
+    ariadne_workflow_routing_dir: Path = Field(
+        default=Path(".ariadne/workflow-routing")
     )
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
@@ -72,6 +82,32 @@ class RuntimeSettings(BaseModel):
             ),
             ariadne_workspace=values.get(
                 "ARIADNE_WORKSPACE", cls.model_fields["ariadne_workspace"].default
+            ),
+            ariadne_opportunities_dir=Path(
+                values.get(
+                    "ARIADNE_OPPORTUNITIES_DIR",
+                    str(cls.model_fields["ariadne_opportunities_dir"].default),
+                )
+            ),
+            ariadne_packet_field_answers_dir=Path(
+                values.get(
+                    "ARIADNE_PACKET_FIELD_ANSWERS_DIR",
+                    str(
+                        cls.model_fields[
+                            "ariadne_packet_field_answers_dir"
+                        ].default
+                    ),
+                )
+            ),
+            ariadne_opportunity_activation_dir=Path(
+                values.get(
+                    "ARIADNE_OPPORTUNITY_ACTIVATION_DIR",
+                    str(
+                        cls.model_fields[
+                            "ariadne_opportunity_activation_dir"
+                        ].default
+                    ),
+                )
             ),
             ariadne_evidence_dir=Path(
                 values.get(
@@ -123,6 +159,12 @@ class RuntimeSettings(BaseModel):
                             "ariadne_next_action_recommendations_dir"
                         ].default
                     ),
+                )
+            ),
+            ariadne_workflow_routing_dir=Path(
+                values.get(
+                    "ARIADNE_WORKFLOW_ROUTING_DIR",
+                    str(cls.model_fields["ariadne_workflow_routing_dir"].default),
                 )
             ),
             ariadne_reference_wiki_dir=Path(

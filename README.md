@@ -27,6 +27,16 @@ The app reads `HOST`, `PORT`, `PUBLIC_APP_NAME`, `ARIADNE_ENV`, `ARIADNE_WORKSPA
 
 With the virtual environment activated, `python app.py` also works.
 
+The production Command Center UI lives in [ui](ui). Run it beside the FastAPI backend:
+
+```powershell
+Set-Location ui
+npm install
+npm run dev
+```
+
+The UI reads `ARIADNE_API_BASE_URL`, which defaults to `http://127.0.0.1:9622`.
+
 ## Local Dev Provider Stack
 
 The selected local Capture Research providers can be started with Docker Compose, while the Ariadne app still runs through `uv` on the host:

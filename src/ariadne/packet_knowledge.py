@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel, Field, computed_field
 
+from ariadne.opportunities import MilestoneGate
 from ariadne.packets import CanonicalPacketSection, EvidenceStatus
 
 
@@ -65,6 +67,7 @@ class PacketFieldDefinition(BaseModel):
     question: str
     section: CanonicalPacketSection
     value_kind: PacketFieldValueKind
+    required_milestone_gates: tuple[MilestoneGate, ...] = ()
     answer_paths: tuple[AnswerPath, ...] = ()
     related_entity_kinds: tuple[KnowledgeEntityKind, ...] = ()
     authority: KnowledgeAuthority = KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
@@ -104,6 +107,48 @@ class PacketFieldAnswer(BaseModel):
     authority: KnowledgeAuthority = KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
 
 
+class PacketFieldAnswerStore:
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root)
+
+    def write(self, answer: PacketFieldAnswer) -> PacketFieldAnswer:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._path(
+            opportunity_id=answer.opportunity_id,
+            field_key=answer.field_key,
+        ).write_text(answer.model_dump_json(indent=2), encoding="utf-8")
+        return answer
+
+    def read(self, *, opportunity_id: str, field_key: str) -> PacketFieldAnswer:
+        return PacketFieldAnswer.model_validate_json(
+            self._path(opportunity_id=opportunity_id, field_key=field_key).read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def list(
+        self,
+        *,
+        opportunity_id: str | None = None,
+    ) -> tuple[PacketFieldAnswer, ...]:
+        if not self.root.exists():
+            return ()
+        answers = tuple(
+            PacketFieldAnswer.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in sorted(self.root.glob("*.json"))
+        )
+        if opportunity_id is None:
+            return answers
+        return tuple(answer for answer in answers if answer.opportunity_id == opportunity_id)
+
+    def _path(self, *, opportunity_id: str, field_key: str) -> Path:
+        if not opportunity_id or opportunity_id != Path(opportunity_id).name:
+            raise ValueError("opportunity_id must be a file-safe identifier")
+        if not field_key or field_key != Path(field_key).name:
+            raise ValueError("field_key must be a file-safe identifier")
+        return self.root / f"{opportunity_id}__{field_key}.json"
+
+
 class PacketFieldConnection(BaseModel):
     opportunity_id: str
     field_key: str
@@ -130,6 +175,25 @@ class PacketFieldReview(BaseModel):
     authority: KnowledgeAuthority = KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
 
 
+ALL_MILESTONE_GATES = (
+    MilestoneGate.MILESTONE_1,
+    MilestoneGate.MILESTONE_2,
+    MilestoneGate.MILESTONE_3,
+    MilestoneGate.MILESTONE_4,
+)
+
+MILESTONE_2_TO_4 = (
+    MilestoneGate.MILESTONE_2,
+    MilestoneGate.MILESTONE_3,
+    MilestoneGate.MILESTONE_4,
+)
+
+MILESTONE_3_TO_4 = (
+    MilestoneGate.MILESTONE_3,
+    MilestoneGate.MILESTONE_4,
+)
+
+
 def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...]:
     return (
         PacketFieldDefinition(
@@ -138,6 +202,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="Which customer or buying command owns the need?",
             section=CanonicalPacketSection.CUSTOMER_CONTEXT,
             value_kind=PacketFieldValueKind.ENTITY,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.HUMAN_INPUT, label="capture lead confirmation"
@@ -161,6 +226,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="Who is expected to prime the pursuit or contract?",
             section=CanonicalPacketSection.OPPORTUNITY_OVERVIEW,
             value_kind=PacketFieldValueKind.ENTITY,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.HUMAN_INPUT, label="capture lead confirmation"
@@ -177,6 +243,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="When is the RFP expected or released?",
             section=CanonicalPacketSection.REQUIREMENTS_AND_SCOPE,
             value_kind=PacketFieldValueKind.DATE,
+            required_milestone_gates=MILESTONE_2_TO_4,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.IMPORTED_DATA, label="opportunity feed import"
@@ -194,6 +261,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="What total value should frame the pursuit decision?",
             section=CanonicalPacketSection.PRICE_TO_WIN,
             value_kind=PacketFieldValueKind.MONEY,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.IMPORTED_DATA, label="CRM or award import"
@@ -211,6 +279,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="What work is the customer buying?",
             section=CanonicalPacketSection.REQUIREMENTS_AND_SCOPE,
             value_kind=PacketFieldValueKind.PROSE,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.EVIDENCE_EXTRACTION,
@@ -228,6 +297,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="Which competitors or incumbents shape the win strategy?",
             section=CanonicalPacketSection.COMPETITIVE_POSITION,
             value_kind=PacketFieldValueKind.ENTITY_LIST,
+            required_milestone_gates=MILESTONE_2_TO_4,
             answer_paths=(
                 AnswerPath(kind=AnswerPathKind.HUMAN_INPUT, label="capture lead intel"),
                 AnswerPath(
@@ -246,6 +316,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="What is the current win-probability judgment and why?",
             section=CanonicalPacketSection.RECOMMENDATION_AND_NEXT_ACTIONS,
             value_kind=PacketFieldValueKind.PERCENTAGE,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.HUMAN_INPUT, label="capture lead judgment"
@@ -263,6 +334,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="How will the customer score proposals and tradeoffs?",
             section=CanonicalPacketSection.REQUIREMENTS_AND_SCOPE,
             value_kind=PacketFieldValueKind.PROSE,
+            required_milestone_gates=MILESTONE_3_TO_4,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.EVIDENCE_EXTRACTION,
@@ -281,6 +353,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="Which pursuit or execution risks could change the decision?",
             section=CanonicalPacketSection.RISKS_AND_GAPS,
             value_kind=PacketFieldValueKind.PROSE,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.HUMAN_INPUT, label="capture team risk review"
@@ -298,6 +371,7 @@ def build_default_packet_field_definitions() -> tuple[PacketFieldDefinition, ...
             question="What must be true for the gate decision to proceed?",
             section=CanonicalPacketSection.RECOMMENDATION_AND_NEXT_ACTIONS,
             value_kind=PacketFieldValueKind.DECISION,
+            required_milestone_gates=ALL_MILESTONE_GATES,
             answer_paths=(
                 AnswerPath(
                     kind=AnswerPathKind.HUMAN_INPUT, label="review authority input"

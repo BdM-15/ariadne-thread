@@ -9,6 +9,7 @@ from ariadne.packet_knowledge import (
     KnowledgeAuthority,
     KnowledgeEntityKind,
     PacketFieldAnswerStatus,
+    PacketFieldAnswerStore,
     PacketFieldDefinition,
     PacketFieldValueKind,
     SharedKnowledgeEntity,
@@ -17,6 +18,7 @@ from ariadne.packet_knowledge import (
     create_packet_field_answer,
     get_packet_field_definition,
 )
+from ariadne.opportunities import MilestoneGate
 from ariadne.packets import CanonicalPacketSection, EvidenceStatus
 
 
@@ -37,6 +39,25 @@ def test_packet_field_definition_represents_reusable_strategic_question() -> Non
         AnswerPathKind.EVIDENCE_EXTRACTION,
     }
     assert customer.authority is KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
+    assert customer.required_milestone_gates == (
+        MilestoneGate.MILESTONE_1,
+        MilestoneGate.MILESTONE_2,
+        MilestoneGate.MILESTONE_3,
+        MilestoneGate.MILESTONE_4,
+    )
+
+
+def test_default_packet_field_definitions_are_milestone_scoped() -> None:
+    definitions = build_default_packet_field_definitions()
+
+    assert all(definition.required_milestone_gates for definition in definitions)
+    evaluation = get_packet_field_definition(definitions, "evaluation_methodology")
+    competition = get_packet_field_definition(definitions, "competition")
+
+    assert MilestoneGate.MILESTONE_1 not in evaluation.required_milestone_gates
+    assert MilestoneGate.MILESTONE_3 in evaluation.required_milestone_gates
+    assert MilestoneGate.MILESTONE_1 not in competition.required_milestone_gates
+    assert MilestoneGate.MILESTONE_2 in competition.required_milestone_gates
 
 
 def test_field_answer_carries_opportunity_specific_provenance_and_gap_links() -> None:
@@ -63,6 +84,31 @@ def test_field_answer_carries_opportunity_specific_provenance_and_gap_links() ->
     assert answer.action_item_ids == ("ap_validate_customer",)
     assert answer.entity_ids == ("entity_aflcmc",)
     assert answer.provenance_note == "Captured from customer call and CRM import draft."
+
+
+def test_packet_field_answer_store_round_trips_by_opportunity(tmp_path) -> None:
+    store = PacketFieldAnswerStore(tmp_path / "packet-field-answers")
+    first = create_packet_field_answer(
+        field_key="customer",
+        opportunity_id="opp-current",
+        value="AFLCMC",
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=EvidenceStatus.ASSUMPTION,
+    )
+    second = create_packet_field_answer(
+        field_key="customer",
+        opportunity_id="opp-prior",
+        value="AFLCMC",
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=EvidenceStatus.ANSWERED,
+    )
+
+    store.write(first)
+    store.write(second)
+
+    assert store.read(opportunity_id="opp-current", field_key="customer") == first
+    assert store.list(opportunity_id="opp-current") == (first,)
+    assert len(store.list()) == 2
 
 
 def test_field_review_connections_are_context_not_answer_reuse() -> None:

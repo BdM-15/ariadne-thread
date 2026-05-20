@@ -65,6 +65,15 @@ from ariadne.command_center import (
     render_sam_gov_enrichment_profile_shell,
 )
 from ariadne.config import RuntimeSettings
+from ariadne.opportunity_activation import (
+    OpportunityActivationFieldReviewRequest,
+    OpportunityActivationFieldReviewResponse,
+    OpportunityActivationRun,
+    OpportunityActivationRunListResponse,
+    OpportunityActivationRunStore,
+    OpportunityActivationRunTrigger,
+    record_opportunity_activation_field_review,
+)
 from ariadne.draft_promotion import (
     DraftPartPromotionDecision,
     discard_draft_part_promotion,
@@ -110,6 +119,7 @@ from ariadne.next_action_recommendations import (
 )
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
+    PacketFieldAnswerStore,
     PacketFieldReview,
     build_demo_packet_field_review,
 )
@@ -179,6 +189,40 @@ from ariadne.usaspending import (
     create_usaspending_lookup_runner,
     fetch_usaspending_award_history,
     resolve_usaspending_piid,
+)
+from ariadne.production_command_center import (
+    AssistedCaptureWorkProduct,
+    AssistedRouteRecommendationRequest,
+    AssistedRouteRecommendationResponse,
+    AssistedRouteOutputReviewRequest,
+    AssistedRouteOutputReviewResponse,
+    AssistedRouteProvenanceResponse,
+    AssistedRouteRunRequest,
+    AssistedRouteRunResponse,
+    ProductionCommandCenterWorkspace,
+    ProductionCommandCenterHealthResponse,
+    ProductionOpportunityCreateResponse,
+    ProductionOpportunityIntakeRequest,
+    ProductionOpportunityPortfolioResponse,
+    ProductionOpportunityPortfolioUpdateRequest,
+    ProductionOpportunityPortfolioUpdateResponse,
+    OpportunityScaffoldStore,
+    WorkflowRoutingStore,
+    WorkProductUpdateListResponse,
+    RendererReadinessResponse,
+    build_production_command_center_workspace,
+    build_renderer_readiness,
+    create_standard_opportunity_scaffold,
+    execute_assisted_capture_route,
+    get_assisted_route_provenance,
+    list_production_opportunity_portfolio,
+    list_work_product_update_projections,
+    production_opportunity_context_exists,
+    production_command_center_health,
+    recommend_assisted_capture_routes,
+    review_assisted_route_output,
+    run_production_opportunity_activation,
+    update_production_opportunity_portfolio_state,
 )
 
 
@@ -512,6 +556,10 @@ class CapturePromotionResponse(BaseModel):
     decision: DraftPartPromotionDecision | None = None
 
 
+class ProductionCommandCenterWorkspaceResponse(BaseModel):
+    workspace: ProductionCommandCenterWorkspace
+
+
 def create_app(
     settings: RuntimeSettings | None = None,
     *,
@@ -545,6 +593,238 @@ def create_app(
             },
             "status": "online",
         }
+
+    @app.get("/api/production-command-center/workspace")
+    def production_command_center_workspace(
+        opportunity_id: str | None = None,
+    ) -> ProductionCommandCenterWorkspaceResponse:
+        try:
+            workspace = build_production_command_center_workspace(
+                runtime_settings,
+                workspace_root=Path.cwd(),
+                opportunity_id=opportunity_id,
+                opportunity_store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return ProductionCommandCenterWorkspaceResponse(workspace=workspace)
+
+    @app.get("/api/production-command-center/health")
+    def production_command_center_health_status() -> ProductionCommandCenterHealthResponse:
+        return production_command_center_health()
+
+    @app.get("/api/production-command-center/renderer-readiness")
+    def production_command_center_renderer_readiness() -> RendererReadinessResponse:
+        return build_renderer_readiness()
+
+    @app.get("/api/production-command-center/opportunities")
+    def production_command_center_opportunities() -> ProductionOpportunityPortfolioResponse:
+        return list_production_opportunity_portfolio(
+            store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+            answer_store=PacketFieldAnswerStore(
+                runtime_settings.ariadne_packet_field_answers_dir
+            ),
+        )
+
+    @app.post("/api/production-command-center/opportunities")
+    def production_command_center_create_opportunity(
+        request: ProductionOpportunityIntakeRequest,
+    ) -> ProductionOpportunityCreateResponse:
+        try:
+            scaffold = create_standard_opportunity_scaffold(
+                request=request,
+                store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return ProductionOpportunityCreateResponse(scaffold=scaffold)
+
+    @app.patch("/api/production-command-center/opportunities/{opportunity_id}")
+    def production_command_center_update_opportunity(
+        opportunity_id: str,
+        request: ProductionOpportunityPortfolioUpdateRequest,
+    ) -> ProductionOpportunityPortfolioUpdateResponse:
+        try:
+            return update_production_opportunity_portfolio_state(
+                opportunity_id=opportunity_id,
+                request=request,
+                store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @app.get(
+        "/api/production-command-center/opportunities/{opportunity_id}/"
+        "activation-runs"
+    )
+    def production_command_center_activation_runs(
+        opportunity_id: str,
+    ) -> OpportunityActivationRunListResponse:
+        return OpportunityActivationRunListResponse(
+            runs=OpportunityActivationRunStore(
+                runtime_settings.ariadne_opportunity_activation_dir
+            ).list(opportunity_id=opportunity_id)
+        )
+
+    @app.post(
+        "/api/production-command-center/opportunities/{opportunity_id}/"
+        "activation-runs"
+    )
+    def production_command_center_run_activation(
+        opportunity_id: str,
+    ) -> OpportunityActivationRun:
+        try:
+            return run_production_opportunity_activation(
+                opportunity_id=opportunity_id,
+                opportunity_store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+                trigger=OpportunityActivationRunTrigger.USER_REQUEST,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @app.post(
+        "/api/production-command-center/activation-runs/{run_id}/"
+        "fields/{field_key}/review-decisions"
+    )
+    def production_command_center_review_activation_field(
+        run_id: str,
+        field_key: str,
+        request: OpportunityActivationFieldReviewRequest,
+    ) -> OpportunityActivationFieldReviewResponse:
+        try:
+            return record_opportunity_activation_field_review(
+                run_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+                run_id=run_id,
+                field_key=field_key,
+                request=request,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Activation run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post(
+        "/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations"
+    )
+    def production_command_center_route_recommendations(
+        opportunity_id: str,
+        request: AssistedRouteRecommendationRequest,
+    ) -> AssistedRouteRecommendationResponse:
+        if not production_opportunity_context_exists(
+            opportunity_id,
+            store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+        ):
+            raise HTTPException(status_code=404, detail="Opportunity context not found")
+        try:
+            return recommend_assisted_capture_routes(
+                opportunity_id=opportunity_id,
+                goal_id=request.goal_id,
+                packet_field_key=request.packet_field_key,
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/production-command-center/routes/{recommendation_id}/runs")
+    def production_command_center_execute_route(
+        recommendation_id: str,
+        request: AssistedRouteRunRequest,
+    ) -> AssistedRouteRunResponse:
+        try:
+            run = execute_assisted_capture_route(
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                recommendation_id=recommendation_id,
+                approved=request.approved,
+                approval_basis=request.approval_basis,
+                operator_rationale=request.operator_rationale,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Route recommendation not found") from error
+        except PermissionError as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return AssistedRouteRunResponse(run=run)
+
+    @app.post(
+        "/api/production-command-center/route-outputs/{output_id}/review-decisions"
+    )
+    def production_command_center_review_route_output(
+        output_id: str,
+        request: AssistedRouteOutputReviewRequest,
+    ) -> AssistedRouteOutputReviewResponse:
+        try:
+            return review_assisted_route_output(
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+                opportunity_store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                output_id=output_id,
+                request=request,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Route output not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/production-command-center/routes/{recommendation_id}/provenance")
+    def production_command_center_route_provenance(
+        recommendation_id: str,
+    ) -> AssistedRouteProvenanceResponse:
+        try:
+            return get_assisted_route_provenance(
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                recommendation_id=recommendation_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Route recommendation not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/production-command-center/work-product-updates")
+    def production_command_center_work_product_updates(
+        opportunity_id: str | None = None,
+        destination: AssistedCaptureWorkProduct | None = None,
+    ) -> WorkProductUpdateListResponse:
+        return list_work_product_update_projections(
+            store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+            opportunity_id=opportunity_id,
+            destination=destination,
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:

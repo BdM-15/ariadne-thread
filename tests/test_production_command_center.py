@@ -238,3 +238,35 @@ def test_assisted_capture_route_provenance_includes_reasoning_and_review_trace(
     assert provenance["output"]["gaps"]
     assert provenance["review_decisions"][0]["review_gate"] == "human_accepted"
     assert provenance["work_product_updates"][0]["destination"] == "call_plan"
+
+
+def test_assisted_capture_route_output_rejection_keeps_updates_empty(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    recommendation_response = client.post(
+        "/api/production-command-center/opportunities/"
+        "opp-aflcmc-recompete/route-recommendations",
+        json={"goal_id": "prepare_customer_call"},
+    )
+    recommendation_id = recommendation_response.json()["recommendations"][0]["id"]
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation_id}/runs",
+        json={"approved": True},
+    )
+    output_id = run_response.json()["run"]["output"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/route-outputs/{output_id}/review-decisions",
+        json={
+            "decision": "reject",
+            "reviewer_rationale": "Rejected because the customer premise needs rework.",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"]["decision"] == "reject"
+    assert body["decision"]["review_gate"] == "human_rejected"
+    assert body["output"]["review_state"] == "rejected"
+    assert body["accepted_updates"] == []

@@ -89,6 +89,7 @@ export function AssistedCapturePanel({
   const [runsByRouteId, setRunsByRouteId] = useState<Record<string, AssistedRouteRun>>({});
   const [updatesByOutputId, setUpdatesByOutputId] = useState<Record<string, WorkProductUpdateProjection[]>>({});
   const [provenanceByRouteId, setProvenanceByRouteId] = useState<Record<string, ProvenanceView>>({});
+  const [reviewNotesByOutputId, setReviewNotesByOutputId] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -114,6 +115,7 @@ export function AssistedCapturePanel({
       setRunsByRouteId({});
       setUpdatesByOutputId({});
       setProvenanceByRouteId({});
+      setReviewNotesByOutputId({});
     });
   }
 
@@ -140,18 +142,23 @@ export function AssistedCapturePanel({
     });
   }
 
-  function acceptOutput(outputId: string) {
+  function reviewOutput(outputId: string, decision: "accept" | "reject") {
     setError(null);
     startTransition(async () => {
+      const reviewerRationale =
+        reviewNotesByOutputId[outputId]?.trim() ||
+        (decision === "accept"
+          ? "Accepted from Command Center review gate."
+          : "Rejected from Command Center review gate.");
       const response = await fetch(
         `/api/production-command-center/route-outputs/${outputId}/review-decisions`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            decision: "accept",
-            accepted_destination: "call_plan",
-            reviewer_rationale: "Accepted from Command Center review gate.",
+            decision,
+            accepted_destination: decision === "accept" ? "call_plan" : undefined,
+            reviewer_rationale: reviewerRationale,
           }),
         },
       );
@@ -263,13 +270,44 @@ export function AssistedCapturePanel({
                 <p className="mt-2 text-sm leading-6 text-slate-300">
                   {runsByRouteId[routeRecommendation.id].output.summary}
                 </p>
-                <button
-                  className="command-button route-run-button"
-                  onClick={() => acceptOutput(runsByRouteId[routeRecommendation.id].output.id)}
-                  type="button"
-                >
-                  Accept into work products
-                </button>
+                <div className="review-gate">
+                  <p className="text-xs uppercase tracking-[0.16em] text-ariadne-signal">
+                    Human review required
+                  </p>
+                  <textarea
+                    aria-label="Reviewer rationale"
+                    className="review-textarea"
+                    onChange={(event) =>
+                      setReviewNotesByOutputId((currentNotes) => ({
+                        ...currentNotes,
+                        [runsByRouteId[routeRecommendation.id].output.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Reviewer rationale"
+                    rows={3}
+                    value={reviewNotesByOutputId[runsByRouteId[routeRecommendation.id].output.id] ?? ""}
+                  />
+                  <div className="review-action-row">
+                    <button
+                      className="command-button"
+                      onClick={() =>
+                        reviewOutput(runsByRouteId[routeRecommendation.id].output.id, "accept")
+                      }
+                      type="button"
+                    >
+                      Accept into work products
+                    </button>
+                    <button
+                      className="command-button danger"
+                      onClick={() =>
+                        reviewOutput(runsByRouteId[routeRecommendation.id].output.id, "reject")
+                      }
+                      type="button"
+                    >
+                      Reject output
+                    </button>
+                  </div>
+                </div>
                 {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id] !== undefined ? (
                   <div className="mt-3 space-y-2">
                     {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id].map((update) => (

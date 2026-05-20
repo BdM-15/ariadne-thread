@@ -152,6 +152,101 @@ type WorkProductUpdateListResponse = {
   summary: Record<string, number>;
 };
 
+type CaptureResearchProvider = {
+  provider_id: string;
+  provider_name: string;
+  role: string;
+  source_mode: string;
+  status: string;
+  diagnostic_summary: string;
+  source_limitations: string[];
+};
+
+type CaptureResearchSourceRegistry = {
+  providers: CaptureResearchProvider[];
+  quality_status: string;
+  quality_summary: string;
+  recommended_provider_ids: string[];
+};
+
+type CaptureResearchSourceProviderResponse = {
+  registry: CaptureResearchSourceRegistry;
+};
+
+type CaptureResearchSignal = {
+  id: string;
+  summary: string;
+  confidence?: number;
+  review_state?: string;
+  target_workflow?: string;
+  source_limitations?: string[];
+  follow_up_needs?: string[];
+};
+
+type CaptureResearchLensAnalysis = {
+  id: string;
+  lens: string;
+  summary: string;
+  signals: CaptureResearchSignal[];
+  review_state: string;
+};
+
+type CaptureResearchCandidate = {
+  id: string;
+  title?: string;
+  summary?: string;
+  candidate_group?: string;
+  candidate_group_label?: string;
+  candidate_type?: string;
+  review_state?: string;
+  selected_lens?: string | null;
+  trusted_output_written?: boolean;
+  supporting_source_finding_ids?: string[];
+};
+
+type CaptureResearchRun = {
+  research_run_id: string;
+  opportunity_id: string | null;
+  status: string;
+  research_brief: {
+    research_question: string;
+    known_pivots: string[];
+    source_targets: string[];
+    selected_lenses: string[];
+    evidence_goals: string[];
+    source_limits: string[];
+    approval_basis: string;
+  };
+  research_trigger_context: {
+    trigger_type: string;
+    summary: string;
+    captured_at: string;
+  };
+  user_prompt: { prompt: string } | null;
+  selected_lenses: string[];
+  source_collection_records: unknown[];
+  source_findings: {
+    id: string;
+    source_target: string;
+    title: string;
+    url: string;
+    excerpt: string;
+    confidence: number;
+    source_limitations: string[];
+    source_mode: string;
+  }[];
+  capture_lens_analyses: CaptureResearchLensAnalysis[];
+  downstream_candidates: CaptureResearchCandidate[];
+  research_summary_view: string | null;
+  review_decisions: unknown[];
+  created_at: string;
+  updated_at: string;
+};
+
+type CaptureResearchRunListResponse = {
+  runs: CaptureResearchRun[];
+};
+
 type OpportunityActivationRunListResponse = {
   runs: OpportunityActivationRun[];
 };
@@ -343,6 +438,43 @@ async function loadWorkProductUpdates(
   }
 }
 
+async function loadCaptureResearchRuns(
+  opportunityId: string,
+): Promise<CaptureResearchRun[]> {
+  try {
+    const url = new URL(`${apiBaseUrl}/api/capture-research/runs`);
+    url.searchParams.set("opportunity_id", opportunityId);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as CaptureResearchRunListResponse;
+    return [...body.runs].sort(
+      (firstRun, secondRun) =>
+        Date.parse(secondRun.updated_at) - Date.parse(firstRun.updated_at),
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function loadCaptureResearchSourceRegistry(): Promise<CaptureResearchSourceRegistry | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/capture-research/source-providers`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const body =
+      (await response.json()) as CaptureResearchSourceProviderResponse;
+    return body.registry;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
@@ -368,11 +500,18 @@ export default async function CommandCenterPage({
     return <OfflineShell />;
   }
 
-  const [latestActivationRun, actionPlanUpdates, callPlanUpdates] =
-    await Promise.all([
+  const [
+    latestActivationRun,
+    actionPlanUpdates,
+    callPlanUpdates,
+    researchRuns,
+    researchSourceRegistry,
+  ] = await Promise.all([
       loadLatestActivationRun(workspace.opportunity.id),
       loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
       loadWorkProductUpdates(workspace.opportunity.id, "call_plan"),
+      loadCaptureResearchRuns(workspace.opportunity.id),
+      loadCaptureResearchSourceRegistry(),
     ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
@@ -609,6 +748,15 @@ export default async function CommandCenterPage({
             />
           ) : null}
 
+          {selectedModeId === "research" ? (
+            <ResearchMode
+              latestActivationRun={latestActivationRun}
+              runs={researchRuns}
+              selectedOpportunityId={workspace.opportunity.id}
+              sourceRegistry={researchSourceRegistry}
+            />
+          ) : null}
+
           {selectedModeId === "artifacts" && rendererReadiness !== null ? (
             <RendererReadinessPanel readiness={rendererReadiness} />
           ) : null}
@@ -638,7 +786,8 @@ function OpportunityPortfolioSwitcher({
   const selectedLifecycle =
     selectedOpportunity?.lifecycle_state ?? currentOpportunity.lifecycle_state;
   const selectedPortfolioStatus =
-    selectedOpportunity?.portfolio_status ?? currentOpportunity.portfolio_status;
+    selectedOpportunity?.portfolio_status ??
+    currentOpportunity.portfolio_status;
   const selectedReadiness = selectedOpportunity?.packet_readiness_label;
   const groupedOpportunities = groupPortfolioOpportunities(opportunities);
   const activeCount = opportunities.filter(
@@ -701,19 +850,21 @@ function OpportunityPortfolioSwitcher({
                           </span>
                           {opportunity.is_demo ? <span>Demo</span> : null}
                           {opportunity.blocked_field_count > 0 ? (
-                            <span>{opportunity.blocked_field_count} fields</span>
+                            <span>
+                              {opportunity.blocked_field_count} fields
+                            </span>
                           ) : null}
                           {opportunity.review_ready_count > 0 ? (
-                            <span>{opportunity.review_ready_count} reviews</span>
+                            <span>
+                              {opportunity.review_ready_count} reviews
+                            </span>
                           ) : null}
                         </span>
                       </a>
                     );
                   })
                 ) : (
-                  <p className="portfolio-menu-group-empty">
-                    No Opportunities
-                  </p>
+                  <p className="portfolio-menu-group-empty">No Opportunities</p>
                 )}
               </div>
             ))
@@ -1399,7 +1550,10 @@ function ActionPlanMode({
       </dl>
 
       <div className="action-plan-lanes">
-        <section className="action-plan-lane" aria-labelledby="route-updates-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="route-updates-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Review-ready updates</p>
             <h4 id="route-updates-title">Accepted route outputs</h4>
@@ -1423,7 +1577,9 @@ function ActionPlanMode({
                       <dd>
                         {update.source_refs.length > 0
                           ? update.source_refs
-                              .map((sourceRef) => formatReferenceLabel(sourceRef))
+                              .map((sourceRef) =>
+                                formatReferenceLabel(sourceRef),
+                              )
                               .join(", ")
                           : "No source refs"}
                       </dd>
@@ -1435,12 +1591,17 @@ function ActionPlanMode({
           ) : (
             <div className="action-plan-empty">
               <p>No Action Plan updates ready.</p>
-              <span>Run and accept an action route to stage follow-up work.</span>
+              <span>
+                Run and accept an action route to stage follow-up work.
+              </span>
             </div>
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="action-gaps-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="action-gaps-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Next action inputs</p>
             <h4 id="action-gaps-title">Packet gaps that can become tasks</h4>
@@ -1581,7 +1742,9 @@ function EngagementMode({
                       <dd>
                         {update.source_refs.length > 0
                           ? update.source_refs
-                              .map((sourceRef) => formatReferenceLabel(sourceRef))
+                              .map((sourceRef) =>
+                                formatReferenceLabel(sourceRef),
+                              )
                               .join(", ")
                           : "No source refs"}
                       </dd>
@@ -1598,10 +1761,15 @@ function EngagementMode({
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="engagement-gaps-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="engagement-gaps-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Call inputs</p>
-            <h4 id="engagement-gaps-title">Packet gaps needing customer input</h4>
+            <h4 id="engagement-gaps-title">
+              Packet gaps needing customer input
+            </h4>
           </div>
           {visibleEngagementFields.length > 0 ? (
             <div className="action-plan-card-stack">
@@ -1624,7 +1792,244 @@ function EngagementMode({
           ) : (
             <div className="action-plan-empty">
               <p>No engagement-specific gaps.</p>
-              <span>Current packet routes do not require customer follow-up.</span>
+              <span>
+                Current packet routes do not require customer follow-up.
+              </span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ResearchMode({
+  latestActivationRun,
+  runs,
+  selectedOpportunityId,
+  sourceRegistry,
+}: {
+  latestActivationRun: OpportunityActivationRun | null;
+  runs: CaptureResearchRun[];
+  selectedOpportunityId: string;
+  sourceRegistry: CaptureResearchSourceRegistry | null;
+}) {
+  const matrix = latestActivationRun?.packet_field_action_matrix;
+  const researchFields = matrix?.fields.filter((field) => {
+    const routeText = [
+      field.field_key,
+      field.label,
+      field.question,
+      field.section,
+      field.route_kind,
+      field.recommended_route,
+      field.route_rationale,
+      ...field.answer_paths,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return (
+      isRoadmapFieldActionable(field) &&
+      (routeText.includes("research_or_mcp") ||
+        routeText.includes("research") ||
+        routeText.includes("mcp") ||
+        routeText.includes("capability") ||
+        routeText.includes("skill"))
+    );
+  });
+  const visibleResearchFields = [...(researchFields ?? [])]
+    .sort(compareRoadmapFields)
+    .slice(0, 4);
+  const findingCount = runs.reduce(
+    (total, run) => total + run.source_findings.length,
+    0,
+  );
+  const candidateCount = runs.reduce(
+    (total, run) => total + run.downstream_candidates.length,
+    0,
+  );
+  const recommendedProviderIds = sourceRegistry?.recommended_provider_ids ?? [];
+  const recommendedProviders =
+    recommendedProviderIds.length > 0
+      ? recommendedProviderIds.map((providerId) => formatLabel(providerId)).join(", ")
+      : "None ready";
+
+  return (
+    <section
+      className="action-plan-mode research-mode"
+      aria-labelledby="research-title"
+    >
+      <div className="action-plan-hero">
+        <div>
+          <p>Research Desk</p>
+          <h3 id="research-title">Trace source collection into review work.</h3>
+          <span>
+            Research stays scoped to this Opportunity, keeps source limits
+            visible, and routes candidates through review before trusted writes.
+          </span>
+        </div>
+        <a
+          className="packet-action-link"
+          href={modeHref("capture", selectedOpportunityId, {
+            route_goal: "close_packet_gap",
+          })}
+        >
+          Start research route
+        </a>
+      </div>
+
+      <dl className="action-plan-metric-grid">
+        <Metric
+          label="Research runs"
+          value={runs.length.toString()}
+          tone="cyan"
+        />
+        <Metric
+          label="Source findings"
+          value={findingCount.toString()}
+          tone="signal"
+        />
+        <Metric
+          label="Review candidates"
+          value={candidateCount.toString()}
+          tone="copper"
+        />
+      </dl>
+
+      <div className="action-plan-lanes">
+        <section className="action-plan-lane" aria-labelledby="research-runs-title">
+          <div className="action-plan-lane-heading">
+            <p>Opportunity research</p>
+            <h4 id="research-runs-title">Capture research runs</h4>
+          </div>
+          {runs.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {runs.slice(0, 4).map((run) => (
+                <article className="action-update-card" key={run.research_run_id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(run.status)}</span>
+                    <span>{run.source_findings.length} findings</span>
+                  </div>
+                  <p>
+                    {run.user_prompt?.prompt ??
+                      run.research_brief.research_question}
+                  </p>
+                  <dl>
+                    <div>
+                      <dt>Lenses</dt>
+                      <dd>
+                        {run.research_brief.selected_lenses
+                          .map(formatLabel)
+                          .join(", ")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Targets</dt>
+                      <dd>{joinOrNone(run.research_brief.source_targets)}</dd>
+                    </div>
+                    <div>
+                      <dt>Candidates</dt>
+                      <dd>{run.downstream_candidates.length.toString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Source limits</dt>
+                      <dd>{joinOrNone(run.research_brief.source_limits)}</dd>
+                    </div>
+                  </dl>
+                  {run.research_summary_view ? (
+                    <span className="action-update-note">
+                      {run.research_summary_view}
+                    </span>
+                  ) : null}
+                  {run.downstream_candidates.length > 0 ? (
+                    <div className="research-candidate-list">
+                      {run.downstream_candidates.slice(0, 3).map((candidate) => (
+                        <span key={candidate.id}>
+                          {candidate.title ?? candidate.id} -{" "}
+                          {formatLabel(
+                            candidate.review_state ?? "pending_review",
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No research runs for this Opportunity.</p>
+              <span>
+                Research-backed packet gaps can start from Assisted Capture.
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="source-readiness-title">
+          <div className="action-plan-lane-heading">
+            <p>Source readiness</p>
+            <h4 id="source-readiness-title">Collection providers</h4>
+          </div>
+          {sourceRegistry ? (
+            <div className="action-plan-card-stack">
+              <article className="action-update-card">
+                <div className="action-update-card-head">
+                  <span>{formatLabel(sourceRegistry.quality_status)}</span>
+                  <span>{recommendedProviders}</span>
+                </div>
+                <p>{sourceRegistry.quality_summary}</p>
+              </article>
+              {sourceRegistry.providers.slice(0, 5).map((provider) => (
+                <article className="action-gap-card" key={provider.provider_id}>
+                  <div>
+                    <span>{formatLabel(provider.status)}</span>
+                    <h5>{provider.provider_name}</h5>
+                    <p>{provider.diagnostic_summary}</p>
+                    <small>
+                      {formatLabel(provider.role)} -{" "}
+                      {formatLabel(provider.source_mode)}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>Source readiness unavailable.</p>
+              <span>Research provider registry did not respond.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="research-gaps-title">
+          <div className="action-plan-lane-heading">
+            <p>Research inputs</p>
+            <h4 id="research-gaps-title">Packet gaps needing research</h4>
+          </div>
+          {visibleResearchFields.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {visibleResearchFields.map((field) => (
+                <article className="action-gap-card" key={field.field_key}>
+                  <div>
+                    <span>{formatLabel(field.route_kind ?? field.section)}</span>
+                    <h5>{field.label}</h5>
+                    <p>{field.gap_summary ?? field.route_rationale}</p>
+                  </div>
+                  <a
+                    className="packet-action-link"
+                    href={packetFieldRouteHref(field, selectedOpportunityId)}
+                  >
+                    Start route
+                  </a>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No research-routed packet gaps.</p>
+              <span>Current packet routes do not require research support.</span>
             </div>
           )}
         </section>
@@ -1757,7 +2162,13 @@ function formatReferenceLabel(value: string): string {
     capability_catalog: "Available Ariadne capabilities",
   };
 
-  return labels[value] ?? formatLabel(value.replace(/^ev_/, "").replace(/\./g, "_"));
+  return (
+    labels[value] ?? formatLabel(value.replace(/^ev_/, "").replace(/\./g, "_"))
+  );
+}
+
+function joinOrNone(values: string[]): string {
+  return values.length > 0 ? values.map(formatLabel).join(", ") : "None";
 }
 
 function firstSearchParam(
@@ -1850,11 +2261,7 @@ function opportunityAttentionMode(opportunity: PortfolioOpportunity): string {
 }
 
 function isPlaceholderMode(modeId: string): boolean {
-  return [
-    "research",
-    "documents",
-    "capability_studio",
-  ].includes(modeId);
+  return ["documents", "capability_studio"].includes(modeId);
 }
 
 function buildGlobalOpportunityPulse(
@@ -1962,9 +2369,7 @@ function opportunityPulseReason(opportunity: PortfolioOpportunity): string {
   if (opportunity.attention_reason) {
     return opportunity.attention_reason;
   }
-  if (
-    ["archived", "won", "lost"].includes(opportunity.portfolio_status)
-  ) {
+  if (["archived", "won", "lost"].includes(opportunity.portfolio_status)) {
     return `${formatLabel(opportunity.portfolio_status)} Opportunity. Open roadmap for trace and lessons.`;
   }
   if (opportunity.blocked_field_count > 0) {

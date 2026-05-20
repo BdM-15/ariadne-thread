@@ -24,6 +24,7 @@ from ariadne.opportunity_activation import (
     recommend_packet_field_route,
 )
 from ariadne.packet_knowledge import (
+    PacketFieldAnswerStore,
     PacketFieldAnswerStatus,
     PacketFieldDefinition,
     build_default_packet_field_definitions,
@@ -735,6 +736,7 @@ def run_production_opportunity_activation(
     opportunity_id: str,
     opportunity_store: OpportunityScaffoldStore,
     activation_store: OpportunityActivationRunStore,
+    answer_store: PacketFieldAnswerStore | None = None,
     trigger: OpportunityActivationRunTrigger = OpportunityActivationRunTrigger.USER_REQUEST,
 ) -> OpportunityActivationRun:
     if opportunity_id != DEMO_OPPORTUNITY_ID and not opportunity_store.has_scaffold(
@@ -744,6 +746,11 @@ def run_production_opportunity_activation(
     return run_opportunity_activation(
         opportunity_id=opportunity_id,
         definitions=build_default_packet_field_definitions(),
+        answers=(
+            answer_store.list(opportunity_id=opportunity_id)
+            if answer_store is not None
+            else ()
+        ),
         trigger=trigger,
         store=activation_store,
     )

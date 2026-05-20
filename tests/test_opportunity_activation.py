@@ -1,13 +1,17 @@
 from datetime import UTC, datetime
 
 from ariadne.opportunity_activation import (
+    OpportunityActivationFieldReviewDecisionType,
+    OpportunityActivationFieldReviewRequest,
     OpportunityActivationReviewState,
     OpportunityActivationRunStore,
     OpportunityActivationRunTrigger,
     PacketFieldActionState,
+    record_opportunity_activation_field_review,
     run_opportunity_activation,
 )
 from ariadne.packet_knowledge import (
+    PacketFieldAnswerStore,
     PacketFieldAnswerStatus,
     build_default_packet_field_definitions,
     create_packet_field_answer,
@@ -119,3 +123,144 @@ def test_activation_run_store_round_trips_by_opportunity(tmp_path) -> None:
     assert store.read(first.run_id) == first
     assert store.list(opportunity_id="opp-disa-cloud") == (first,)
     assert len(store.list()) == 2
+
+
+def test_activation_field_acceptance_promotes_packet_field_answer(tmp_path) -> None:
+    run_store = OpportunityActivationRunStore(tmp_path / "activation")
+    answer_store = PacketFieldAnswerStore(tmp_path / "packet-field-answers")
+    run = run_opportunity_activation(
+        opportunity_id="opp-disa-cloud",
+        definitions=build_default_packet_field_definitions(),
+        store=run_store,
+        created_at=datetime(2026, 5, 19, tzinfo=UTC),
+    )
+
+    response = record_opportunity_activation_field_review(
+        run_store=run_store,
+        answer_store=answer_store,
+        run_id=run.run_id,
+        field_key="customer",
+        request=OpportunityActivationFieldReviewRequest(
+            decision=OpportunityActivationFieldReviewDecisionType.ACCEPT,
+            value="DISA",
+            reviewer_rationale="Capture lead confirmed customer.",
+            confidence=0.8,
+        ),
+    )
+
+    answer = response.packet_field_answer
+    assert answer is not None
+    assert answer.value == "DISA"
+    assert answer.status is PacketFieldAnswerStatus.ANSWERED
+    assert answer.evidence_status is EvidenceStatus.ASSUMPTION
+    assert answer.review_status == "accept"
+    assert answer.source_draft_id == run.run_id
+    assert answer_store.read(opportunity_id="opp-disa-cloud", field_key="customer") == answer
+    customer = next(
+        field
+        for field in response.run.packet_field_action_matrix.fields
+        if field.field_key == "customer"
+    )
+    assert customer.action_state is PacketFieldActionState.ANSWERED
+    assert customer.current_value == "DISA"
+    assert response.decision.promoted_answer_created is True
+    assert response.run.outputs[0].review_state is OpportunityActivationReviewState.ACCEPTED
+    assert response.run.provenance["field_review_decisions"][0]["field_key"] == "customer"
+
+
+def test_activation_field_route_records_review_without_trusted_answer(tmp_path) -> None:
+    run_store = OpportunityActivationRunStore(tmp_path / "activation")
+    answer_store = PacketFieldAnswerStore(tmp_path / "packet-field-answers")
+    run = run_opportunity_activation(
+        opportunity_id="opp-disa-cloud",
+        definitions=build_default_packet_field_definitions(),
+        store=run_store,
+        created_at=datetime(2026, 5, 19, tzinfo=UTC),
+    )
+
+    response = record_opportunity_activation_field_review(
+        run_store=run_store,
+        answer_store=answer_store,
+        run_id=run.run_id,
+        field_key="competition",
+        request=OpportunityActivationFieldReviewRequest(
+            decision=OpportunityActivationFieldReviewDecisionType.ROUTE,
+            reviewer_rationale="Needs research approval before answer.",
+            routed_destination="capture_research",
+        ),
+    )
+
+    assert response.packet_field_answer is None
+    assert response.decision.routed_destination == "capture_research"
+    assert response.decision.promoted_answer_created is False
+    output = next(
+        output for output in response.run.outputs if output.field_key == "competition"
+    )
+    assert output.review_state is OpportunityActivationReviewState.ROUTED
+    assert answer_store.list(opportunity_id="opp-disa-cloud") == ()
+
+
+def test_activation_field_edit_promotes_human_edited_answer(tmp_path) -> None:
+    run_store = OpportunityActivationRunStore(tmp_path / "activation")
+    answer_store = PacketFieldAnswerStore(tmp_path / "packet-field-answers")
+    run = run_opportunity_activation(
+        opportunity_id="opp-disa-cloud",
+        definitions=build_default_packet_field_definitions(),
+        store=run_store,
+        created_at=datetime(2026, 5, 19, tzinfo=UTC),
+    )
+
+    response = record_opportunity_activation_field_review(
+        run_store=run_store,
+        answer_store=answer_store,
+        run_id=run.run_id,
+        field_key="customer",
+        request=OpportunityActivationFieldReviewRequest(
+            decision=OpportunityActivationFieldReviewDecisionType.EDIT,
+            value="Defense Information Systems Agency",
+            reviewer_rationale="Expanded the acronym before trusting the answer.",
+        ),
+    )
+
+    assert response.packet_field_answer is not None
+    assert response.packet_field_answer.value == "Defense Information Systems Agency"
+    assert response.packet_field_answer.review_status == "edit"
+    assert response.decision.review_gate == "human_edited"
+    assert response.decision.promoted_answer_created is True
+
+
+def test_activation_field_review_blocks_duplicate_decisions(tmp_path) -> None:
+    run_store = OpportunityActivationRunStore(tmp_path / "activation")
+    answer_store = PacketFieldAnswerStore(tmp_path / "packet-field-answers")
+    run = run_opportunity_activation(
+        opportunity_id="opp-disa-cloud",
+        definitions=build_default_packet_field_definitions(),
+        store=run_store,
+        created_at=datetime(2026, 5, 19, tzinfo=UTC),
+    )
+    request = OpportunityActivationFieldReviewRequest(
+        decision=OpportunityActivationFieldReviewDecisionType.ACCEPT,
+        value="DISA",
+        reviewer_rationale="Confirmed.",
+    )
+
+    record_opportunity_activation_field_review(
+        run_store=run_store,
+        answer_store=answer_store,
+        run_id=run.run_id,
+        field_key="customer",
+        request=request,
+    )
+
+    try:
+        record_opportunity_activation_field_review(
+            run_store=run_store,
+            answer_store=answer_store,
+            run_id=run.run_id,
+            field_key="customer",
+            request=request,
+        )
+    except ValueError as error:
+        assert str(error) == "Activation field already reviewed"
+    else:
+        raise AssertionError("duplicate activation field review should fail")

@@ -9,6 +9,7 @@ from ariadne.packet_knowledge import (
     KnowledgeAuthority,
     KnowledgeEntityKind,
     PacketFieldAnswerStatus,
+    PacketFieldAnswerStore,
     PacketFieldDefinition,
     PacketFieldValueKind,
     SharedKnowledgeEntity,
@@ -63,6 +64,31 @@ def test_field_answer_carries_opportunity_specific_provenance_and_gap_links() ->
     assert answer.action_item_ids == ("ap_validate_customer",)
     assert answer.entity_ids == ("entity_aflcmc",)
     assert answer.provenance_note == "Captured from customer call and CRM import draft."
+
+
+def test_packet_field_answer_store_round_trips_by_opportunity(tmp_path) -> None:
+    store = PacketFieldAnswerStore(tmp_path / "packet-field-answers")
+    first = create_packet_field_answer(
+        field_key="customer",
+        opportunity_id="opp-current",
+        value="AFLCMC",
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=EvidenceStatus.ASSUMPTION,
+    )
+    second = create_packet_field_answer(
+        field_key="customer",
+        opportunity_id="opp-prior",
+        value="AFLCMC",
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=EvidenceStatus.ANSWERED,
+    )
+
+    store.write(first)
+    store.write(second)
+
+    assert store.read(opportunity_id="opp-current", field_key="customer") == first
+    assert store.list(opportunity_id="opp-current") == (first,)
+    assert len(store.list()) == 2
 
 
 def test_field_review_connections_are_context_not_answer_reuse() -> None:

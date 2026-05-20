@@ -20,6 +20,9 @@ class RuntimeSettings(BaseModel):
     ariadne_env: str = "development"
     ariadne_workspace: str = "default"
     ariadne_opportunities_dir: Path = Field(default=Path(".ariadne/opportunities"))
+    ariadne_packet_field_answers_dir: Path = Field(
+        default=Path(".ariadne/packet-field-answers")
+    )
     ariadne_opportunity_activation_dir: Path = Field(
         default=Path(".ariadne/opportunity-activation")
     )
@@ -84,6 +87,16 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_OPPORTUNITIES_DIR",
                     str(cls.model_fields["ariadne_opportunities_dir"].default),
+                )
+            ),
+            ariadne_packet_field_answers_dir=Path(
+                values.get(
+                    "ARIADNE_PACKET_FIELD_ANSWERS_DIR",
+                    str(
+                        cls.model_fields[
+                            "ariadne_packet_field_answers_dir"
+                        ].default
+                    ),
                 )
             ),
             ariadne_opportunity_activation_dir=Path(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -102,6 +103,48 @@ class PacketFieldAnswer(BaseModel):
     source_draft_id: str | None = None
     review_edits: tuple[str, ...] = ()
     authority: KnowledgeAuthority = KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
+
+
+class PacketFieldAnswerStore:
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root)
+
+    def write(self, answer: PacketFieldAnswer) -> PacketFieldAnswer:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._path(
+            opportunity_id=answer.opportunity_id,
+            field_key=answer.field_key,
+        ).write_text(answer.model_dump_json(indent=2), encoding="utf-8")
+        return answer
+
+    def read(self, *, opportunity_id: str, field_key: str) -> PacketFieldAnswer:
+        return PacketFieldAnswer.model_validate_json(
+            self._path(opportunity_id=opportunity_id, field_key=field_key).read_text(
+                encoding="utf-8"
+            )
+        )
+
+    def list(
+        self,
+        *,
+        opportunity_id: str | None = None,
+    ) -> tuple[PacketFieldAnswer, ...]:
+        if not self.root.exists():
+            return ()
+        answers = tuple(
+            PacketFieldAnswer.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in sorted(self.root.glob("*.json"))
+        )
+        if opportunity_id is None:
+            return answers
+        return tuple(answer for answer in answers if answer.opportunity_id == opportunity_id)
+
+    def _path(self, *, opportunity_id: str, field_key: str) -> Path:
+        if not opportunity_id or opportunity_id != Path(opportunity_id).name:
+            raise ValueError("opportunity_id must be a file-safe identifier")
+        if not field_key or field_key != Path(field_key).name:
+            raise ValueError("field_key must be a file-safe identifier")
+        return self.root / f"{opportunity_id}__{field_key}.json"
 
 
 class PacketFieldConnection(BaseModel):

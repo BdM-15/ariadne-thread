@@ -12,6 +12,9 @@ def _command_center_settings(tmp_path):
                 tmp_path / "next-action-recommendations"
             ),
             "ARIADNE_OPPORTUNITIES_DIR": str(tmp_path / "opportunities"),
+            "ARIADNE_PACKET_FIELD_ANSWERS_DIR": str(
+                tmp_path / "packet-field-answers"
+            ),
             "ARIADNE_OPPORTUNITY_ACTIVATION_DIR": str(
                 tmp_path / "opportunity-activation"
             ),
@@ -170,6 +173,93 @@ def test_production_command_center_can_run_activation_on_request(tmp_path) -> No
     assert run["opportunity_id"] == opportunity_id
     assert run["packet_field_action_matrix"]["fields"]
     assert run["activation_digest"]["next_best_actions"]
+
+
+def test_production_command_center_promotes_activation_field_answer(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Space Force cyber sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    runs_response = client.get(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    run_id = runs_response.json()["runs"][0]["run_id"]
+
+    response = client.post(
+        f"/api/production-command-center/activation-runs/{run_id}/"
+        "fields/customer/review-decisions",
+        json={
+            "decision": "accept",
+            "value": "Space Force",
+            "reviewer_rationale": "Capture lead confirmed the customer.",
+            "confidence": 0.8,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"]["decision"] == "accept"
+    assert body["decision"]["promoted_answer_created"] is True
+    assert body["packet_field_answer"]["value"] == "Space Force"
+    assert body["packet_field_answer"]["status"] == "answered"
+    assert body["packet_field_answer"]["evidence_status"] == "assumption"
+    customer = next(
+        field
+        for field in body["run"]["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "customer"
+    )
+    assert customer["action_state"] == "answered"
+    assert customer["current_value"] == "Space Force"
+
+    rerun_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    rerun_customer = next(
+        field
+        for field in rerun_response.json()["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "customer"
+    )
+    assert rerun_customer["action_state"] == "answered"
+    assert rerun_customer["current_value"] == "Space Force"
+
+
+def test_production_command_center_routes_activation_field_without_answer(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Navy training modernization watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    runs_response = client.get(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    run_id = runs_response.json()["runs"][0]["run_id"]
+
+    response = client.post(
+        f"/api/production-command-center/activation-runs/{run_id}/"
+        "fields/competition/review-decisions",
+        json={
+            "decision": "route",
+            "reviewer_rationale": "Needs approved competitor research.",
+            "routed_destination": "capture_research",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["packet_field_answer"] is None
+    assert body["decision"]["decision"] == "route"
+    assert body["decision"]["routed_destination"] == "capture_research"
+    output = next(
+        output for output in body["run"]["outputs"] if output["field_key"] == "competition"
+    )
+    assert output["review_state"] == "routed"
 
 
 def test_created_opportunity_can_receive_route_recommendations(tmp_path) -> None:

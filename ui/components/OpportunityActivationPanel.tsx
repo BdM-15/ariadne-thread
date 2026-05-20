@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Route,
   ShieldCheck,
+  XCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -51,6 +52,18 @@ type PacketFieldActionMatrix = {
   source_ref_count: number;
 };
 
+type OpportunityActivationRunOutput = {
+  output_id: string;
+  field_key: string;
+  title: string;
+  summary: string;
+  recommended_destination: string;
+  recommended_route: string;
+  review_state: string;
+};
+
+type FieldReviewDecision = "accept" | "edit" | "route" | "discard";
+
 export type OpportunityActivationRun = {
   run_id: string;
   opportunity_id: string;
@@ -61,7 +74,7 @@ export type OpportunityActivationRun = {
   packet_field_gaps: number;
   activation_digest: OpportunityActivationDigest;
   packet_field_action_matrix: PacketFieldActionMatrix;
-  outputs: Array<unknown>;
+  outputs: OpportunityActivationRunOutput[];
   provenance: {
     trusted_downstream_writes?: boolean;
     network_required?: boolean;
@@ -83,11 +96,20 @@ export function OpportunityActivationPanel({
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reviewingFieldKey, setReviewingFieldKey] = useState<string | null>(
+    null,
+  );
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [fieldNotes, setFieldNotes] = useState<Record<string, string>>({});
+  const [fieldStatus, setFieldStatus] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const isBusy = isSubmitting || isRefreshing;
   const digest = run?.activation_digest;
   const matrix = run?.packet_field_action_matrix;
+  const outputByField = new Map(
+    (run?.outputs ?? []).map((output) => [output.field_key, output]),
+  );
   const trustedWrites = run?.provenance.trusted_downstream_writes === true;
 
   async function runActivation() {
@@ -115,6 +137,68 @@ export function OpportunityActivationPanel({
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function reviewField(
+    field: PacketFieldActionItem,
+    decision: FieldReviewDecision,
+  ) {
+    if (run === null) {
+      return;
+    }
+    const value = (fieldValues[field.field_key] ?? field.current_value ?? "").trim();
+    const note = fieldNotes[field.field_key]?.trim();
+    const reviewerRationale =
+      note && note.length > 0
+        ? note
+        : `Reviewed ${field.label} from activation matrix.`;
+    if ((decision === "accept" || decision === "edit") && !value) {
+      setFieldStatus((current) => ({
+        ...current,
+        [field.field_key]: "Answer value required before accepting.",
+      }));
+      return;
+    }
+
+    setError(null);
+    setStatusMessage(null);
+    setReviewingFieldKey(field.field_key);
+    setFieldStatus((current) => ({ ...current, [field.field_key]: "" }));
+    try {
+      const response = await fetch(
+        `/api/production-command-center/activation-runs/${encodeURIComponent(run.run_id)}/fields/${encodeURIComponent(field.field_key)}/review-decisions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            decision,
+            value:
+              decision === "accept" || decision === "edit" ? value : undefined,
+            reviewer_rationale: reviewerRationale,
+            routed_destination: decision === "route" ? "capture_research" : undefined,
+          }),
+        },
+      );
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || "Field review failed.");
+      }
+      setFieldStatus((current) => ({
+        ...current,
+        [field.field_key]: `${field.label} review recorded.`,
+      }));
+      startRefresh(() => {
+        router.refresh();
+      });
+    } catch (reviewError) {
+      setFieldStatus((current) => ({
+        ...current,
+        [field.field_key]:
+          reviewError instanceof Error ? reviewError.message : "Field review failed.",
+      }));
+    } finally {
+      setReviewingFieldKey(null);
     }
   }
 
@@ -236,31 +320,30 @@ export function OpportunityActivationPanel({
               </div>
               <div className="activation-field-grid">
                 {matrix.fields.map((field) => (
-                  <article
-                    className={`activation-field-card ${actionStateClass(field.action_state)}`}
+                  <ActivationFieldCard
+                    field={field}
+                    fieldNote={fieldNotes[field.field_key] ?? ""}
+                    fieldStatus={fieldStatus[field.field_key] ?? ""}
+                    fieldValue={
+                      fieldValues[field.field_key] ?? field.current_value ?? ""
+                    }
+                    isBusy={reviewingFieldKey !== null || isRefreshing}
                     key={field.field_key}
-                  >
-                    <div className="activation-field-header">
-                      <div>
-                        <p>{formatLabel(field.section)}</p>
-                        <h5>{field.label}</h5>
-                      </div>
-                      <span className="activation-field-state">
-                        {formatLabel(field.action_state)}
-                      </span>
-                    </div>
-                    <p className="activation-field-question">
-                      {field.question}
-                    </p>
-                    <p className="activation-field-route">
-                      {field.recommended_route}
-                    </p>
-                    <div className="activation-field-chip-row">
-                      <span>{formatLabel(field.evidence_status)}</span>
-                      <span>{formatLabel(field.value_kind)}</span>
-                      {field.approval_required ? <span>Approval</span> : null}
-                    </div>
-                  </article>
+                    onFieldNoteChange={(nextValue) =>
+                      setFieldNotes((current) => ({
+                        ...current,
+                        [field.field_key]: nextValue,
+                      }))
+                    }
+                    onFieldValueChange={(nextValue) =>
+                      setFieldValues((current) => ({
+                        ...current,
+                        [field.field_key]: nextValue,
+                      }))
+                    }
+                    onReview={(decision) => reviewField(field, decision)}
+                    output={outputByField.get(field.field_key) ?? null}
+                  />
                 ))}
               </div>
             </div>
@@ -268,6 +351,132 @@ export function OpportunityActivationPanel({
         )}
       </div>
     </section>
+  );
+}
+
+function ActivationFieldCard({
+  field,
+  fieldNote,
+  fieldStatus,
+  fieldValue,
+  isBusy,
+  onFieldNoteChange,
+  onFieldValueChange,
+  onReview,
+  output,
+}: {
+  field: PacketFieldActionItem;
+  fieldNote: string;
+  fieldStatus: string;
+  fieldValue: string;
+  isBusy: boolean;
+  onFieldNoteChange: (value: string) => void;
+  onFieldValueChange: (value: string) => void;
+  onReview: (decision: FieldReviewDecision) => void;
+  output: OpportunityActivationRunOutput | null;
+}) {
+  const isReviewed = output !== null && output.review_state !== "pending_review";
+  const canReview = output !== null && output.review_state === "pending_review";
+
+  return (
+    <article className={`activation-field-card ${actionStateClass(field.action_state)}`}>
+      <div className="activation-field-header">
+        <div>
+          <p>{formatLabel(field.section)}</p>
+          <h5>{field.label}</h5>
+        </div>
+        <span className="activation-field-state">
+          {isReviewed && output !== null
+            ? formatLabel(output.review_state)
+            : formatLabel(field.action_state)}
+        </span>
+      </div>
+      <p className="activation-field-question">{field.question}</p>
+      <p className="activation-field-route">{field.recommended_route}</p>
+      <div className="activation-field-chip-row">
+        <span>{formatLabel(field.evidence_status)}</span>
+        <span>{formatLabel(field.value_kind)}</span>
+        {field.approval_required ? <span>Approval</span> : null}
+      </div>
+
+      {field.action_state === "answered" ? (
+        <div className="activation-field-reviewed">
+          <CheckCircle2 size={15} aria-hidden />
+          <span>{field.current_value ?? "Answer accepted"}</span>
+        </div>
+      ) : null}
+
+      {canReview ? (
+        <div className="activation-field-review-gate">
+          <label>
+            <span>Answer to trust</span>
+            <textarea
+              onChange={(event) => onFieldValueChange(event.target.value)}
+              placeholder={field.gap_summary ?? field.label}
+              value={fieldValue}
+            />
+          </label>
+          <label>
+            <span>Review note</span>
+            <textarea
+              onChange={(event) => onFieldNoteChange(event.target.value)}
+              placeholder="Why this decision is safe"
+              value={fieldNote}
+            />
+          </label>
+          <div className="activation-field-actions">
+            <button
+              className="command-button primary"
+              disabled={isBusy}
+              onClick={() => onReview("accept")}
+              type="button"
+            >
+              <CheckCircle2 size={15} aria-hidden />
+              <span>Accept</span>
+            </button>
+            <button
+              className="command-button"
+              disabled={isBusy}
+              onClick={() => onReview("edit")}
+              type="button"
+            >
+              <CheckCircle2 size={15} aria-hidden />
+              <span>Edit</span>
+            </button>
+            <button
+              className="command-button"
+              disabled={isBusy}
+              onClick={() => onReview("route")}
+              type="button"
+            >
+              <Route size={15} aria-hidden />
+              <span>Route</span>
+            </button>
+            <button
+              className="command-button danger"
+              disabled={isBusy}
+              onClick={() => onReview("discard")}
+              type="button"
+            >
+              <XCircle size={15} aria-hidden />
+              <span>Discard</span>
+            </button>
+          </div>
+          {fieldStatus ? (
+            <p className="activation-field-status" aria-live="polite">
+              {fieldStatus}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isReviewed && output !== null ? (
+        <div className="activation-field-reviewed">
+          <CheckCircle2 size={15} aria-hidden />
+          <span>Review state: {formatLabel(output.review_state)}</span>
+        </div>
+      ) : null}
+    </article>
   );
 }
 

@@ -688,6 +688,98 @@ button {
   padding: 6px 8px;
 }
 
+.activation-field-review-gate {
+  border-top: 1px solid rgba(38, 49, 60, 0.72);
+  display: grid;
+  gap: 9px;
+  padding-top: 10px;
+}
+
+.activation-field-review-gate label {
+  display: grid;
+  gap: 5px;
+}
+
+.activation-field-review-gate label span {
+  color: #98a6b3;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.activation-field-review-gate textarea {
+  background: #0b1015;
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #f8fafc;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 68px;
+  outline: none;
+  padding: 9px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.activation-field-review-gate textarea:focus-visible {
+  border-color: #4dd8cf;
+  box-shadow: 0 0 0 3px rgba(77, 216, 207, 0.16);
+}
+
+.activation-field-actions {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
+.activation-field-actions .command-button {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 9px;
+  text-align: center;
+  width: auto;
+}
+
+.activation-field-reviewed {
+  align-items: flex-start;
+  background: rgba(77, 216, 207, 0.08);
+  border: 1px solid rgba(77, 216, 207, 0.24);
+  border-radius: 6px;
+  color: #d8fffb;
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  padding: 9px;
+}
+
+.activation-field-reviewed svg {
+  color: #4dd8cf;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.activation-field-status {
+  color: #f0b573;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .activation-field-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .renderer-readiness {
   border: 1px solid #26313c;
   border-radius: 6px;

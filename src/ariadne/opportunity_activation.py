@@ -4,14 +4,17 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from ariadne.packet_knowledge import (
     AnswerPathKind,
     PacketFieldAnswer,
+    PacketFieldAnswerStore,
     PacketFieldAnswerStatus,
     PacketFieldDefinition,
+    create_packet_field_answer,
 )
 from ariadne.packets import EvidenceStatus
 
@@ -31,6 +34,14 @@ class OpportunityActivationReviewState(StrEnum):
     PENDING_REVIEW = "pending_review"
     ACCEPTED = "accepted"
     DISCARDED = "discarded"
+    ROUTED = "routed"
+
+
+class OpportunityActivationFieldReviewDecisionType(StrEnum):
+    ACCEPT = "accept"
+    EDIT = "edit"
+    ROUTE = "route"
+    DISCARD = "discard"
 
 
 class PacketFieldActionState(StrEnum):
@@ -88,6 +99,34 @@ class OpportunityActivationRunOutput(BaseModel):
     review_state: OpportunityActivationReviewState = (
         OpportunityActivationReviewState.PENDING_REVIEW
     )
+
+
+class OpportunityActivationFieldReviewRequest(BaseModel):
+    decision: OpportunityActivationFieldReviewDecisionType
+    reviewer_rationale: str = ""
+    value: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    routed_destination: str | None = None
+
+
+class OpportunityActivationFieldReviewDecision(BaseModel):
+    decision_id: str
+    run_id: str
+    opportunity_id: str
+    field_key: str
+    decision: OpportunityActivationFieldReviewDecisionType
+    reviewer_rationale: str
+    review_gate: str
+    promoted_answer_created: bool = False
+    routed_destination: str | None = None
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class OpportunityActivationFieldReviewResponse(BaseModel):
+    run: OpportunityActivationRun
+    decision: OpportunityActivationFieldReviewDecision
+    packet_field_answer: PacketFieldAnswer | None = None
 
 
 class OpportunityActivationRun(BaseModel):
@@ -205,6 +244,77 @@ def run_opportunity_activation(
     return run
 
 
+def record_opportunity_activation_field_review(
+    *,
+    run_store: OpportunityActivationRunStore,
+    answer_store: PacketFieldAnswerStore,
+    run_id: str,
+    field_key: str,
+    request: OpportunityActivationFieldReviewRequest,
+) -> OpportunityActivationFieldReviewResponse:
+    run = run_store.read(run_id)
+    action_item = _find_action_item(run, field_key)
+    output = _find_output(run, field_key)
+    if output.review_state is not OpportunityActivationReviewState.PENDING_REVIEW:
+        raise ValueError("Activation field already reviewed")
+
+    packet_field_answer: PacketFieldAnswer | None = None
+    routed_destination = request.routed_destination
+    if request.decision in {
+        OpportunityActivationFieldReviewDecisionType.ACCEPT,
+        OpportunityActivationFieldReviewDecisionType.EDIT,
+    }:
+        accepted_value = request.value.strip() if request.value else ""
+        if not accepted_value:
+            raise ValueError("accepted activation field review requires value")
+        packet_field_answer = _answer_from_activation_review(
+            run=run,
+            action_item=action_item,
+            request=request,
+            accepted_value=accepted_value,
+        )
+        answer_store.write(packet_field_answer)
+        action_item = action_item.model_copy(
+            update={
+                "current_status": PacketFieldAnswerStatus.ANSWERED.value,
+                "evidence_status": packet_field_answer.evidence_status.value,
+                "action_state": PacketFieldActionState.ANSWERED,
+                "requires_review": False,
+                "source_refs": packet_field_answer.evidence_ids,
+                "gap_summary": packet_field_answer.gap_summary,
+                "current_value": packet_field_answer.value,
+            }
+        )
+    elif request.decision is OpportunityActivationFieldReviewDecisionType.ROUTE:
+        if not routed_destination or not routed_destination.strip():
+            raise ValueError("routed activation field review requires destination")
+        routed_destination = routed_destination.strip()
+
+    decision = OpportunityActivationFieldReviewDecision(
+        decision_id=f"actreview_{uuid4().hex}",
+        run_id=run.run_id,
+        opportunity_id=run.opportunity_id,
+        field_key=field_key,
+        decision=request.decision,
+        reviewer_rationale=request.reviewer_rationale.strip(),
+        review_gate=_review_gate_for_field_decision(request.decision),
+        promoted_answer_created=packet_field_answer is not None,
+        routed_destination=routed_destination,
+    )
+    updated_run = _run_with_field_review(
+        run=run,
+        action_item=action_item,
+        field_key=field_key,
+        review_state=_review_state_for_field_decision(request.decision),
+        decision=decision,
+    )
+    return OpportunityActivationFieldReviewResponse(
+        run=run_store.write(updated_run),
+        decision=decision,
+        packet_field_answer=packet_field_answer,
+    )
+
+
 def build_packet_field_action_matrix(
     *,
     opportunity_id: str,
@@ -318,6 +428,157 @@ def _action_item_for_definition(
     )
 
 
+def _find_action_item(
+    run: OpportunityActivationRun,
+    field_key: str,
+) -> PacketFieldActionItem:
+    for item in run.packet_field_action_matrix.fields:
+        if item.field_key == field_key:
+            return item
+    raise ValueError("Activation field not found")
+
+
+def _find_output(
+    run: OpportunityActivationRun,
+    field_key: str,
+) -> OpportunityActivationRunOutput:
+    for output in run.outputs:
+        if output.field_key == field_key:
+            return output
+    raise ValueError("Activation field has no reviewable output")
+
+
+def _answer_from_activation_review(
+    *,
+    run: OpportunityActivationRun,
+    action_item: PacketFieldActionItem,
+    request: OpportunityActivationFieldReviewRequest,
+    accepted_value: str,
+) -> PacketFieldAnswer:
+    evidence_status = (
+        EvidenceStatus.ANSWERED
+        if request.evidence_ids
+        else EvidenceStatus.ASSUMPTION
+    )
+    rationale = request.reviewer_rationale.strip()
+    provenance_note = (
+        f"Accepted from activation run {run.run_id}: {rationale}"
+        if rationale
+        else f"Accepted from activation run {run.run_id}."
+    )
+    return create_packet_field_answer(
+        field_key=action_item.field_key,
+        opportunity_id=run.opportunity_id,
+        value=accepted_value,
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=evidence_status,
+        evidence_ids=request.evidence_ids,
+        confidence=request.confidence,
+        gap_summary=None,
+        provenance_note=provenance_note,
+        review_status=request.decision.value,
+        source_draft_id=run.run_id,
+        review_edits=(f"activation route: {action_item.recommended_route}",),
+    )
+
+
+def _run_with_field_review(
+    *,
+    run: OpportunityActivationRun,
+    action_item: PacketFieldActionItem,
+    field_key: str,
+    review_state: OpportunityActivationReviewState,
+    decision: OpportunityActivationFieldReviewDecision,
+) -> OpportunityActivationRun:
+    updated_outputs = tuple(
+        output.model_copy(update={"review_state": review_state})
+        if output.field_key == field_key
+        else output
+        for output in run.outputs
+    )
+    updated_fields = tuple(
+        action_item if item.field_key == field_key else item
+        for item in run.packet_field_action_matrix.fields
+    )
+    matrix = _matrix_with_fields(
+        opportunity_id=run.opportunity_id,
+        fields=updated_fields,
+    )
+    digest = run.activation_digest.model_copy(
+        update={
+            "coverage_gained": run.activation_digest.coverage_gained
+            + (f"Reviewed {action_item.label}: {decision.decision.value}.",),
+            "review_ready_count": matrix.review_ready_count,
+            "blocked_field_count": matrix.blocked_field_count,
+            "source_limitations": _source_limitations(matrix),
+            "next_best_actions": _next_best_actions(matrix),
+        }
+    )
+    return run.model_copy(
+        update={
+            "packet_field_gaps": matrix.blocked_field_count,
+            "activation_digest": digest,
+            "packet_field_action_matrix": matrix,
+            "outputs": updated_outputs,
+            "provenance": {
+                **run.provenance,
+                "field_review_decisions": [
+                    *run.provenance.get("field_review_decisions", []),
+                    decision.model_dump(mode="json"),
+                ],
+            },
+        }
+    )
+
+
+def _matrix_with_fields(
+    *,
+    opportunity_id: str,
+    fields: tuple[PacketFieldActionItem, ...],
+) -> PacketFieldActionMatrix:
+    return PacketFieldActionMatrix(
+        opportunity_id=opportunity_id,
+        fields=fields,
+        blocked_field_count=sum(
+            1 for item in fields if item.action_state is PacketFieldActionState.BLOCKED
+        ),
+        review_ready_count=sum(
+            1
+            for item in fields
+            if item.action_state is PacketFieldActionState.REVIEW_READY
+        ),
+        answered_field_count=sum(
+            1 for item in fields if item.action_state is PacketFieldActionState.ANSWERED
+        ),
+        approval_required_count=sum(1 for item in fields if item.approval_required),
+        source_ref_count=sum(len(item.source_refs) for item in fields),
+    )
+
+
+def _review_state_for_field_decision(
+    decision: OpportunityActivationFieldReviewDecisionType,
+) -> OpportunityActivationReviewState:
+    if decision in {
+        OpportunityActivationFieldReviewDecisionType.ACCEPT,
+        OpportunityActivationFieldReviewDecisionType.EDIT,
+    }:
+        return OpportunityActivationReviewState.ACCEPTED
+    if decision is OpportunityActivationFieldReviewDecisionType.ROUTE:
+        return OpportunityActivationReviewState.ROUTED
+    return OpportunityActivationReviewState.DISCARDED
+
+
+def _review_gate_for_field_decision(
+    decision: OpportunityActivationFieldReviewDecisionType,
+) -> str:
+    return {
+        OpportunityActivationFieldReviewDecisionType.ACCEPT: "human_accepted",
+        OpportunityActivationFieldReviewDecisionType.EDIT: "human_edited",
+        OpportunityActivationFieldReviewDecisionType.ROUTE: "human_routed",
+        OpportunityActivationFieldReviewDecisionType.DISCARD: "human_discarded",
+    }[decision]
+
+
 def _answer_for_field(
     *,
     answers: tuple[PacketFieldAnswer, ...],
@@ -337,7 +598,8 @@ def _action_state_for_answer(
 ) -> PacketFieldActionState:
     if (
         current_status is PacketFieldAnswerStatus.ANSWERED
-        and evidence_status is EvidenceStatus.ANSWERED
+        and evidence_status
+        in {EvidenceStatus.ANSWERED, EvidenceStatus.PARTIAL, EvidenceStatus.ASSUMPTION}
     ):
         return PacketFieldActionState.ANSWERED
     if current_status is PacketFieldAnswerStatus.NEEDS_REVIEW:

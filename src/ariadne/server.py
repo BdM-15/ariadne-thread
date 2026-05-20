@@ -66,10 +66,13 @@ from ariadne.command_center import (
 )
 from ariadne.config import RuntimeSettings
 from ariadne.opportunity_activation import (
+    OpportunityActivationFieldReviewRequest,
+    OpportunityActivationFieldReviewResponse,
     OpportunityActivationRun,
     OpportunityActivationRunListResponse,
     OpportunityActivationRunStore,
     OpportunityActivationRunTrigger,
+    record_opportunity_activation_field_review,
 )
 from ariadne.draft_promotion import (
     DraftPartPromotionDecision,
@@ -116,6 +119,7 @@ from ariadne.next_action_recommendations import (
 )
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
+    PacketFieldAnswerStore,
     PacketFieldReview,
     build_demo_packet_field_review,
 )
@@ -662,10 +666,39 @@ def create_app(
                 activation_store=OpportunityActivationRunStore(
                     runtime_settings.ariadne_opportunity_activation_dir
                 ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
                 trigger=OpportunityActivationRunTrigger.USER_REQUEST,
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @app.post(
+        "/api/production-command-center/activation-runs/{run_id}/"
+        "fields/{field_key}/review-decisions"
+    )
+    def production_command_center_review_activation_field(
+        run_id: str,
+        field_key: str,
+        request: OpportunityActivationFieldReviewRequest,
+    ) -> OpportunityActivationFieldReviewResponse:
+        try:
+            return record_opportunity_activation_field_review(
+                run_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+                run_id=run_id,
+                field_key=field_key,
+                request=request,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Activation run not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post(
         "/api/production-command-center/opportunities/{opportunity_id}/"

@@ -368,10 +368,12 @@ export default async function CommandCenterPage({
     return <OfflineShell />;
   }
 
-  const [latestActivationRun, actionPlanUpdates] = await Promise.all([
-    loadLatestActivationRun(workspace.opportunity.id),
-    loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
-  ]);
+  const [latestActivationRun, actionPlanUpdates, callPlanUpdates] =
+    await Promise.all([
+      loadLatestActivationRun(workspace.opportunity.id),
+      loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
+      loadWorkProductUpdates(workspace.opportunity.id, "call_plan"),
+    ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
       (field) => field.field_key === requestedPacketFieldKey,
@@ -596,6 +598,14 @@ export default async function CommandCenterPage({
               latestActivationRun={latestActivationRun}
               selectedOpportunityId={workspace.opportunity.id}
               updates={actionPlanUpdates}
+            />
+          ) : null}
+
+          {selectedModeId === "engagement" ? (
+            <EngagementMode
+              latestActivationRun={latestActivationRun}
+              selectedOpportunityId={workspace.opportunity.id}
+              updates={callPlanUpdates}
             />
           ) : null}
 
@@ -1465,6 +1475,164 @@ function ActionPlanMode({
   );
 }
 
+function EngagementMode({
+  latestActivationRun,
+  selectedOpportunityId,
+  updates,
+}: {
+  latestActivationRun: OpportunityActivationRun | null;
+  selectedOpportunityId: string;
+  updates: WorkProductUpdateProjection[];
+}) {
+  const matrix = latestActivationRun?.packet_field_action_matrix;
+  const engagementFields = matrix?.fields.filter((field) => {
+    const routeText = [
+      field.field_key,
+      field.label,
+      field.question,
+      field.section,
+      field.route_kind,
+      field.recommended_route,
+      field.route_rationale,
+      ...field.answer_paths,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return (
+      isRoadmapFieldActionable(field) &&
+      (routeText.includes("customer_call_plan") ||
+        routeText.includes("call") ||
+        routeText.includes("customer") ||
+        routeText.includes("engagement") ||
+        routeText.includes("capture lead"))
+    );
+  });
+  const currentGateEngagementFields =
+    engagementFields?.filter((field) => field.current_gate_required) ?? [];
+  const visibleEngagementFields =
+    currentGateEngagementFields.length > 0
+      ? currentGateEngagementFields.slice(0, 4)
+      : (engagementFields ?? []).slice(0, 4);
+  const sourceCount = new Set(updates.flatMap((update) => update.source_refs))
+    .size;
+
+  return (
+    <section className="action-plan-mode" aria-labelledby="engagement-title">
+      <div className="action-plan-hero">
+        <div>
+          <p>Engagement Prep</p>
+          <h3 id="engagement-title">Use call-plan route outputs.</h3>
+          <span>
+            Customer-call routes stay reviewable here until the operator turns
+            them into meeting prep, follow-up work, or packet support.
+          </span>
+        </div>
+        <a
+          className="packet-action-link"
+          href={modeHref("capture", selectedOpportunityId, {
+            route_goal: "prepare_customer_call",
+          })}
+        >
+          Prepare customer call
+        </a>
+      </div>
+
+      <dl className="action-plan-metric-grid">
+        <Metric
+          label="Call-plan outputs"
+          value={updates.length.toString()}
+          tone="cyan"
+        />
+        <Metric
+          label="Engagement fields"
+          value={(engagementFields?.length ?? 0).toString()}
+          tone="copper"
+        />
+        <Metric
+          label="Source refs"
+          value={sourceCount.toString()}
+          tone="signal"
+        />
+      </dl>
+
+      <div className="action-plan-lanes">
+        <section className="action-plan-lane" aria-labelledby="call-plan-title">
+          <div className="action-plan-lane-heading">
+            <p>Review-ready prep</p>
+            <h4 id="call-plan-title">Accepted call-plan outputs</h4>
+          </div>
+          {updates.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {updates.map((update) => (
+                <article className="action-update-card" key={update.id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(update.destination)}</span>
+                    <span>{formatLabel(update.state)}</span>
+                  </div>
+                  <p>{update.after_summary}</p>
+                  <dl>
+                    <div>
+                      <dt>Before</dt>
+                      <dd>{update.before_summary}</dd>
+                    </div>
+                    <div>
+                      <dt>Sources</dt>
+                      <dd>
+                        {update.source_refs.length > 0
+                          ? update.source_refs
+                              .map((sourceRef) => formatReferenceLabel(sourceRef))
+                              .join(", ")
+                          : "No source refs"}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No call-plan output ready.</p>
+              <span>Run and accept a customer-call route to stage prep.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="engagement-gaps-title">
+          <div className="action-plan-lane-heading">
+            <p>Call inputs</p>
+            <h4 id="engagement-gaps-title">Packet gaps needing customer input</h4>
+          </div>
+          {visibleEngagementFields.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {visibleEngagementFields.map((field) => (
+                <article className="action-gap-card" key={field.field_key}>
+                  <div>
+                    <span>{formatLabel(field.section)}</span>
+                    <h5>{field.label}</h5>
+                    <p>{field.gap_summary ?? field.route_rationale}</p>
+                  </div>
+                  <a
+                    className="packet-action-link"
+                    href={packetFieldRouteHref(field, selectedOpportunityId)}
+                  >
+                    Start route
+                  </a>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No engagement-specific gaps.</p>
+              <span>Current packet routes do not require customer follow-up.</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function PulseSignal({ label, value, description, tone }: PulseSignalModel) {
   return (
     <article className={`pulse-signal pulse-signal-${tone}`}>
@@ -1683,7 +1851,6 @@ function opportunityAttentionMode(opportunity: PortfolioOpportunity): string {
 
 function isPlaceholderMode(modeId: string): boolean {
   return [
-    "engagement",
     "research",
     "documents",
     "capability_studio",

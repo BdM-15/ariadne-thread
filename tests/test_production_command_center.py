@@ -1078,6 +1078,19 @@ def test_work_product_updates_api_lists_before_after_projection_surfaces(
     assert len(action_body["updates"]) == 1
     assert action_body["updates"][0]["destination"] == "action_plan"
 
+    call_plan_response = client.get(
+        "/api/production-command-center/work-product-updates",
+        params={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "destination": "call_plan",
+        },
+    )
+    assert call_plan_response.status_code == 200
+    call_plan_body = call_plan_response.json()
+    assert call_plan_body["summary"] == {"call_plan": 1}
+    assert len(call_plan_body["updates"]) == 1
+    assert call_plan_body["updates"][0]["destination"] == "call_plan"
+
     other_opportunity_response = client.get(
         "/api/production-command-center/work-product-updates",
         params={"opportunity_id": "opp-other", "destination": "action_plan"},

@@ -176,7 +176,9 @@ export function OpportunityIntakePanel() {
                   <PlusCircle size={17} aria-hidden />
                 )}
                 <span>
-                  {isOpeningWorkspace ? "Opening workspace" : "Create workspace"}
+                  {isOpeningWorkspace
+                    ? "Opening workspace"
+                    : "Create workspace"}
                 </span>
               </button>
             </form>

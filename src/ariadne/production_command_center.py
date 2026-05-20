@@ -5,7 +5,7 @@ from hashlib import sha256
 from pathlib import Path
 import re
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ariadne.capability_runs import CapabilityRunOutputReviewState, CapabilityRunStore
 from ariadne.config import RuntimeSettings
@@ -304,6 +304,7 @@ class AssistedRouteRun(BaseModel):
     capability_progress: CapabilityRouteProgress
     stages: tuple[AssistedRouteRunStage, ...]
     output: AssistedRouteOutput
+    provenance: dict[str, object] = Field(default_factory=dict)
 
 
 class AssistedRouteOutputReviewDecision(BaseModel):
@@ -334,6 +335,8 @@ class AssistedRouteRecommendationRequest(BaseModel):
 
 class AssistedRouteRunRequest(BaseModel):
     approved: bool = False
+    approval_basis: str | None = None
+    operator_rationale: str | None = None
 
 
 class AssistedRouteOutputReviewRequest(BaseModel):
@@ -1469,30 +1472,13 @@ def execute_assisted_capture_route(
     store: WorkflowRoutingStore,
     recommendation_id: str,
     approved: bool,
+    approval_basis: str | None = None,
+    operator_rationale: str | None = None,
 ) -> AssistedRouteRun:
     if not approved:
         raise PermissionError("Route execution requires explicit operator approval")
     recommendation = store.read_recommendation(recommendation_id)
-    output = AssistedRouteOutput(
-        id=f"output_{recommendation.id}_reviewable-draft",
-        recommendation_id=recommendation.id,
-        opportunity_id=recommendation.opportunity_id,
-        packet_field_key=recommendation.packet_field_key,
-        route_kind=recommendation.route_kind,
-        title=_output_title_for_route(recommendation),
-        summary=_output_summary_for_route(recommendation),
-        recommended_destination=recommendation.work_product_targets[0],
-        work_product_targets=recommendation.work_product_targets,
-        capability_chain=recommendation.recommended_capability_chain,
-        source_refs=recommendation.input_refs,
-        assumptions=(
-            "Draft content remains reviewable until the capture operator accepts it.",
-            "No external model or network call was used for this deterministic run.",
-        ),
-        gaps=(
-            "Validate customer decision-maker map before treating call-plan content as trusted.",
-        ),
-    )
+    output = _route_output_for_recommendation(recommendation)
     run = AssistedRouteRun(
         id=f"run_{recommendation.id}_deterministic-draft",
         recommendation_id=recommendation.id,
@@ -1522,6 +1508,16 @@ def execute_assisted_capture_route(
             recommendation.capability_route_card
         ),
         output=output,
+        provenance={
+            "approval_basis": approval_basis or recommendation.autonomy_tier.value,
+            "operator_rationale": operator_rationale or "",
+            "autonomy_tier": recommendation.autonomy_tier.value,
+            "route_kind": recommendation.route_kind,
+            "review_gate_required": recommendation.requires_review,
+            "network_required": False,
+            "model_required": False,
+            "external_execution": False,
+        },
     )
     return store.write_run(run)
 
@@ -2065,11 +2061,39 @@ def _capability_chain_for_packet_field_route(
     )
 
 
+def _route_output_for_recommendation(
+    recommendation: AssistedRouteRecommendation,
+) -> AssistedRouteOutput:
+    return AssistedRouteOutput(
+        id=f"output_{recommendation.id}_reviewable-draft",
+        recommendation_id=recommendation.id,
+        opportunity_id=recommendation.opportunity_id,
+        packet_field_key=recommendation.packet_field_key,
+        route_kind=recommendation.route_kind,
+        title=_output_title_for_route(recommendation),
+        summary=_output_summary_for_route(recommendation),
+        recommended_destination=recommendation.work_product_targets[0],
+        work_product_targets=recommendation.work_product_targets,
+        capability_chain=recommendation.recommended_capability_chain,
+        source_refs=recommendation.input_refs,
+        assumptions=_output_assumptions_for_route(recommendation),
+        gaps=_output_gaps_for_route(recommendation),
+    )
+
+
 def _output_title_for_route(recommendation: AssistedRouteRecommendation) -> str:
     if recommendation.route_label == "Prepare customer call plan":
         return "Customer call plan draft"
     if recommendation.route_kind == PacketFieldRouteKind.CUSTOMER_CALL_PLAN.value:
         return "Packet field call-plan draft"
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_BACKED_ANSWER.value:
+        return "Source-backed packet answer draft"
+    if recommendation.route_kind == PacketFieldRouteKind.RESEARCH_OR_MCP.value:
+        return "Research route packet answer draft"
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP.value:
+        return "Source-profile lookup packet answer draft"
+    if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
+        return "Model synthesis packet answer draft"
     if recommendation.route_label == "Draft packet answer":
         return "Packet answer draft"
     if recommendation.route_label == "Sequence capture actions":
@@ -2088,11 +2112,81 @@ def _output_summary_for_route(recommendation: AssistedRouteRecommendation) -> st
             "Draft customer questions, validation notes, and follow-up actions for "
             "the selected packet field before any Packet Field Answer is promoted."
         )
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_BACKED_ANSWER.value:
+        return (
+            "Prepare a reviewable packet answer candidate from known source refs; "
+            "source-span evidence still needs human review before promotion."
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.RESEARCH_OR_MCP.value:
+        return (
+            "Prepare a reviewable research or MCP route plan for the packet field; "
+            "external collection remains queued for explicit approval."
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP.value:
+        return (
+            "Prepare a source-profile lookup route for the packet field before "
+            "synthesis or packet promotion."
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
+        return (
+            "Prepare a model-synthesis prompt and assumptions checklist for the "
+            "packet field without invoking a model yet."
+        )
     if recommendation.route_label == "Draft packet answer":
         return "Draft a source-backed packet answer for review before promotion."
     if recommendation.route_label == "Sequence capture actions":
         return "Draft sequenced capture actions from packet gaps and workstream backfill."
     return recommendation.route_summary
+
+
+def _output_assumptions_for_route(
+    recommendation: AssistedRouteRecommendation,
+) -> tuple[str, ...]:
+    assumptions = (
+        "Draft content remains reviewable until the capture operator accepts it.",
+        "No external model or network call was used for this deterministic run.",
+    )
+    if recommendation.route_kind == PacketFieldRouteKind.RESEARCH_OR_MCP.value:
+        return assumptions + (
+            "Research, source-provider, and MCP work is represented as a route plan only.",
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP.value:
+        return assumptions + (
+            "Source-profile lookup has not been executed or treated as accepted data.",
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
+        return assumptions + (
+            "Model synthesis has not run; this output only frames the review-safe prompt and assumptions.",
+        )
+    return assumptions
+
+
+def _output_gaps_for_route(
+    recommendation: AssistedRouteRecommendation,
+) -> tuple[str, ...]:
+    if recommendation.route_kind == PacketFieldRouteKind.CUSTOMER_CALL_PLAN.value:
+        return (
+            "Validate customer decision-maker map before treating call-plan content as trusted.",
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_BACKED_ANSWER.value:
+        return (
+            "Reviewer must select or accept source-span evidence before the packet answer is trusted.",
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.RESEARCH_OR_MCP.value:
+        return (
+            "External research, MCP tools, or source-provider calls still require explicit approval before collection.",
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP.value:
+        return (
+            "Required source-profile data is not loaded, accepted, or linked to this packet field yet.",
+        )
+    if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
+        return (
+            "Accepted evidence or an explicit reviewer assumption is required before synthesis can become trusted.",
+        )
+    if recommendation.route_label == "Sequence capture actions":
+        return ("Confirm owners and due dates before applying actions to the Action Plan.",)
+    return ("Review the draft before any trusted work-product update is applied.",)
 
 
 def _work_product_updates_for_acceptance(

@@ -208,15 +208,19 @@ export function AssistedCapturePanel({
     });
   }
 
-  function runRoute(recommendationId: string) {
+  function runRoute(routeRecommendation: AssistedRouteRecommendation) {
     setError(null);
     startTransition(async () => {
       const response = await fetch(
-        `/api/production-command-center/routes/${recommendationId}/runs`,
+        `/api/production-command-center/routes/${routeRecommendation.id}/runs`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ approved: true }),
+          body: JSON.stringify({
+            approved: true,
+            approval_basis: routeRecommendation.autonomy_tier,
+            operator_rationale: `${formatLabel(routeRecommendation.autonomy_tier)} route approved from Assisted Capture.`,
+          }),
         },
       );
       if (!response.ok) {
@@ -226,7 +230,7 @@ export function AssistedCapturePanel({
       const body = (await response.json()) as RouteRunResponse;
       setRunsByRouteId((currentRuns) => ({
         ...currentRuns,
-        [recommendationId]: body.run,
+        [routeRecommendation.id]: body.run,
       }));
     });
   }
@@ -429,10 +433,12 @@ export function AssistedCapturePanel({
               <button
                 className="command-button route-run-button"
                 disabled={isPending}
-                onClick={() => runRoute(routeRecommendation.id)}
+                onClick={() => runRoute(routeRecommendation)}
                 type="button"
               >
-                Let Ariadne prepare this
+                {routeRecommendation.requires_review
+                  ? "Approve and prepare"
+                  : "Prepare route"}
               </button>
               <button
                 className="command-button route-run-button"

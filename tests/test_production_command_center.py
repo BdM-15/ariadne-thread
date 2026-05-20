@@ -800,6 +800,78 @@ def test_assisted_capture_route_execution_creates_reviewable_output(tmp_path) ->
     assert run["output"]["recommended_destination"] == "call_plan"
     assert "Customer call plan" in run["output"]["title"]
     assert "knowledge_context_review" in run["output"]["capability_chain"]
+    assert run["provenance"]["approval_basis"] == "human_approval_required"
+    assert run["provenance"]["external_execution"] is False
+
+
+def test_field_route_execution_reflects_packet_route_kind(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA packet route execution watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    route_cases = {
+        "customer": {
+            "route_kind": "source_backed_answer",
+            "title": "Source-backed packet answer draft",
+            "summary": "source-span evidence still needs human review",
+            "gap": "source-span evidence before the packet answer is trusted",
+        },
+        "competition": {
+            "route_kind": "research_or_mcp",
+            "title": "Research route packet answer draft",
+            "summary": "external collection remains queued for explicit approval",
+            "gap": "source-provider calls still require explicit approval",
+        },
+        "prime_name": {
+            "route_kind": "source_profile_lookup",
+            "title": "Source-profile lookup packet answer draft",
+            "summary": "source-profile lookup route",
+            "gap": "source-profile data is not loaded",
+        },
+        "pwin": {
+            "route_kind": "model_synthesis",
+            "title": "Model synthesis packet answer draft",
+            "summary": "without invoking a model yet",
+            "gap": "explicit reviewer assumption is required",
+        },
+    }
+
+    for field_key, expectation in route_cases.items():
+        recommendation_response = client.post(
+            f"/api/production-command-center/opportunities/{opportunity_id}/"
+            "route-recommendations",
+            json={"goal_id": "close_packet_gap", "packet_field_key": field_key},
+        )
+        recommendation = recommendation_response.json()["recommendations"][0]
+        run_response = client.post(
+            f"/api/production-command-center/routes/{recommendation['id']}/runs",
+            json={
+                "approved": True,
+                "approval_basis": "operator_reviewed_route_kind",
+                "operator_rationale": "Reviewed route kind before execution.",
+            },
+        )
+
+        assert recommendation_response.status_code == 200
+        assert run_response.status_code == 200, run_response.text
+        assert recommendation["route_kind"] == expectation["route_kind"]
+        run = run_response.json()["run"]
+        output = run["output"]
+        assert output["route_kind"] == expectation["route_kind"]
+        assert output["title"] == expectation["title"]
+        assert expectation["summary"] in output["summary"]
+        assert any(expectation["gap"] in gap for gap in output["gaps"])
+        assert run["provenance"]["approval_basis"] == (
+            "operator_reviewed_route_kind"
+        )
+        assert run["provenance"]["operator_rationale"] == (
+            "Reviewed route kind before execution."
+        )
+        assert run["provenance"]["external_execution"] is False
 
 
 def test_assisted_capture_route_output_acceptance_projects_work_updates(

@@ -763,6 +763,8 @@ def create_app(
                 store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
                 recommendation_id=recommendation_id,
                 approved=request.approved,
+                approval_basis=request.approval_basis,
+                operator_rationale=request.operator_rationale,
             )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Route recommendation not found") from error

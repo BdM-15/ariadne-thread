@@ -176,3 +176,18 @@ button {
   margin-top: 12px;
   padding: 2px 0 2px 12px;
 }
+
+.update-projection {
+  align-items: center;
+  border: 1px solid rgba(77, 216, 207, 0.24);
+  border-radius: 6px;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.update-projection span:last-child {
+  color: #4dd8cf;
+}

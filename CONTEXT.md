@@ -28,6 +28,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Work Mode: a focused Command Center area for one product workflow or work-product family, such as packet fields, activation, assisted capture, research, documents, action plans, engagement, artifacts, knowledge, or capability routes.
 - Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
 - Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
+- Global Opportunity Pulse: the portfolio-level status view that lets the user quickly see which Opportunities need attention by packet readiness, milestone gate urgency, source freshness, blockers, review needs, and next-action urgency before opening one Opportunity roadmap.
 - Opportunity Intake: the command surface and API flow where the user identifies an Opportunity and Ariadne creates the standardized local workspace for capture work.
 - Standard Opportunity Scaffold: the generated starting structure for one Opportunity, including the Opportunity record, core capture workstreams, backfill needs, Living Packet sections, packet-field action slots, and initial Autonomy Digest.
 - Opportunity Activation Run: a bounded autonomous sweep Ariadne performs after opportunity identification or on user request to gather permitted context, evaluate required packet fields, run low-risk or pre-approved capabilities, identify skills/chains/MCP routes, record source limitations, and queue reviewable candidates or approval requests.
@@ -187,6 +188,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Packet Field Answer: an opportunity-specific answer to a packet field definition, carrying value, evidence, assumptions, confidence, status, gaps, and action links.
 - Packet Field Action Surface: the command surface for one packet data element, showing current answer state, answer paths, source support, gaps, confidence, recommended AI/capability routes, and user actions to answer or advance the field.
 - Packet Field Action Matrix: the complete map of required Living Packet data elements to answer paths, route recommendations, supporting sources, skills, MCP tools, model roles, call-plan/user-action fallbacks, and review destinations.
+- Packet Content Opportunity: a reviewable recommendation or user-added request for additional packet content, such as an infographic, comparison visual, timeline, capability map, customer-org visual, opportunity synopsis add-on, partner ecosystem view, or other explanatory block tied to a packet section and milestone gate.
 - Answer Path: metadata describing how Ariadne is likely to answer or maintain a packet field, such as human input, imported data, evidence extraction, model synthesis, or a capability module.
 - Shared Knowledge Entity: a structured Ariadne knowledge node, such as a customer, competitor, incumbent, contract vehicle, scope area, evaluation method, source document, reusable insight, or capture pattern, that can connect answers across opportunities.
 - Packet Field Review: a view of packet field answers and shared-entity connections that provides context without treating another opportunity's answer as valid for the current opportunity.
@@ -356,6 +358,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Milestone Intelligence Checklist** informs a **Milestone Decision Briefing Packet** and can create **Backfill Needs** or **Capture Action Plan** items.
 - A **Milestone Decision Briefing Packet** contains **Traceable Recommendations** and **Evidence Status** for key answers.
 - A **Living Milestone Decision Briefing Packet** is the main accumulating work product and roadmap for Milestone 1-4 gate readiness during MVP, while rendered exports are downstream views of reviewed packet content.
+- A **Global Opportunity Pulse** helps the user choose which Opportunity needs attention, then the **Living Milestone Decision Briefing Packet** shows the stage-relative roadmap for closing that Opportunity's packet gaps.
 - A **Packet Field Definition** belongs to a **Canonical Packet Section Model** and represents the reusable question Ariadne should answer, not the one-off answer text.
 - A **Packet Field Answer** belongs to one **Opportunity** and may connect to **Evidence Items**, assumptions, confidence, gaps, **Action Plan Items**, and **Shared Knowledge Entities**.
 - **Packet Field Answers** can connect across opportunities through **Shared Knowledge Entities**, but those connections provide context only; they do not make one opportunity's answer valid for another opportunity.
@@ -365,6 +368,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Living Briefing Packet** is navigated through the **Canonical Packet Section Model**, while **Core Capture Workstreams** and **Evidence Items** provide the underlying readiness and evidence structure.
 - The **Milestone Intelligence Checklist** guides the intelligence needed to populate the **Canonical Packet Section Model**.
 - A **Living Briefing Packet** has a **Briefing View** for decision-making and a **Coverage View** for checklist coverage, evidence status, and source traceability.
+- A **Packet Content Opportunity** can become an **Artifact Draft** or renderer recommendation, including a huashu-design route when visual or PPTX-capable content would improve the packet.
 - A **Managed Capture Task** lets the user steer the capture outcome while Ariadne handles supporting execution through **Capture Intelligence Workflows**.
 - An **Artifact Export Profile** lets the **Artifact Renderer** produce organization-specific artifacts without making private templates part of Ariadne's public domain model.
 - MVP **Artifact Renderer** work should produce DOCX, XLSX, and first **huashu-design** visual/PPTX-capable outputs from reviewed **Artifact Drafts**, while richer rendering polish can follow later.

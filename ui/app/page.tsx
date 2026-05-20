@@ -349,6 +349,70 @@ type DocumentIntakeCapabilitiesResponse = {
   extraction_bundle_boundary: string;
 };
 
+type CapabilityCatalogEntry = {
+  id: string;
+  name: string;
+  description: string;
+  capability_type: string;
+  source_path: string;
+  maturity: string;
+  validation_status: string;
+  lifecycle_fit: string[];
+  workstream_fit: string[];
+  product_workflow_fit: string[];
+  provenance_note: string;
+};
+
+type CapabilityCatalog = {
+  entries: CapabilityCatalogEntry[];
+  indexed_at: string;
+  read_only: boolean;
+  canonical_locations: string[];
+};
+
+type CapabilityRunReviewDecision = {
+  decision_id: string;
+  output_id: string;
+  decision: string;
+  reviewer_rationale: string;
+  routed_destination: string | null;
+  decided_at: string;
+};
+
+type CapabilityRunOutput = {
+  output_id: string;
+  output_type: string;
+  title: string;
+  summary: string;
+  gaps: string[];
+  review_state: string;
+  autonomy_recommendation: string;
+  recommended_destination: string | null;
+  review_decisions: CapabilityRunReviewDecision[];
+  provenance: Record<string, unknown>;
+};
+
+type CapabilityRun = {
+  run_id: string;
+  capability_id: string;
+  capability_type: string;
+  executor_kind: string;
+  session_context: string;
+  opportunity_id: string | null;
+  product_workflow: string;
+  status: string;
+  inputs_summary: string;
+  input_refs: string[];
+  outputs: CapabilityRunOutput[];
+  provenance: Record<string, unknown>;
+  created_at: string;
+  completed_at: string | null;
+};
+
+type CapabilityRunListResponse = {
+  runs: CapabilityRun[];
+};
+
 type OpportunityActivationRunListResponse = {
   runs: OpportunityActivationRun[];
 };
@@ -646,6 +710,39 @@ async function loadDocumentIntakeCapabilities(): Promise<DocumentIntakeCapabilit
   }
 }
 
+async function loadCapabilityRuns(): Promise<CapabilityRun[]> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/capability-runs`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as CapabilityRunListResponse;
+    return [...body.runs].sort(
+      (firstRun, secondRun) =>
+        Date.parse(secondRun.completed_at ?? secondRun.created_at) -
+        Date.parse(firstRun.completed_at ?? firstRun.created_at),
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function loadCapabilityCatalog(): Promise<CapabilityCatalog | null> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/capabilities/catalog`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as CapabilityCatalog;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
@@ -681,6 +778,8 @@ export default async function CommandCenterPage({
     documentDrafts,
     documentCandidates,
     documentCapabilities,
+    capabilityRuns,
+    capabilityCatalog,
   ] = await Promise.all([
       loadLatestActivationRun(workspace.opportunity.id),
       loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
@@ -691,6 +790,8 @@ export default async function CommandCenterPage({
       loadDocumentIntakeDrafts(),
       loadDocumentIntakeCandidates(),
       loadDocumentIntakeCapabilities(),
+      loadCapabilityRuns(),
+      loadCapabilityCatalog(),
     ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
@@ -949,6 +1050,14 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "artifacts" && rendererReadiness !== null ? (
             <RendererReadinessPanel readiness={rendererReadiness} />
+          ) : null}
+
+          {selectedModeId === "capability_studio" ? (
+            <CapabilityStudioMode
+              catalog={capabilityCatalog}
+              runs={capabilityRuns}
+              selectedOpportunityId={workspace.opportunity.id}
+            />
           ) : null}
 
           {isPlaceholderMode(selectedModeId) ? (
@@ -2528,6 +2637,263 @@ function DocumentsMode({
   );
 }
 
+function CapabilityStudioMode({
+  catalog,
+  runs,
+  selectedOpportunityId,
+}: {
+  catalog: CapabilityCatalog | null;
+  runs: CapabilityRun[];
+  selectedOpportunityId: string;
+}) {
+  const outputs = runs.flatMap((run) =>
+    run.outputs.map((output) => ({ output, run })),
+  );
+  const pendingOutputs = outputs.filter(
+    ({ output }) => output.review_state === "pending",
+  );
+  const validationGapOutputs = outputs.filter(
+    ({ output }) => output.gaps.length > 0,
+  );
+  const unvalidatedCatalogEntries = catalog?.entries.filter(
+    (entry) => entry.validation_status === "unvalidated",
+  );
+  const latestRun = runs[0];
+
+  return (
+    <section className="action-plan-mode" aria-labelledby="capability-studio-title">
+      <div className="action-plan-hero">
+        <div>
+          <p>Capability Studio</p>
+          <h3 id="capability-studio-title">Inspect runs before automation grows.</h3>
+          <span>
+            Capability runs stay behind product workflows: outputs, gaps,
+            provenance, and autonomy recommendations remain review-gated.
+          </span>
+        </div>
+        <a
+          className="packet-action-link"
+          href={modeHref("capture", selectedOpportunityId, {
+            route_goal: "close_packet_gap",
+          })}
+        >
+          Route capability need
+        </a>
+      </div>
+
+      <dl className="action-plan-metric-grid">
+        <Metric label="Runs" value={runs.length.toString()} tone="cyan" />
+        <Metric
+          label="Pending outputs"
+          value={pendingOutputs.length.toString()}
+          tone="copper"
+        />
+        <Metric
+          label="Catalog entries"
+          value={(catalog?.entries.length ?? 0).toString()}
+          tone="signal"
+        />
+        <Metric
+          label="Validation gaps"
+          value={validationGapOutputs.length.toString()}
+          tone="rose"
+        />
+      </dl>
+
+      <div className="action-plan-lanes">
+        <section className="action-plan-lane" aria-labelledby="capability-runs-title">
+          <div className="action-plan-lane-heading">
+            <p>Run history</p>
+            <h4 id="capability-runs-title">Capability runs</h4>
+          </div>
+          {runs.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {runs.slice(0, 5).map((run) => (
+                <article className="action-update-card" key={run.run_id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(run.status)}</span>
+                    <span>{run.outputs.length} outputs</span>
+                  </div>
+                  <p>{run.capability_id}</p>
+                  <dl>
+                    <div>
+                      <dt>Executor</dt>
+                      <dd>{formatLabel(run.executor_kind)}</dd>
+                    </div>
+                    <div>
+                      <dt>Context</dt>
+                      <dd>{formatLabel(run.session_context)}</dd>
+                    </div>
+                    <div>
+                      <dt>Workflow</dt>
+                      <dd>{formatLabel(run.product_workflow)}</dd>
+                    </div>
+                    <div>
+                      <dt>Input refs</dt>
+                      <dd>{joinOrNone(run.input_refs)}</dd>
+                    </div>
+                  </dl>
+                  <span className="action-update-note">
+                    {run.inputs_summary}
+                  </span>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No capability runs.</p>
+              <span>Run history appears after a capability validation or workflow execution.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="capability-output-title">
+          <div className="action-plan-lane-heading">
+            <p>Review queue</p>
+            <h4 id="capability-output-title">Run outputs</h4>
+          </div>
+          {pendingOutputs.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {pendingOutputs.slice(0, 6).map(({ output, run }) => (
+                <article className="action-update-card" key={`${run.run_id}:${output.output_id}`}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(output.review_state)}</span>
+                    <span>{formatLabel(output.autonomy_recommendation)}</span>
+                  </div>
+                  <p>{output.title}</p>
+                  <span className="action-update-note">{output.summary}</span>
+                  <dl>
+                    <div>
+                      <dt>Destination</dt>
+                      <dd>{output.recommended_destination ?? "Review queue"}</dd>
+                    </div>
+                    <div>
+                      <dt>Capability</dt>
+                      <dd>{run.capability_id}</dd>
+                    </div>
+                    <div>
+                      <dt>Gaps</dt>
+                      <dd>{joinOrNone(output.gaps)}</dd>
+                    </div>
+                    <div>
+                      <dt>Source</dt>
+                      <dd>{capabilityProvenanceValue(output.provenance, "source_path")}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No pending outputs.</p>
+              <span>Capability outputs are clear or already reviewed.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="capability-catalog-title">
+          <div className="action-plan-lane-heading">
+            <p>Local inventory</p>
+            <h4 id="capability-catalog-title">Capability catalog</h4>
+          </div>
+          {catalog ? (
+            <div className="action-plan-card-stack">
+              <article className="action-update-card">
+                <div className="action-update-card-head">
+                  <span>{catalog.entries.length} entries</span>
+                  <span>{catalog.read_only ? "Read only" : "Writable"}</span>
+                </div>
+                <p>{joinOrNone(catalog.canonical_locations)}</p>
+                <span className="action-update-note">
+                  Indexed from canonical workspace skill locations.
+                </span>
+              </article>
+              {(unvalidatedCatalogEntries ?? catalog.entries).slice(0, 5).map((entry) => (
+                <article className="action-gap-card" key={entry.id}>
+                  <div>
+                    <span>{formatLabel(entry.validation_status)}</span>
+                    <h5>{entry.name}</h5>
+                    <p>{entry.description || entry.provenance_note}</p>
+                    <small>
+                      {formatLabel(entry.capability_type)} - {formatLabel(entry.maturity)} - {entry.source_path}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>Capability catalog unavailable.</p>
+              <span>Local capability inventory endpoint did not respond.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="capability-provenance-title">
+          <div className="action-plan-lane-heading">
+            <p>Reasoning view</p>
+            <h4 id="capability-provenance-title">Latest provenance</h4>
+          </div>
+          {latestRun ? (
+            <div className="action-plan-card-stack">
+              <article className="action-update-card">
+                <div className="action-update-card-head">
+                  <span>{formatLabel(latestRun.executor_kind)}</span>
+                  <span>{formatLabel(latestRun.capability_type)}</span>
+                </div>
+                <p>{latestRun.inputs_summary}</p>
+                <dl>
+                  <div>
+                    <dt>Sources</dt>
+                    <dd>{capabilityProvenanceValue(latestRun.provenance, "sources")}</dd>
+                  </div>
+                  <div>
+                    <dt>Tools</dt>
+                    <dd>{capabilityProvenanceValue(latestRun.provenance, "tool_names")}</dd>
+                  </div>
+                  <div>
+                    <dt>Network</dt>
+                    <dd>{capabilityProvenanceValue(latestRun.provenance, "network_required")}</dd>
+                  </div>
+                  <div>
+                    <dt>Model</dt>
+                    <dd>{capabilityProvenanceValue(latestRun.provenance, "model_required")}</dd>
+                  </div>
+                </dl>
+                <span className="action-update-note">
+                  Capability outputs still require review before trusted use.
+                </span>
+              </article>
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No provenance yet.</p>
+              <span>Capability Reasoning View appears after a run exists.</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function capabilityProvenanceValue(
+  provenance: Record<string, unknown>,
+  key: string,
+): string {
+  const value = provenance[key];
+  if (Array.isArray(value)) {
+    return joinOrNone(value.map(String));
+  }
+  if (value === undefined || value === null || value === "") {
+    return "None";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  return String(value);
+}
+
 function PulseSignal({ label, value, description, tone }: PulseSignalModel) {
   return (
     <article className={`pulse-signal pulse-signal-${tone}`}>
@@ -2751,7 +3117,7 @@ function opportunityAttentionMode(opportunity: PortfolioOpportunity): string {
 }
 
 function isPlaceholderMode(modeId: string): boolean {
-  return ["capability_studio"].includes(modeId);
+  return modeId === "__placeholder__";
 }
 
 function buildGlobalOpportunityPulse(

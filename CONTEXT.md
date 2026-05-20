@@ -52,7 +52,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Knowledge Foundation: a shared set of capture entities, relationships, provenance rules, and data patterns that can support capture intelligence, milestone briefings, risk registers, call plans, solicitation parsing, and later proposal workflows without creating separate phase-specific knowledge structures.
 - Opportunity: the durable lifecycle record for a potential contract, from first notice through award outcome, with customer, requirements, status, evidence, risks, next actions, gate history, knowledge scope, and artifacts.
 - Pursuit: the active capture phase of an opportunity once serious work begins toward a bid decision and award.
-- Decision Gate: a disciplined checkpoint that turns evidence into a go/no-go/hold action.
+- Decision Gate: a disciplined Milestone 1, Milestone 2, Milestone 3, or Milestone 4 checkpoint that turns evidence into a go/no-go/hold action for an Opportunity.
+- Milestone Gate: one of the four primary Opportunity decision checkpoints Ariadne supports through the Living Milestone Decision Briefing Packet.
 - Lifecycle State: the current maturity position of an opportunity in the capture lifecycle.
 - Shipley Phase: a methodology phase label that can map onto Ariadne lifecycle work without becoming the canonical Ariadne lifecycle model.
 - Entry Context: the starting maturity context for an opportunity when it is first entered into Ariadne.
@@ -178,8 +179,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Autonomy Tier: the permission level that determines whether Ariadne can run work automatically, ask before running, or require human approval.
 - Assisted Execution: AI-supported completion of capture work that reduces manual effort while keeping the user in control of strategic, sensitive, and external-facing decisions.
 - Assisted Capture Loop: the end-to-end cycle where Ariadne identifies a capture need, recommends or runs assistance, records the output, routes it through review, and improves the user's capture work product.
-- Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a milestone or gate review.
-- Living Milestone Decision Briefing Packet: the continuously updated in-product milestone packet that accumulates reviewed capture knowledge, assumptions, gaps, risks, recommendations, readiness signals, and source support during active capture work.
+- Milestone Decision Briefing Packet: a decision-support artifact that packages evidence, analysis, recommendations, and next actions for a Milestone 1, 2, 3, or 4 gate review.
+- Living Milestone Decision Briefing Packet: the continuously updated in-product milestone packet and primary Opportunity roadmap that accumulates reviewed capture knowledge, assumptions, gaps, risks, recommendations, readiness signals, and source support during active capture work.
 - Packet Readiness: the maturity label for a milestone decision briefing packet, such as not ready, draft ready, review ready, or decision ready.
 - Packet Section: a user-facing section of a living briefing packet that corresponds to part of the decision briefing experience.
 - Packet Field Definition: a reusable strategic question or data slot in a living briefing packet, such as customer, RFP release date, pWin, competition, or approval criteria.
@@ -354,7 +355,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - An **Action Plan Dashboard** lets the user manage outcomes while Ariadne maintains supporting details and recommended next steps.
 - A **Milestone Intelligence Checklist** informs a **Milestone Decision Briefing Packet** and can create **Backfill Needs** or **Capture Action Plan** items.
 - A **Milestone Decision Briefing Packet** contains **Traceable Recommendations** and **Evidence Status** for key answers.
-- A **Living Milestone Decision Briefing Packet** is the main accumulating work product for milestone and gate readiness during MVP, while rendered exports are downstream views of reviewed packet content.
+- A **Living Milestone Decision Briefing Packet** is the main accumulating work product and roadmap for Milestone 1-4 gate readiness during MVP, while rendered exports are downstream views of reviewed packet content.
 - A **Packet Field Definition** belongs to a **Canonical Packet Section Model** and represents the reusable question Ariadne should answer, not the one-off answer text.
 - A **Packet Field Answer** belongs to one **Opportunity** and may connect to **Evidence Items**, assumptions, confidence, gaps, **Action Plan Items**, and **Shared Knowledge Entities**.
 - **Packet Field Answers** can connect across opportunities through **Shared Knowledge Entities**, but those connections provide context only; they do not make one opportunity's answer valid for another opportunity.
@@ -438,7 +439,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - "gap" was used for both missing capture information and missing product capability — resolved: use **Backfill Need** for capture-work gaps and **Capability Gap** for platform gaps.
 - "company format" was used for private output templates — resolved: use **Artifact Export Profile** for private mappings from Ariadne artifacts into user- or organization-specific formats.
 - "skin" and "brain" were used to describe packet UI versus capture structure — resolved: **Packet Sections** are the user-facing navigation, while **Core Capture Workstreams** and **Evidence Items** are the underlying structure.
-- "living MS briefing packet" was used to mean the main accumulating gate-review artifact — resolved: use **Living Milestone Decision Briefing Packet**, surfaced through the **Living Briefing Packet** view.
+- "living MS briefing packet" or "Living Milestone Gate Briefing Packet" was used to mean the main accumulating gate-review artifact and Opportunity roadmap — resolved: use **Living Milestone Decision Briefing Packet**, surfaced through the **Living Briefing Packet** view.
 - "packet sections" and "questions" were used as different parts of the same workflow — resolved: the **Canonical Packet Section Model** defines the briefing shape, while the **Milestone Intelligence Checklist** defines the questions that gather supporting intelligence.
 - "manage the task" was used to mean steering outcomes while AI performs supporting work — resolved: use **Managed Capture Task** for outcome-level work the user controls while Ariadne performs under-the-hood execution.
 - "task completing drone" was used to describe AI doing boring work while mentoring the user — resolved: use **Assisted Execution** plus **Guided Capture Mentor**.

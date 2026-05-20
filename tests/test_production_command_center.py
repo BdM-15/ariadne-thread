@@ -114,6 +114,17 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
     assert len(scaffold["packet_fields"]) >= 8
     assert all(field["status"] == "unanswered" for field in scaffold["packet_fields"])
     assert all(field["evidence_status"] == "gap" for field in scaffold["packet_fields"])
+    current_gate_fields = [
+        field for field in scaffold["packet_fields"] if field["current_gate_required"]
+    ]
+    future_gate_fields = [
+        field for field in scaffold["packet_fields"] if not field["current_gate_required"]
+    ]
+    assert 0 < len(current_gate_fields) < len(scaffold["packet_fields"])
+    assert {field["key"] for field in future_gate_fields} >= {
+        "competition",
+        "evaluation_methodology",
+    }
     digest = scaffold["activation_digest"]
     assert digest["blocked_field_count"] == len(scaffold["packet_fields"])
     assert digest["review_ready_count"] == 0
@@ -142,6 +153,7 @@ def test_production_command_center_accepts_explicit_milestone_gate(tmp_path) -> 
     scaffold = response.json()["scaffold"]
     assert scaffold["opportunity"]["lifecycle_state"] == "pursuing"
     assert scaffold["opportunity"]["gate_status"] == "milestone_4"
+    assert all(field["current_gate_required"] for field in scaffold["packet_fields"])
 
 
 def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:
@@ -170,6 +182,10 @@ def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:
     assert run["packet_field_action_matrix"]["blocked_field_count"] == len(
         create_response.json()["scaffold"]["packet_fields"]
     )
+    assert run["packet_field_action_matrix"]["current_milestone_gate"] == "milestone_1"
+    assert run["packet_field_gaps"] == run["packet_field_action_matrix"][
+        "current_gate_blocked_count"
+    ]
     assert run["provenance"]["trusted_downstream_writes"] is False
 
 
@@ -192,6 +208,7 @@ def test_production_command_center_can_run_activation_on_request(tmp_path) -> No
     assert run["trigger"] == "user_request"
     assert run["opportunity_id"] == opportunity_id
     assert run["packet_field_action_matrix"]["fields"]
+    assert run["packet_field_action_matrix"]["current_milestone_gate"] == "milestone_1"
     assert run["activation_digest"]["next_best_actions"]
 
 
@@ -260,9 +277,12 @@ def test_production_command_center_promotes_activation_field_answer(tmp_path) ->
         if opportunity["id"] == opportunity_id
     )
     assert portfolio_item["packet_readiness_label"] == "draft_ready"
-    assert portfolio_item["blocked_field_count"] == len(
-        create_response.json()["scaffold"]["packet_fields"]
-    ) - 1
+    current_gate_field_count = sum(
+        1
+        for field in create_response.json()["scaffold"]["packet_fields"]
+        if field["current_gate_required"]
+    )
+    assert portfolio_item["blocked_field_count"] == current_gate_field_count - 1
     assert portfolio_item["attention_field_key"] != "customer"
     assert portfolio_item["attention_route_label"].startswith("Open roadmap:")
 
@@ -352,7 +372,7 @@ def test_production_command_center_lists_created_opportunities(tmp_path) -> None
     )
     assert created["name"] == "DISA cloud sustainment watch"
     assert created["packet_readiness_label"] == "not_ready"
-    assert created["blocked_field_count"] >= 8
+    assert created["blocked_field_count"] >= 6
     assert created["attention_reason"]
     assert created["attention_route_label"].startswith("Open roadmap:")
     assert created["attention_route_mode"] in {
@@ -386,8 +406,10 @@ def test_workspace_api_loads_selected_created_opportunity(tmp_path) -> None:
     assert workspace["scaffold_role"] == "standard_opportunity_scaffold"
     assert workspace["opportunity"]["id"] == opportunity_id
     assert workspace["opportunity"]["name"] == "Space Force cyber sustainment watch"
-    assert workspace["context_summary"]["gap_count"] == len(
-        create_response.json()["scaffold"]["packet_fields"]
+    assert workspace["context_summary"]["gap_count"] == sum(
+        1
+        for field in create_response.json()["scaffold"]["packet_fields"]
+        if field["current_gate_required"]
     )
 
 

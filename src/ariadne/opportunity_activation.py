@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
     AnswerPathKind,
     PacketFieldAnswer,
@@ -70,6 +71,8 @@ class PacketFieldActionItem(BaseModel):
     evidence_status: str
     action_state: PacketFieldActionState
     answer_paths: tuple[str, ...]
+    required_milestone_gates: tuple[str, ...] = ()
+    current_gate_required: bool = True
     recommended_route: str
     route_rationale: str
     requires_review: bool = True
@@ -81,10 +84,15 @@ class PacketFieldActionItem(BaseModel):
 
 class PacketFieldActionMatrix(BaseModel):
     opportunity_id: str
+    current_milestone_gate: str = MilestoneGate.MILESTONE_1.value
     fields: tuple[PacketFieldActionItem, ...]
     blocked_field_count: int
     review_ready_count: int
     answered_field_count: int
+    current_gate_field_count: int = 0
+    current_gate_blocked_count: int = 0
+    current_gate_review_ready_count: int = 0
+    current_gate_answered_count: int = 0
     approval_required_count: int
     source_ref_count: int
 
@@ -197,12 +205,15 @@ def run_opportunity_activation(
     created_at: datetime | None = None,
     initial_coverage: tuple[str, ...] = (),
     run_id: str | None = None,
+    current_milestone_gate: MilestoneGate | str = MilestoneGate.MILESTONE_1,
 ) -> OpportunityActivationRun:
+    milestone_gate = _coerce_milestone_gate(current_milestone_gate)
     completed_at = created_at or datetime.now(UTC)
     matrix = build_packet_field_action_matrix(
         opportunity_id=opportunity_id,
         definitions=definitions,
         answers=answers,
+        current_milestone_gate=milestone_gate,
     )
     digest = build_activation_digest(
         matrix=matrix,
@@ -225,7 +236,7 @@ def run_opportunity_activation(
         status=OpportunityActivationRunStatus.NEEDS_REVIEW,
         review_state=OpportunityActivationReviewState.PENDING_REVIEW,
         packet_field_count=len(matrix.fields),
-        packet_field_gaps=matrix.blocked_field_count,
+        packet_field_gaps=matrix.current_gate_blocked_count,
         activation_digest=digest,
         packet_field_action_matrix=matrix,
         outputs=outputs,
@@ -320,11 +331,14 @@ def build_packet_field_action_matrix(
     opportunity_id: str,
     definitions: tuple[PacketFieldDefinition, ...],
     answers: tuple[PacketFieldAnswer, ...] = (),
+    current_milestone_gate: MilestoneGate | str = MilestoneGate.MILESTONE_1,
 ) -> PacketFieldActionMatrix:
+    milestone_gate = _coerce_milestone_gate(current_milestone_gate)
     actions = tuple(
         _action_item_for_definition(
             opportunity_id=opportunity_id,
             definition=definition,
+            current_milestone_gate=milestone_gate,
             answer=_answer_for_field(
                 answers=answers,
                 opportunity_id=opportunity_id,
@@ -333,8 +347,10 @@ def build_packet_field_action_matrix(
         )
         for definition in definitions
     )
+    current_gate_actions = tuple(item for item in actions if item.current_gate_required)
     return PacketFieldActionMatrix(
         opportunity_id=opportunity_id,
+        current_milestone_gate=milestone_gate.value,
         fields=actions,
         blocked_field_count=sum(
             1 for item in actions if item.action_state is PacketFieldActionState.BLOCKED
@@ -346,6 +362,22 @@ def build_packet_field_action_matrix(
         ),
         answered_field_count=sum(
             1 for item in actions if item.action_state is PacketFieldActionState.ANSWERED
+        ),
+        current_gate_field_count=len(current_gate_actions),
+        current_gate_blocked_count=sum(
+            1
+            for item in current_gate_actions
+            if item.action_state is PacketFieldActionState.BLOCKED
+        ),
+        current_gate_review_ready_count=sum(
+            1
+            for item in current_gate_actions
+            if item.action_state is PacketFieldActionState.REVIEW_READY
+        ),
+        current_gate_answered_count=sum(
+            1
+            for item in current_gate_actions
+            if item.action_state is PacketFieldActionState.ANSWERED
         ),
         approval_required_count=sum(1 for item in actions if item.approval_required),
         source_ref_count=sum(len(item.source_refs) for item in actions),
@@ -359,6 +391,7 @@ def build_activation_digest(
 ) -> OpportunityActivationDigest:
     coverage = initial_coverage + (
         f"Analyzed {len(matrix.fields)} packet fields for answer paths.",
+        f"Scoped {matrix.current_gate_field_count} fields to {matrix.current_milestone_gate}.",
         f"Mapped {matrix.blocked_field_count} blocked fields to recommended routes.",
     )
     if matrix.review_ready_count:
@@ -393,6 +426,7 @@ def _action_item_for_definition(
     *,
     opportunity_id: str,
     definition: PacketFieldDefinition,
+    current_milestone_gate: MilestoneGate,
     answer: PacketFieldAnswer | None,
 ) -> PacketFieldActionItem:
     current_status = (
@@ -404,6 +438,11 @@ def _action_item_for_definition(
         evidence_status=evidence_status,
     )
     answer_path_labels = tuple(path.label for path in definition.answer_paths)
+    required_gates = tuple(gate.value for gate in definition.required_milestone_gates)
+    current_gate_required = (
+        not definition.required_milestone_gates
+        or current_milestone_gate in definition.required_milestone_gates
+    )
     return PacketFieldActionItem(
         field_key=definition.key,
         label=definition.label,
@@ -414,6 +453,8 @@ def _action_item_for_definition(
         evidence_status=evidence_status.value,
         action_state=action_state,
         answer_paths=answer_path_labels,
+        required_milestone_gates=required_gates,
+        current_gate_required=current_gate_required,
         recommended_route=recommend_packet_field_route(definition),
         route_rationale=_route_rationale(definition),
         requires_review=action_state is not PacketFieldActionState.ANSWERED,
@@ -426,6 +467,12 @@ def _action_item_for_definition(
         ),
         current_value=answer.value if answer is not None else None,
     )
+
+
+def _coerce_milestone_gate(value: MilestoneGate | str) -> MilestoneGate:
+    if isinstance(value, MilestoneGate):
+        return value
+    return MilestoneGate(value)
 
 
 def _find_action_item(
@@ -502,6 +549,7 @@ def _run_with_field_review(
     )
     matrix = _matrix_with_fields(
         opportunity_id=run.opportunity_id,
+        current_milestone_gate=run.packet_field_action_matrix.current_milestone_gate,
         fields=updated_fields,
     )
     digest = run.activation_digest.model_copy(
@@ -516,7 +564,7 @@ def _run_with_field_review(
     )
     return run.model_copy(
         update={
-            "packet_field_gaps": matrix.blocked_field_count,
+            "packet_field_gaps": matrix.current_gate_blocked_count,
             "activation_digest": digest,
             "packet_field_action_matrix": matrix,
             "outputs": updated_outputs,
@@ -534,10 +582,13 @@ def _run_with_field_review(
 def _matrix_with_fields(
     *,
     opportunity_id: str,
+    current_milestone_gate: str,
     fields: tuple[PacketFieldActionItem, ...],
 ) -> PacketFieldActionMatrix:
+    current_gate_fields = tuple(item for item in fields if item.current_gate_required)
     return PacketFieldActionMatrix(
         opportunity_id=opportunity_id,
+        current_milestone_gate=current_milestone_gate,
         fields=fields,
         blocked_field_count=sum(
             1 for item in fields if item.action_state is PacketFieldActionState.BLOCKED
@@ -549,6 +600,22 @@ def _matrix_with_fields(
         ),
         answered_field_count=sum(
             1 for item in fields if item.action_state is PacketFieldActionState.ANSWERED
+        ),
+        current_gate_field_count=len(current_gate_fields),
+        current_gate_blocked_count=sum(
+            1
+            for item in current_gate_fields
+            if item.action_state is PacketFieldActionState.BLOCKED
+        ),
+        current_gate_review_ready_count=sum(
+            1
+            for item in current_gate_fields
+            if item.action_state is PacketFieldActionState.REVIEW_READY
+        ),
+        current_gate_answered_count=sum(
+            1
+            for item in current_gate_fields
+            if item.action_state is PacketFieldActionState.ANSWERED
         ),
         approval_required_count=sum(1 for item in fields if item.approval_required),
         source_ref_count=sum(len(item.source_refs) for item in fields),
@@ -668,9 +735,9 @@ def _source_limitations(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
     limitations: list[str] = []
     if matrix.source_ref_count == 0:
         limitations.append("No accepted source evidence is attached to these fields yet.")
-    if matrix.blocked_field_count:
+    if matrix.current_gate_blocked_count:
         limitations.append(
-            f"{matrix.blocked_field_count} packet fields still need evidence, import, synthesis, or user input."
+            f"{matrix.current_gate_blocked_count} current-gate packet fields still need evidence, import, synthesis, or user input."
         )
     return tuple(limitations)
 
@@ -679,9 +746,13 @@ def _next_best_actions(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
     blocked_fields = tuple(
         item for item in matrix.fields if item.action_state is PacketFieldActionState.BLOCKED
     )
+    current_gate_blocked_fields = tuple(
+        item for item in blocked_fields if item.current_gate_required
+    )
+    prioritized_fields = current_gate_blocked_fields or blocked_fields
     actions = tuple(
         f"Advance {item.label}: {item.recommended_route}"
-        for item in blocked_fields[:3]
+        for item in prioritized_fields[:3]
     )
     if not actions:
         return ("Review field candidates and accept trusted packet answers.",)
@@ -699,6 +770,8 @@ def _activation_run_id(
         for item in matrix.fields
     )
     digest = sha256(
-        f"{opportunity_id}:{trigger.value}:{fingerprint}".encode("utf-8")
+        f"{opportunity_id}:{trigger.value}:{matrix.current_milestone_gate}:{fingerprint}".encode(
+            "utf-8"
+        )
     ).hexdigest()[:10]
     return f"actrun_{opportunity_id}_{trigger.value}_{digest}"

@@ -10,6 +10,7 @@ from ariadne.opportunity_activation import (
     record_opportunity_activation_field_review,
     run_opportunity_activation,
 )
+from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
     PacketFieldAnswerStore,
     PacketFieldAnswerStatus,
@@ -38,6 +39,33 @@ def test_activation_run_covers_all_packet_field_definitions() -> None:
         for field in matrix.fields
     )
     assert all(field.recommended_route for field in matrix.fields)
+
+
+def test_activation_matrix_marks_current_milestone_gate_fields() -> None:
+    definitions = build_default_packet_field_definitions()
+
+    run = run_opportunity_activation(
+        opportunity_id="opp-disa-cloud",
+        definitions=definitions,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+        created_at=datetime(2026, 5, 19, tzinfo=UTC),
+    )
+
+    matrix = run.packet_field_action_matrix
+    evaluation = next(
+        field for field in matrix.fields if field.field_key == "evaluation_methodology"
+    )
+    customer = next(field for field in matrix.fields if field.field_key == "customer")
+
+    assert matrix.current_milestone_gate == MilestoneGate.MILESTONE_1.value
+    assert matrix.current_gate_field_count < len(definitions)
+    assert matrix.current_gate_blocked_count == matrix.current_gate_field_count
+    assert customer.current_gate_required is True
+    assert evaluation.current_gate_required is False
+    assert evaluation.required_milestone_gates == (
+        MilestoneGate.MILESTONE_3.value,
+        MilestoneGate.MILESTONE_4.value,
+    )
 
 
 def test_activation_run_respects_answered_and_review_ready_fields() -> None:

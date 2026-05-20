@@ -18,6 +18,7 @@ from ariadne.packet_knowledge import (
     create_packet_field_answer,
     get_packet_field_definition,
 )
+from ariadne.opportunities import MilestoneGate
 from ariadne.packets import CanonicalPacketSection, EvidenceStatus
 
 
@@ -38,6 +39,25 @@ def test_packet_field_definition_represents_reusable_strategic_question() -> Non
         AnswerPathKind.EVIDENCE_EXTRACTION,
     }
     assert customer.authority is KnowledgeAuthority.ARIADNE_SOURCE_OF_TRUTH
+    assert customer.required_milestone_gates == (
+        MilestoneGate.MILESTONE_1,
+        MilestoneGate.MILESTONE_2,
+        MilestoneGate.MILESTONE_3,
+        MilestoneGate.MILESTONE_4,
+    )
+
+
+def test_default_packet_field_definitions_are_milestone_scoped() -> None:
+    definitions = build_default_packet_field_definitions()
+
+    assert all(definition.required_milestone_gates for definition in definitions)
+    evaluation = get_packet_field_definition(definitions, "evaluation_methodology")
+    competition = get_packet_field_definition(definitions, "competition")
+
+    assert MilestoneGate.MILESTONE_1 not in evaluation.required_milestone_gates
+    assert MilestoneGate.MILESTONE_3 in evaluation.required_milestone_gates
+    assert MilestoneGate.MILESTONE_1 not in competition.required_milestone_gates
+    assert MilestoneGate.MILESTONE_2 in competition.required_milestone_gates
 
 
 def test_field_answer_carries_opportunity_specific_provenance_and_gap_links() -> None:

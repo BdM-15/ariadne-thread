@@ -33,6 +33,8 @@ type PacketFieldActionItem = {
   evidence_status: string;
   action_state: string;
   answer_paths: string[];
+  required_milestone_gates?: string[];
+  current_gate_required?: boolean;
   recommended_route: string;
   route_rationale: string;
   requires_review: boolean;
@@ -44,10 +46,15 @@ type PacketFieldActionItem = {
 
 type PacketFieldActionMatrix = {
   opportunity_id: string;
+  current_milestone_gate?: string;
   fields: PacketFieldActionItem[];
   blocked_field_count: number;
   review_ready_count: number;
   answered_field_count: number;
+  current_gate_field_count?: number;
+  current_gate_blocked_count?: number;
+  current_gate_review_ready_count?: number;
+  current_gate_answered_count?: number;
   approval_required_count: number;
   source_ref_count: number;
 };
@@ -107,6 +114,9 @@ export function OpportunityActivationPanel({
   const isBusy = isSubmitting || isRefreshing;
   const digest = run?.activation_digest;
   const matrix = run?.packet_field_action_matrix;
+  const currentGateLabel = formatLabel(
+    matrix?.current_milestone_gate ?? "milestone_1",
+  );
   const outputByField = new Map(
     (run?.outputs ?? []).map((output) => [output.field_key, output]),
   );
@@ -256,6 +266,12 @@ export function OpportunityActivationPanel({
               {formatDateTime(run.completed_at ?? run.created_at)}
             </span>
           ) : null}
+          {matrix !== undefined ? (
+            <span className="activation-status-chip">
+              <ShieldCheck size={15} aria-hidden />
+              {currentGateLabel}
+            </span>
+          ) : null}
         </div>
 
         {error !== null ? <p className="activation-error">{error}</p> : null}
@@ -272,18 +288,18 @@ export function OpportunityActivationPanel({
           <>
             <div className="activation-summary-grid">
               <ActivationMetric
-                label="Fields analyzed"
-                value={run.packet_field_count.toString()}
-                description="Required Living Packet fields mapped to answer paths."
+                label="Current gate fields"
+                value={(matrix.current_gate_field_count ?? matrix.fields.length).toString()}
+                description={`Living Packet fields required for ${currentGateLabel}.`}
               />
               <ActivationMetric
-                label="Blocked fields"
-                value={matrix.blocked_field_count.toString()}
+                label="Current gate gaps"
+                value={(matrix.current_gate_blocked_count ?? matrix.blocked_field_count).toString()}
                 description="Fields still needing evidence, import, synthesis, or user input."
               />
               <ActivationMetric
                 label="Review ready"
-                value={matrix.review_ready_count.toString()}
+                value={(matrix.current_gate_review_ready_count ?? matrix.review_ready_count).toString()}
                 description="Field candidates waiting for human review."
               />
               <ActivationMetric
@@ -320,7 +336,7 @@ export function OpportunityActivationPanel({
                 <div>
                   <p>Packet Field Action Matrix</p>
                   <h4 id="activation-matrix-title">
-                    {matrix.fields.length} packet fields mapped
+                    {matrix.fields.length} packet fields mapped for {currentGateLabel}
                   </h4>
                 </div>
                 <Route size={20} aria-hidden />
@@ -404,6 +420,11 @@ function ActivationFieldCard({
       <p className="activation-field-question">{field.question}</p>
       <p className="activation-field-route">{field.recommended_route}</p>
       <div className="activation-field-chip-row">
+        <span>
+          {field.current_gate_required === false
+            ? "Future gate"
+            : "Required this gate"}
+        </span>
         <span>{formatLabel(field.evidence_status)}</span>
         <span>{formatLabel(field.value_kind)}</span>
         {field.approval_required ? <span>Approval</span> : null}

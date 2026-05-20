@@ -15,6 +15,7 @@ from ariadne.opportunities import (
     LifecycleState,
     MilestoneGate,
     create_opportunity,
+    milestone_gate_for_lifecycle,
 )
 from ariadne.opportunity_activation import (
     OpportunityActivationDigest,
@@ -109,6 +110,8 @@ class ProductionOpportunityPacketFieldSlot(BaseModel):
     section: str
     status: str
     evidence_status: str
+    required_milestone_gates: tuple[str, ...] = ()
+    current_gate_required: bool = True
     answer_paths: tuple[str, ...]
     recommended_route: str
 
@@ -678,6 +681,7 @@ def create_standard_opportunity_scaffold(
         _packet_field_slot_for_new_opportunity(
             opportunity_id=opportunity_id,
             definition=definition,
+            current_milestone_gate=opportunity.current_milestone_gate,
         )
         for definition in definitions
     )
@@ -686,6 +690,7 @@ def create_standard_opportunity_scaffold(
         definitions=definitions,
         trigger=OpportunityActivationRunTrigger.INITIAL_SCAFFOLD,
         store=activation_store,
+        current_milestone_gate=opportunity.current_milestone_gate,
         initial_coverage=(
             f"Created {len(opportunity.workstreams)} standard capture workstreams.",
             f"Created {len(packet_states)} Living Packet sections.",
@@ -749,10 +754,16 @@ def run_production_opportunity_activation(
     answer_store: PacketFieldAnswerStore | None = None,
     trigger: OpportunityActivationRunTrigger = OpportunityActivationRunTrigger.USER_REQUEST,
 ) -> OpportunityActivationRun:
+    current_milestone_gate = MilestoneGate.MILESTONE_3
     if opportunity_id != DEMO_OPPORTUNITY_ID and not opportunity_store.has_scaffold(
         opportunity_id
     ):
         raise ValueError(f"Opportunity context not found: {opportunity_id}")
+    if opportunity_id != DEMO_OPPORTUNITY_ID:
+        scaffold = opportunity_store.read_scaffold(opportunity_id)
+        current_milestone_gate = _milestone_gate_from_scaffold_opportunity(
+            scaffold.opportunity
+        )
     return run_opportunity_activation(
         opportunity_id=opportunity_id,
         definitions=build_default_packet_field_definitions(),
@@ -763,6 +774,7 @@ def run_production_opportunity_activation(
         ),
         trigger=trigger,
         store=activation_store,
+        current_milestone_gate=current_milestone_gate,
     )
 
 
@@ -882,8 +894,9 @@ def _portfolio_item_from_scaffold(
         answer_store=answer_store,
     )
     digest = activation_run.activation_digest
+    matrix = activation_run.packet_field_action_matrix
     attention_item = _attention_item_from_matrix(
-        activation_run.packet_field_action_matrix
+        matrix
     )
     return ProductionOpportunityPortfolioItem(
         id=scaffold.opportunity.id,
@@ -891,10 +904,10 @@ def _portfolio_item_from_scaffold(
         lifecycle_state=scaffold.opportunity.lifecycle_state,
         gate_status=scaffold.opportunity.gate_status,
         packet_readiness_label=_packet_readiness_label(
-            activation_run.packet_field_action_matrix
+            matrix
         ),
-        review_ready_count=digest.review_ready_count,
-        blocked_field_count=digest.blocked_field_count,
+        review_ready_count=matrix.current_gate_review_ready_count,
+        blocked_field_count=matrix.current_gate_blocked_count,
         source_limitation_count=len(digest.source_limitations),
         attention_reason=_attention_reason(
             digest=digest,
@@ -920,12 +933,22 @@ def _activation_run_for_scaffold(
             else ()
         ),
         trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+        current_milestone_gate=_milestone_gate_from_scaffold_opportunity(
+            scaffold.opportunity
+        ),
     )
 
 
 def _attention_item_from_matrix(
     matrix: PacketFieldActionMatrix,
 ) -> PacketFieldActionItem | None:
+    for action_state in (
+        PacketFieldActionState.BLOCKED,
+        PacketFieldActionState.REVIEW_READY,
+    ):
+        for item in matrix.fields:
+            if item.current_gate_required and item.action_state is action_state:
+                return item
     for action_state in (
         PacketFieldActionState.BLOCKED,
         PacketFieldActionState.REVIEW_READY,
@@ -986,7 +1009,10 @@ def _packet_view_from_matrix(
     matrix: PacketFieldActionMatrix,
 ) -> ProductionCommandCenterPacket:
     section_states: dict[str, list[PacketFieldActionState]] = {}
-    for item in matrix.fields:
+    matrix_fields = tuple(item for item in matrix.fields if item.current_gate_required)
+    if not matrix_fields:
+        matrix_fields = matrix.fields
+    for item in matrix_fields:
         section_states.setdefault(item.section, []).append(item.action_state)
 
     answered_section_count = 0
@@ -1010,11 +1036,11 @@ def _packet_view_from_matrix(
 
 
 def _packet_readiness_label(matrix: PacketFieldActionMatrix) -> str:
-    if matrix.blocked_field_count == 0 and matrix.review_ready_count == 0:
+    if matrix.current_gate_blocked_count == 0 and matrix.current_gate_review_ready_count == 0:
         return "decision_ready"
-    if matrix.review_ready_count > 0:
+    if matrix.current_gate_review_ready_count > 0:
         return "review_ready"
-    if matrix.answered_field_count > 0:
+    if matrix.current_gate_answered_count > 0:
         return "draft_ready"
     return "not_ready"
 
@@ -1036,9 +1062,9 @@ def _workspace_from_scaffold(
         opportunity=scaffold.opportunity,
         packet=packet,
         context_summary=ProductionCommandCenterContextSummary(
-            trusted_count=matrix.answered_field_count,
-            reviewable_count=activation_run.activation_digest.review_ready_count,
-            gap_count=activation_run.activation_digest.blocked_field_count,
+            trusted_count=matrix.current_gate_answered_count,
+            reviewable_count=matrix.current_gate_review_ready_count,
+            gap_count=matrix.current_gate_blocked_count,
             source_limitation_count=len(
                 activation_run.activation_digest.source_limitations
             ),
@@ -1048,7 +1074,7 @@ def _workspace_from_scaffold(
             ProductionCommandCenterWorkMode(
                 id="packet",
                 label="Packet",
-                pending_count=activation_run.activation_digest.blocked_field_count,
+                pending_count=matrix.current_gate_blocked_count,
             ),
             ProductionCommandCenterWorkMode(
                 id="actions",
@@ -1368,6 +1394,7 @@ def _packet_field_slot_for_new_opportunity(
     *,
     opportunity_id: str,
     definition: PacketFieldDefinition,
+    current_milestone_gate: MilestoneGate,
 ) -> ProductionOpportunityPacketFieldSlot:
     answer = create_packet_field_answer(
         field_key=definition.key,
@@ -1384,9 +1411,25 @@ def _packet_field_slot_for_new_opportunity(
         section=definition.section.value,
         status=answer.status.value,
         evidence_status=answer.evidence_status.value,
+        required_milestone_gates=tuple(
+            gate.value for gate in definition.required_milestone_gates
+        ),
+        current_gate_required=(
+            not definition.required_milestone_gates
+            or current_milestone_gate in definition.required_milestone_gates
+        ),
         answer_paths=tuple(path.label for path in definition.answer_paths),
         recommended_route=recommend_packet_field_route(definition),
     )
+
+
+def _milestone_gate_from_scaffold_opportunity(
+    opportunity: ProductionCommandCenterOpportunity,
+) -> MilestoneGate:
+    try:
+        return MilestoneGate(opportunity.gate_status)
+    except ValueError:
+        return milestone_gate_for_lifecycle(LifecycleState(opportunity.lifecycle_state))
 
 
 def _goal_by_id(goal_id: str) -> AssistedCaptureGoal:

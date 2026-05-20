@@ -820,7 +820,15 @@ function PacketMode({
   selectedOpportunityId: string;
 }) {
   const matrix = latestActivationRun?.packet_field_action_matrix;
-  const roadmapFields = [...(matrix?.fields ?? [])].sort(compareRoadmapFields);
+  const currentGateLabel = formatLabel(
+    matrix?.current_milestone_gate ?? "milestone_1",
+  );
+  const currentGateFields = (matrix?.fields ?? []).filter(
+    (field) => field.current_gate_required !== false,
+  );
+  const roadmapFields = [
+    ...(currentGateFields.length > 0 ? currentGateFields : (matrix?.fields ?? [])),
+  ].sort(compareRoadmapFields);
   const roadmapSections = buildRoadmapSections(roadmapFields);
   const needsActionFields = roadmapFields.filter((field) =>
     isRoadmapFieldActionable(field),
@@ -859,7 +867,9 @@ function PacketMode({
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                   Milestone Roadmap
                 </p>
-                <h3 id="packet-roadmap-title">Data elements for this gate</h3>
+                <h3 id="packet-roadmap-title">
+                  Data elements for {currentGateLabel}
+                </h3>
               </div>
               <ClipboardCheck
                 className="text-ariadne-cyan"
@@ -996,6 +1006,9 @@ function PacketRoadmapFieldCard({
       <div className="packet-field-status-row">
         <span>{formatLabel(field.evidence_status)}</span>
         {field.requires_review ? <span>Needs review</span> : null}
+        {field.current_gate_required !== false ? (
+          <span>Required this gate</span>
+        ) : null}
         {field.approval_required ? <span>Approval</span> : null}
         {field.source_refs.length > 0 ? (
           <span>{field.source_refs.length} sources</span>
@@ -1345,7 +1358,7 @@ function buildRoadmapSections(
     section.total += 1;
     if (isRoadmapFieldAnswered(field)) {
       section.answered += 1;
-    } else if (field.requires_review) {
+    } else if (field.action_state === "review_ready") {
       section.reviewReady += 1;
     } else {
       section.blocked += 1;
@@ -1359,6 +1372,11 @@ function compareRoadmapFields(
   firstField: PacketRoadmapField,
   secondField: PacketRoadmapField,
 ): number {
+  const currentGateDelta = Number(secondField.current_gate_required !== false)
+    - Number(firstField.current_gate_required !== false);
+  if (currentGateDelta !== 0) {
+    return currentGateDelta;
+  }
   const priorityDelta =
     roadmapFieldPriority(firstField) - roadmapFieldPriority(secondField);
   if (priorityDelta !== 0) {

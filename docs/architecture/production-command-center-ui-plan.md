@@ -45,11 +45,12 @@ The Command Center should be an **operating cockpit**, not a reporting dashboard
 Default screen should answer:
 
 1. What is the state of this Opportunity?
-2. What matters next?
-3. What can Ariadne do now?
-4. What needs my review?
-5. What work product changed?
-6. What evidence supports it?
+2. Where does this Opportunity sit in my broader portfolio?
+3. Which Living Packet fields are answered, weak, stale, or missing?
+4. What can Ariadne do now for each important gap?
+5. What needs my review?
+6. What work product changed?
+7. What evidence or vault knowledge supports it?
 
 ## Primary Workspace Shape
 
@@ -57,14 +58,17 @@ Default screen should answer:
 
 - **Left rail: Opportunity and work mode navigation**
   - Opportunity switcher.
+  - Portfolio states: active, future/watchlist, held, archived, won, lost.
   - Lifecycle/gate state.
   - Work modes: Packet, Actions, Engagement, Research, Documents, Artifacts, Capability Studio.
+  - Knowledge Vault entry.
   - Badges for review needs and blockers.
 
 - **Center: Living Milestone Decision Briefing Packet workspace**
   - Packet readiness header.
   - Section navigation using Canonical Packet Section Model.
-  - Compact answer/gap/risk/recommendation blocks.
+  - Packet Field Action Matrix with compact answer/gap/risk/recommendation blocks.
+  - Field-level answer status, evidence status, answer paths, recommended routes, and action menu.
   - Evidence status, confidence, assumptions, gaps, and source chips.
   - Inline "improve this" actions routed through Capability Modules.
 
@@ -164,13 +168,15 @@ Use visible "before -> after" for important updates.
 Top-level product areas:
 
 1. **Command Center**: day-to-day workspace and assisted capture loop.
-2. **Opportunity Workspace**: one Opportunity, centered on Living MS Briefing Packet.
-3. **Action Plan**: outcome tasks, urgency, timelines, ownership, AI support.
-4. **Engagement**: call plans, customer meetings, stakeholder prep, follow-up commitments.
-5. **Research**: capture research briefs, findings, source collection, lenses, candidates.
-6. **Documents**: intake queue, extraction bundles, source spans, parser-required items.
-7. **Artifacts**: drafts, renderer readiness, DOCX, XLSX, huashu-design outputs.
-8. **Capability Studio**: advanced inventory, runs, artifacts, provenance, validation.
+2. **Opportunity Portfolio**: multiple Opportunities across active, future/watchlist, held, archived, won, and lost states.
+3. **Opportunity Workspace**: one Opportunity, centered on Living MS Briefing Packet.
+4. **Knowledge Vault**: browsable/searchable accepted knowledge, source material, packet answers, source profiles, capability outputs, reusable insights, and projections.
+5. **Action Plan**: outcome tasks, urgency, timelines, ownership, AI support.
+6. **Engagement**: call plans, customer meetings, stakeholder prep, follow-up commitments.
+7. **Research**: capture research briefs, findings, source collection, lenses, candidates.
+8. **Documents**: intake queue, extraction bundles, source spans, parser-required items.
+9. **Artifacts**: drafts, renderer readiness, DOCX, XLSX, huashu-design outputs.
+10. **Capability Studio**: advanced inventory, runs, artifacts, provenance, validation.
 
 Default landing should be Command Center, not a marketing page or static dashboard.
 
@@ -215,6 +221,22 @@ FastAPI shell remains fallback only. New user-facing workflow screens should not
 
 Resolved decision: MVP-1 should not be shell-only. It must prove at least one route action inside the production-shaped Next.js UI, with deterministic/demo data acceptable only as a temporary backend stand-in.
 
+### MVP-1B Packet Field + Portfolio UI
+
+- Opportunity Portfolio list and switcher for active, future/watchlist, held, archived, won, and lost Opportunities.
+- selected Opportunity summary with lifecycle state, packet readiness, source freshness, review count, and next-action urgency.
+- Living Packet rendered as required packet fields, not only section aggregates.
+- field-level action surfaces showing answer status, answer paths, source support, gaps, confidence, recommended route, and action menu.
+- field routes for accepted evidence/source-backed answer, research or MCP-backed answer candidate, and customer-call-plan recommendation when Ariadne cannot safely answer from data.
+- review-gated field update flow into Packet Field Answers.
+
+### MVP-1C Knowledge Vault UI
+
+- Knowledge Vault browse/search surface scoped by Opportunity, entity, source type, trust state, freshness, and source-of-truth/projection authority.
+- source/provenance drawer shared with packet fields, route outputs, and artifact drafts.
+- "use as context" action from vault records into packet-field route, call-plan route, research brief, action recommendation, or artifact draft.
+- reusable insight proposal and review state, keeping cross-opportunity reuse separate from opportunity-specific answers.
+
 ### MVP-2 AI/Skills UI
 
 - Capability route cards.
@@ -223,6 +245,7 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 - approval prompts.
 - run progress states.
 - output summary and provenance.
+- MCP/source-provider readiness and approval state.
 
 ### MVP-3 Work Product UI
 
@@ -254,11 +277,15 @@ Resolved decision: MVP-1 should not be shell-only. It must prove at least one ro
 Production UI is good enough for MVP only when user can:
 
 - open one Opportunity.
+- switch among multiple Opportunities in active, future/watchlist, and past/archive states.
 - understand readiness in 30 seconds.
+- see which required packet fields are answered, weak, stale, or missing.
+- start a field-level route from a packet data element.
 - start assisted capture in one click.
 - approve/run a route without hunting through tools.
 - review output with evidence/provenance visible.
 - route result into packet/action/call/artifact work.
+- browse the Knowledge Vault and use a selected record as route context.
 - see work-product change.
 - export DOCX, XLSX, and first huashu-design output from reviewed content.
 - recover from errors without losing context.
@@ -266,5 +293,6 @@ Production UI is good enough for MVP only when user can:
 ## Open Questions
 
 1. Which artifact should huashu-design produce first: packet visual/PPTX output, engagement artifact, or executive gate-review visual?
-2. Which packet sections need first-class central treatment in the production UI?
-3. Should Capability Studio stay fully separate, or appear as an advanced drawer inside Command Center for the single-user developer workflow?
+2. Which packet fields should be mandatory in the first Packet Field Action Matrix demo?
+3. Which portfolio states should be editable in the first UI slice versus read-only/system-derived?
+4. Should Capability Studio stay fully separate, or appear as an advanced drawer inside Command Center for the single-user developer workflow?

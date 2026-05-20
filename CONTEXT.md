@@ -25,6 +25,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 
 - Capture Command Center: the single working surface where opportunity data, evidence, recommendations, decisions, actions, HITL sessions, plans, agents, and artifacts are connected for active capture work.
 - Production Command Center UI: the user-ready Command Center experience for performing the assisted capture loop, distinct from scaffold or demo surfaces used to validate behavior.
+- Opportunity Portfolio: the management layer for multiple past, present, future, held, archived, won, lost, and watchlist Opportunities, with lifecycle state, packet readiness, source freshness, next-action urgency, and outcome state.
 - Command Surface: a product-workflow view where a user can inspect an item and trigger context-aware actions such as accept, edit, discard, promote, route, run a capability module, or prepare an artifact.
 - Quick Capture Inbox: the low-friction intake surface for raw notes, ideas, meeting fragments, documents, and other unprocessed material before Ariadne classifies it.
 - Raw Capture Item: an unprocessed item placed into the quick capture inbox before it becomes evidence, opportunity knowledge, an action item, or a reusable insight candidate. Pasted text and supported text or Markdown uploads should preserve source metadata.
@@ -112,6 +113,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Marketing Insight Candidate: a reviewable interpretation of deterministic context and Source Findings into positioning, value proposition, competitor, customer pain, messaging, call-plan, packet, risk, or action implications.
 - Web Enrichment Support: the web-source collection lane within Capture Research Enrichment, using approved source providers over accessible public customer, competitor, partner, news, article, or agency pages when official identifiers are missing, program names changed, descriptions are fuzzy, or context outside deterministic data sources is needed.
 - Knowledge Layer: the local-first retrieval and graph context behind opportunity-specific reasoning.
+- Ariadne Knowledge Vault: the local-first authoritative knowledge workspace made from Ariadne source-of-truth stores and explicit projections, including accepted evidence, source material, packet answers, source profiles, action items, capability runs, workflow-route outputs, artifact drafts, reusable insights, Reference Wiki context, and optional Knowledge Mirror projections. It is not only Obsidian, not only RAG, and not a replacement for source-specific stores.
 - Knowledge Layer Foundation: the foundational retrieval and relationship capability that connects accepted capture knowledge across product workflows before richer graph, RAG, agent memory, or artifact workflows depend on it.
 - Structured Knowledge Index: a deterministic projection of accepted Ariadne records and their relationships that supports exact lookup, traversal, provenance summaries, and gap/source-limitation queries before semantic retrieval is added.
 - Knowledge Context Panel: the first Command Center proof surface for the Knowledge Layer Foundation, showing connected records, supporting evidence, gaps, limitations, pending reviews, and next command surfaces for a selected capture object.
@@ -176,6 +178,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Packet Section: a user-facing section of a living briefing packet that corresponds to part of the decision briefing experience.
 - Packet Field Definition: a reusable strategic question or data slot in a living briefing packet, such as customer, RFP release date, pWin, competition, or approval criteria.
 - Packet Field Answer: an opportunity-specific answer to a packet field definition, carrying value, evidence, assumptions, confidence, status, gaps, and action links.
+- Packet Field Action Surface: the command surface for one packet data element, showing current answer state, answer paths, source support, gaps, confidence, recommended AI/capability routes, and user actions to answer or advance the field.
+- Packet Field Action Matrix: the complete map of required Living Packet data elements to answer paths, route recommendations, supporting sources, skills, MCP tools, model roles, call-plan/user-action fallbacks, and review destinations.
 - Answer Path: metadata describing how Ariadne is likely to answer or maintain a packet field, such as human input, imported data, evidence extraction, model synthesis, or a capability module.
 - Shared Knowledge Entity: a structured Ariadne knowledge node, such as a customer, competitor, incumbent, contract vehicle, scope area, evaluation method, source document, reusable insight, or capture pattern, that can connect answers across opportunities.
 - Packet Field Review: a view of packet field answers and shared-entity connections that provides context without treating another opportunity's answer as valid for the current opportunity.
@@ -208,6 +212,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A later **Lifecycle State** does not imply all earlier **Capture Workstreams** are complete; the **Entry Context** can create **Backfill Needs**.
 - Every **Opportunity** has the same **Core Capture Workstreams**, even when some workstreams are lightweight, inactive, or need backfill.
 - **Opportunity Knowledge** can become **Reusable Capture Insight** when it remains useful beyond the original opportunity.
+- An **Opportunity Portfolio** contains multiple **Opportunities**, but **Packet Field Answers** remain scoped to one selected Opportunity unless explicitly promoted into reusable context.
 - **Insight Promotion** preserves the source **Opportunity**, related **Core Capture Workstream**, freshness, confidence, sensitivity, and use context.
 - A **Capture Intelligence Workflow** can produce **Reusable Capture Insight**, a **Capture Action Plan**, an **Engagement Artifact**, or a **Milestone Decision Briefing Packet**.
 - The **Artifact Assembly Foundation** prepares **Artifact Drafts** from accepted and reviewable Ariadne knowledge before an **Artifact Renderer** turns reviewed content into exported deliverables.
@@ -226,6 +231,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
 - **Capability Module Integration** should make skills, skill chains, CLI harnesses, model workflows, and adapters usable from **Product Workflows** without making the user manage the toolchain first.
 - **Workflow Routing** connects capture needs and capability outputs back into the right review path so useful assistance can improve packets, call plans, action plans, evidence, research, or follow-up work without bypassing human gates.
+- A **Packet Field Action Matrix** should ensure every required **Packet Field Definition** has an answer path or fallback route, even when the fallback is a user action such as preparing a customer call plan with suggested questions.
 - **Route-First Assisted Capture Orchestration** should be Ariadne's MVP path before broad Hermes, LangGraph, or autonomous planner behavior because the product first needs inspectable routes from knowledge and data into useful capture work.
 - An **Assisted Capture Loop** uses **Opportunity Knowledge Context** to identify capture needs, invoke or recommend **Capability Modules**, preserve **Capability Run Outputs**, and route reviewed results into the user's active capture work.
 - A **Command Surface** should appear where capture work needs action, so drafts, evidence, packet fields, action items, call plans, artifacts, and capability outputs can offer context-aware AI assistance without becoming toolchain-first.
@@ -353,6 +359,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - **Evidence Items** live in the **Evidence Store** and can support **Opportunity Knowledge**, **Reusable Capture Insight**, and **Milestone Decision Briefing Packets**.
 - **Derived Evidence** should point back to the **Source Evidence** or earlier **Derived Evidence** that produced it.
 - The **Knowledge Layer Foundation** connects accepted **Evidence Items**, **Opportunity Knowledge**, **Packet Field Answers**, **Action Plan Items**, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, and **Capability Runs** without making RAG, graph visualization, or agent memory the source of truth.
+- The **Ariadne Knowledge Vault** is the user's cross-opportunity capture memory, but it must preserve authority, provenance, freshness, sensitivity, and Opportunity scope so reused knowledge informs new work without becoming an unreviewed answer.
 - The first **Knowledge Layer Foundation** uses a **Structured Knowledge Index** before semantic search, embeddings, RAG engines, graph databases, graph visualization, or Hermes memory depend on the knowledge layer.
 - The first **Structured Knowledge Index** includes already-built Ariadne records such as **Opportunities**, accepted **Evidence Items**, **Packet Field Answers**, **Action Plan Items**, accepted document-intake evidence links, **PIID Contract Intelligence Profiles**, **SAM.gov Enrichment Profiles**, **Capability Runs**, and **Capability Run Outputs**.
 - The first **Structured Knowledge Index** rebuilds on demand from existing Ariadne source records rather than becoming a separate durable source of truth.

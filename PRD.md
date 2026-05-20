@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.31**
+**Product Requirements Document (PRD) v1.32**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 19, 2026
-**Status:** Artifact Assembly Foundation complete; production Command Center UI/UX plan incorporated; MVP-1 selected as production-shaped Next.js shell plus first working route action
+**Status:** Artifact Assembly Foundation complete; production Command Center UI/UX plan incorporated; MVP-1 production Command Center tracer is on review branch; next MVP work is packet-field action routing, multi-opportunity portfolio management, Ariadne Knowledge Vault, and real capability/skill/MCP execution behind product workflows
 
 ---
 
@@ -58,16 +58,17 @@
 - `docs/architecture/artifact-assembly-foundation-plan.md` records the selected Artifact Assembly Foundation epic plan: the first tracer is a reviewable Milestone Decision Briefing Packet draft assembled from Opportunity Knowledge Context through an explicit Artifact Source Package; AI/LLM assistance may coordinate, synthesize, prioritize, and draft prose, but every artifact output must land in deterministic, source-backed, reviewable schema; accepted artifact blocks do not automatically become trusted downstream records; autonomy hints are metadata only; the first surface remains in the existing FastAPI Command Center scaffold; and final rendering/export remains deferred.
 - Artifact Assembly Foundation implementation through issue #66 now includes the local Artifact Assembly Store, Artifact Source Packages from Opportunity Knowledge Context, deterministic Milestone Decision Briefing Packet drafts, typed source-backed Artifact Content Blocks, block review decisions and readiness calculation, FastAPI draft assembly/review routes, and the first Artifact Draft Command Surface. The validation loop proves preview/export readiness can be calculated without generating DOCX, XLSX, huashu-design visual/PPTX, or other final exported files and without automatically writing accepted blocks into trusted downstream records.
 - Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface was reviewed by the maintainer and accepted as good enough for this stage.
+- The production Command Center UI review branch (`11-build/production-command-center-ui`) implements the first route-first tracer: a Next.js Opportunity workspace, Living Packet center surface, assisted capture goal selector, deterministic route recommendations, local route execution, explicit human review gate, provenance view, capability route cards, before/after work-product projections, renderer readiness surface, and local HTTP/browser smoke validation. This proves the interaction loop, but it is not the full capture platform.
 
 **Still Deferred**
 
-- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet. MVP-1 now starts a production-shaped Next.js Command Center shell plus one working route action, but broad UI migration and polish remain governed by the MVP roadmap.
+- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, final huashu-design/artifact rendering adapters, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, full packet-field action routing, multi-opportunity portfolio management, and the full Ariadne Knowledge Vault UI are not implemented yet. MVP-1 now has a production-shaped Next.js route tracer, but broad UI migration, full portfolio workflows, field-level automation, and real capability execution remain governed by the MVP roadmap.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 - Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, RAGAnything runtime, and broad persistent storage are still not part of the local-development stack unless a later ADR or PRD update explicitly selects them.
 
 **Next Build Gate**
 
-- The next build epic is MVP-1: Assisted Capture Orchestration + Workflow Routing, including the production-shaped Next.js shell and first working route action. Do not start unrelated deferred artifact, renderer, graph, RAG, Hermes, parser, external API, or broad UI migration work outside that selected spine.
+- After review of the MVP-1 production Command Center tracer, the next build epic is MVP-1B: Packet Field Action Matrix + Opportunity Portfolio Foundation. Do not start unrelated deferred artifact, renderer, graph, RAG, Hermes, parser, external API, or broad UI migration work outside that selected spine.
 - Treat the completed Knowledge Layer Foundation as the required baseline for future knowledge, recommendation, retrieval, graph, artifact, parser, or Hermes work: exact structured context and human-gated review come first.
 - Artifact Source Packages should begin from Opportunity Knowledge Context as the primary aggregator, then Artifact Drafts should move through block-level review and readiness calculation before any future renderer consumes them.
 - Provider-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Use free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional API-backed providers, and Firecrawl only as an optional later paid provider. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering beyond MVP renderer paths, Hermes runtime, Agent Framework, broad skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and broad Next.js migration beyond the selected MVP-1 shell deferred unless a later `grill-with-docs` session explicitly selects one.
@@ -668,16 +669,19 @@ The end-state remains the same: one Capture Command Center that turns an Opportu
 
 ### 7.1 MVP Outcome
 
-Ariadne reaches MVP when one capture professional can open one real Opportunity and leave a focused working session with materially better capture work done.
+Ariadne reaches MVP when one capture professional can manage a portfolio of real past, present, and future Opportunities, open one Opportunity for a focused working session, and leave with materially better capture work done.
 
 The MVP must let the user:
 
 - assemble opportunity context from Quick Capture, Document Intake, Source Profiles, Capture Research, accepted Evidence, Action Plan items, packet fields, capability outputs, and user prompts.
 - accumulate that context into the **Living Milestone Decision Briefing Packet** as the primary working artifact for gate readiness and capture judgment.
+- manage multiple Opportunities across lifecycle state, pursuit status, archive/outcome state, source freshness, and next-action urgency, while keeping packet answers scoped to the selected Opportunity.
+- treat every required Living Packet data element or Packet Field Definition as an actionable slot: show status, source support, gaps, answer paths, recommended routes, and at least one AI/capability/user action to answer or advance it.
 - see the most important gaps, risks, source limitations, recommended actions, and relevant capability routes for the opportunity.
 - run or request AI/LLM assistance, installed skills, short skill chains, source collection, federal-data tools, document-intake actions, renderers, and capture/marketing capabilities from inside product workflows through Capability Modules.
 - review outputs with provenance, evidence strength, assumptions, model/capability trace, and source limitations visible.
 - route reviewed outputs into Evidence, Packet Field Answers, Capture Action Plan items, Risk Register candidates, Call Plan or engagement prep, Capture Research follow-up, and Artifact Draft blocks.
+- browse and reuse the Ariadne Knowledge Vault: accepted evidence, source material, packet answers, source profiles, capability outputs, lessons, reusable insights, and mirror projections with clear authority and opportunity scope.
 - improve the Living Milestone Decision Briefing Packet, a practical call/engagement prep surface, updated capture actions, and reviewed DOCX, XLSX, and huashu-design artifact output paths.
 
 The MVP is not complete because another store, schema, panel, or adapter exists. It is complete when the Command Center can perform the assisted capture loop on a real opportunity with reviewable outputs that help the user's capture job.
@@ -687,18 +691,24 @@ The MVP is not complete because another store, schema, panel, or adapter exists.
 All near-term implementation should strengthen this spine:
 
 1. **Opportunity context**: the user selects or creates an Opportunity; Ariadne gathers existing trusted and reviewable context through Opportunity Knowledge Context.
-2. **Capture need selection**: Ariadne identifies the next useful capture needs: packet gaps, research needs, customer-engagement needs, document/parser needs, source limitations, evidence gaps, risk signals, action-plan gaps, or artifact-readiness blockers.
-3. **Assistance recommendation**: Ariadne recommends a Product Workflow, Capability Module, model workflow, installed skill, short skill chain, source-provider run, document-intake action, or user action for each need.
-4. **Approved execution**: the user approves or starts the chosen assistance; low-risk local/admin tasks can use existing autonomy rules, while external calls, broad research, rendering, and customer-facing outputs require approval.
-5. **Capability output capture**: results land as Capability Run Outputs, Source Findings, Capture Intelligence Draft Parts, Next Action Recommendations, Artifact Content Blocks, or workflow-specific candidates with provenance.
-6. **Workflow routing**: the user accepts, edits, discards, routes, or marks outputs as needing evidence; accepted or routed outputs improve the appropriate product workflow.
-7. **Work product improvement**: the Living Milestone Decision Briefing Packet is the main accumulating artifact, while the Capture Action Plan, call/engagement prep, Evidence Store, Risk Register, Capture Research run, and Artifact Draft visibly improve around it.
-8. **Learning hooks**: repeated routes, accepted outputs, discarded suggestions, and friction become future Operational Learning inputs, but broad Hermes autonomy waits until the loop is reliable.
+2. **Portfolio awareness**: Ariadne shows where the selected Opportunity sits among active, future, past, archived, won, lost, and watchlist Opportunities, while preserving opportunity-specific answer scope.
+3. **Packet field action matrix**: every required packet data element has status, answer paths, source refs, gaps, and a recommended action route such as run research, inspect document spans, use a federal-data MCP, synthesize evidence, ask the user, or prepare a customer call plan with suggested questions.
+4. **Capture need selection**: Ariadne identifies the next useful capture needs: packet gaps, research needs, customer-engagement needs, document/parser needs, source limitations, evidence gaps, risk signals, action-plan gaps, or artifact-readiness blockers.
+5. **Assistance recommendation**: Ariadne recommends a Product Workflow, Capability Module, model workflow, installed skill, short skill chain, source-provider run, document-intake action, or user action for each need.
+6. **Approved execution**: the user approves or starts the chosen assistance; low-risk local/admin tasks can use existing autonomy rules, while external calls, broad research, rendering, and customer-facing outputs require approval.
+7. **Capability output capture**: results land as Capability Run Outputs, Source Findings, Capture Intelligence Draft Parts, Next Action Recommendations, Artifact Content Blocks, or workflow-specific candidates with provenance.
+8. **Workflow routing**: the user accepts, edits, discards, routes, or marks outputs as needing evidence; accepted or routed outputs improve the appropriate product workflow.
+9. **Work product improvement**: the Living Milestone Decision Briefing Packet is the main accumulating artifact, while the Capture Action Plan, call/engagement prep, Evidence Store, Risk Register, Capture Research run, and Artifact Draft visibly improve around it.
+10. **Knowledge vault capture**: accepted knowledge, reusable insights, lessons, source refs, and reviewed capability outputs become discoverable in the Ariadne Knowledge Vault without confusing mirrors or projections for source-of-truth records.
+11. **Learning hooks**: repeated routes, accepted outputs, discarded suggestions, and friction become future Operational Learning inputs, but broad Hermes autonomy waits until the loop is reliable.
 
 ### 7.3 Core Component Map
 
 - **Capture Command Center** is the operating surface for the MVP loop; it should show context, recommended routes, running/finished assistance, review needs, and improved work products together.
+- **Opportunity Portfolio** is the management layer for multiple past, present, and future Opportunities. It must support create/import, watchlist, active pursuit, hold, archive, won/lost outcome, lifecycle state, next-action urgency, and cross-opportunity learning without treating another opportunity's packet answer as valid for the selected one.
 - **Opportunity Knowledge Context** is the context spine; it gathers accepted and reviewable Ariadne records for one opportunity before AI, skills, artifacts, or routes act.
+- **Ariadne Knowledge Vault** is the local-first authoritative knowledge workspace made from Ariadne source-of-truth stores and explicit projections: Evidence Store, Document Intake, Source Profiles, Packet Field Answers, Action Plan items, Capability Runs, Workflow Routing outputs, Artifact Drafts, reusable insights, Reference Wiki context, and optional Knowledge Mirrors. It is not just Obsidian and not just RAG; it is the user's browsable, searchable, source-scoped capture memory.
+- **Packet Field Action Matrix** maps every required Living Packet data element to answer paths, current answer state, source support, AI/model options, skill-chain options, MCP/tool options, research routes, call/engagement routes, and manual/user actions. A field with no answer must still have a recommendation for how to get the answer.
 - **Evidence Store, Document Intake, PIID Profiles, SAM.gov Profiles, Capture Research, Quick Capture, and Reference Wiki** are data and research inputs; they should feed the loop instead of remaining separate destinations.
 - **AI Usage Layer** should route work to the correct Model Role: local/admin models for low-risk tagging, summarization, extraction, formatting, and draft prep; frontier reasoning models for strategy, synthesis, customer engagement, tradeoffs, and executive-ready recommendations.
 - **Capability Module Integration** connects installed skills, marketing skills, federal-data capabilities, CLI harnesses, MCP tools, source providers, model workflows, parsers, and renderers to Product Workflows so AI/LLM assistance can take approved action without bypassing review.
@@ -713,7 +723,7 @@ All near-term implementation should strengthen this spine:
 
 ### 7.4 MVP Build Sequence
 
-**MVP-1: Assisted Capture Orchestration + Workflow Routing** ← **NEXT**
+**MVP-1A: Production Command Center Route Tracer** ← **CURRENT REVIEW BRANCH**
 
 Goal: connect the existing foundations into one route-first operating loop.
 
@@ -736,6 +746,43 @@ Acceptance demo:
 - The user starts one assisted route, receives a reviewable output, and routes it into at least two real work products, such as a Packet Field Answer and an Action Plan Item or Call Plan candidate.
 - The loop does not create trusted downstream records, external calls, or final artifacts without explicit review/approval.
 
+**MVP-1B: Packet Field Action Matrix + Opportunity Portfolio Foundation** ← **NEXT AFTER REVIEW**
+
+Goal: make the Living Packet operational at the data-element level and make Ariadne manage more than one Opportunity.
+
+Deliverables:
+
+- Add an Opportunity Portfolio surface and API for active, future, past, held, archived, won, and lost Opportunities, with lifecycle state, next-action urgency, source freshness, packet readiness, and review counts.
+- Add create/import/update/archive behavior for Opportunities with local-first persistence and deterministic tests.
+- Render the Living Packet as packet sections plus required Packet Field Definitions, not only aggregate section counts.
+- For every required Packet Field Definition, show current answer status, answer path options, source support, assumptions, confidence, gaps, and an action menu.
+- Build a Packet Field Action Matrix that can recommend at least one route for every unanswered, partial, stale, or assumption-based field.
+- Support route types such as use accepted evidence, inspect document spans, run Capture Research, run federal-data MCP/source profile lookup, ask the user, synthesize with the selected model role, run a skill or short skill chain, create an Action Plan task, or prepare a customer call plan with suggested questions.
+- Route accepted field outputs into Packet Field Answers with provenance and, when the answer cannot be produced yet, into a concrete recommendation such as "call customer" with a generated call-plan question set.
+
+Acceptance demo:
+
+- The user can switch among at least three Opportunities representing active, future/watchlist, and past/archive states.
+- The selected Opportunity shows required packet data elements with field-level answer status and action routes.
+- At least three different field routes work end to end: one evidence/source-backed answer, one research or MCP-backed answer candidate, and one customer-call-plan recommendation for a field that cannot be safely answered from available data.
+- Packet field updates remain opportunity-scoped, review-gated, and traceable to source refs, capability runs, user decisions, or call-plan recommendations.
+
+**MVP-1C: Ariadne Knowledge Vault Foundation**
+
+Goal: make Ariadne's accumulated capture memory visible and usable without making a knowledge mirror or RAG engine the source of truth.
+
+Deliverables:
+
+- Add a Knowledge Vault index/view that lists accepted evidence, source material, packet answers, source profiles, action items, capability outputs, workflow-route outputs, artifact drafts, reusable insights, and Knowledge Mirror projections by opportunity, entity, source type, trust state, and freshness.
+- Distinguish Ariadne source-of-truth records from Reference Wiki context, Knowledge Mirror projections, and future RAG/graph indexes.
+- Allow selected vault records to feed packet-field actions, capture research briefs, call-plan prep, action recommendations, and artifact drafts.
+- Add reusable insight promotion as a review-gated path from one Opportunity's accepted knowledge into future-opportunity context.
+
+Acceptance demo:
+
+- The user can browse the vault, filter by Opportunity and trust state, inspect provenance, and use a vault record as input to a packet-field route or call-plan route.
+- A reusable insight can be proposed from one Opportunity and used as context, not copied as a valid answer, for another Opportunity.
+
 **MVP-2: AI Usage Layer + Skills Integration**
 
 Goal: make AI/LLM assistance and installed skills take as much approved capture action as possible rather than remaining decorative inventory.
@@ -745,6 +792,8 @@ Deliverables:
 - Add explicit model-use contracts for capture need analysis, packet synthesis support, call/engagement prep, value proposition/messaging, research brief creation, output review summaries, and artifact-block drafting.
 - Use fake model runners in automated tests and real configured providers only in user-approved local runs.
 - Expose local workspace skills and vendored marketing skills as Capability Modules with typed input expectations, output summaries, review destinations, and route metadata.
+- Expose MCP tools and federal-data capabilities as Capability Modules with clear source family, env readiness, approval requirement, output schema, and packet-field/product-workflow fit.
+- Connect each relevant Packet Field Definition to at least one model role, skill, skill chain, MCP/source-profile tool, or user-action fallback.
 - Let AI/LLM assistance prepare inputs, recommend Capability Modules, run approved low-risk capability routes, summarize outputs, propose next routes, and draft reviewed work-product updates.
 - Support short skill chains such as research brief -> customer insight -> call-plan prep, requirements fit -> packet implication -> action recommendation, or value proposition -> engagement messaging -> artifact block.
 - Keep chain stages visible, bounded, interruptible, and review-gated.
@@ -753,6 +802,7 @@ Acceptance demo:
 
 - A user can choose a capture goal and see which AI/model role, skill, or skill chain Ariadne recommends.
 - At least one installed skill or skill-backed capability can run through the Capability Run Store and route a reviewable output into packet/call/action/artifact work.
+- At least one MCP-backed/federal-data capability can produce a reviewable packet-field or source-profile candidate, with source limitations visible.
 - The same workflow works without a live model by using deterministic or fake runners in tests.
 
 **MVP-3: Capture Work Product Loop**
@@ -842,9 +892,13 @@ Candidates:
 MVP is done when the acceptance demo can show all of the following in one local Command Center run:
 
 - create or open one Opportunity.
+- manage a portfolio of multiple Opportunities across active, future/watchlist, and past/archive states.
 - gather context from at least three real input families, such as accepted evidence, source profiles, capture research, document intake, quick capture, packet fields, action items, or capability outputs.
+- show every required Living Packet data element as a field-level action surface with answer paths, status, provenance, and a recommendation when the answer is missing.
+- browse the Ariadne Knowledge Vault and use a vault record as context for a packet, call-plan, research, or action route.
 - generate route-first capture recommendations tied to packet, call/engagement, action, evidence, research, risk, or artifact needs.
 - run at least one AI/model-assisted step and at least one skill/capability-backed step with provenance.
+- run or recommend at least one MCP/source-profile backed step and one skill-chain backed step with reviewable outputs.
 - review the outputs and route them into at least three work products, including the Milestone Decision Briefing Packet, Capture Action Plan, and call/engagement preparation.
 - produce a reviewed Artifact Draft plus traceable DOCX, XLSX, and first huashu-design outputs from reviewed content.
 - complete the assisted capture loop through the production Command Center UI, not only the internal FastAPI scaffold.
@@ -855,6 +909,8 @@ MVP is done when the acceptance demo can show all of the following in one local 
 
 - Every new epic must state which step of the MVP Operating Spine it advances.
 - Every new epic must improve at least one capture work product, not only create a new schema, store, adapter, or panel.
+- Every required Packet Field Definition must have at least one answer path and at least one actionable fallback route before MVP is considered complete.
+- Every multi-opportunity feature must preserve opportunity-specific answer scope while allowing reusable insight and source-context reuse across Opportunities.
 - Every new integration must identify the Product Workflow it serves and the review/routing destination for its outputs.
 - Every new AI or skill-chain feature must preserve model/capability provenance and must work in tests without live credentials.
 - Every artifact-rendering slice must consume reviewed Artifact Draft content and must not become the source of truth.
@@ -917,9 +973,9 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.31**
+**End of PRD v1.32**
 
-**The next build direction is MVP-1: Assisted Capture Orchestration + Workflow Routing, which must connect existing foundations into a usable route-first capture loop.**
+**The next build direction after production UI review is MVP-1B: Packet Field Action Matrix + Opportunity Portfolio Foundation, followed by Ariadne Knowledge Vault Foundation and real AI/skills/MCP execution behind those field-level routes.**
 
 ---
 

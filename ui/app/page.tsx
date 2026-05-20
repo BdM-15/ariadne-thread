@@ -90,6 +90,10 @@ type PortfolioOpportunity = {
   review_ready_count: number;
   blocked_field_count: number;
   source_limitation_count: number;
+  attention_reason?: string;
+  attention_route_label?: string;
+  attention_route_mode?: string;
+  attention_field_key?: string | null;
   is_demo: boolean;
 };
 
@@ -714,6 +718,9 @@ function CommandCenterHome({
                 </span>
                 <div className="global-pulse-chip-row">
                   <span>{formatLabel(opportunity.packet_readiness_label)}</span>
+                  <span>
+                    {formatLabel(opportunity.attention_route_mode ?? "packet")} route
+                  </span>
                   {opportunity.blocked_field_count > 0 ? (
                     <span>{opportunity.blocked_field_count} gaps</span>
                   ) : null}
@@ -725,7 +732,7 @@ function CommandCenterHome({
                   ) : null}
                 </div>
                 <strong className="global-pulse-card-action">
-                  Open roadmap
+                  {opportunity.attention_route_label ?? "Open roadmap"}
                 </strong>
               </a>
             ))
@@ -1259,6 +1266,9 @@ function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
 }
 
 function opportunityPulseReason(opportunity: PortfolioOpportunity): string {
+  if (opportunity.attention_reason) {
+    return opportunity.attention_reason;
+  }
   if (opportunity.blocked_field_count > 0) {
     return `${opportunity.blocked_field_count} packet fields still block this roadmap.`;
   }

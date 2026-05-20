@@ -20,6 +20,9 @@ from ariadne.opportunity_activation import (
     OpportunityActivationRun,
     OpportunityActivationRunStore,
     OpportunityActivationRunTrigger,
+    PacketFieldActionItem,
+    PacketFieldActionMatrix,
+    PacketFieldActionState,
     run_opportunity_activation,
     recommend_packet_field_route,
 )
@@ -392,6 +395,10 @@ class ProductionOpportunityPortfolioItem(BaseModel):
     review_ready_count: int
     blocked_field_count: int
     source_limitation_count: int
+    attention_reason: str
+    attention_route_label: str
+    attention_route_mode: str
+    attention_field_key: str | None = None
     is_demo: bool = False
 
 
@@ -762,6 +769,7 @@ def build_production_command_center_workspace(
     workspace_root: Path | None = None,
     opportunity_id: str | None = None,
     opportunity_store: OpportunityScaffoldStore | None = None,
+    answer_store: PacketFieldAnswerStore | None = None,
 ) -> ProductionCommandCenterWorkspace:
     if opportunity_id is not None and opportunity_id != DEMO_OPPORTUNITY_ID:
         store = opportunity_store or OpportunityScaffoldStore(
@@ -769,7 +777,10 @@ def build_production_command_center_workspace(
         )
         if not store.has_scaffold(opportunity_id):
             raise ValueError(f"Opportunity context not found: {opportunity_id}")
-        return _workspace_from_scaffold(store.read_scaffold(opportunity_id))
+        return _workspace_from_scaffold(
+            store.read_scaffold(opportunity_id),
+            answer_store=answer_store,
+        )
 
     demo = build_quick_capture_demo_thread(
         settings,
@@ -829,6 +840,7 @@ def build_production_command_center_workspace(
 def list_production_opportunity_portfolio(
     *,
     store: OpportunityScaffoldStore,
+    answer_store: PacketFieldAnswerStore | None = None,
 ) -> ProductionOpportunityPortfolioResponse:
     return ProductionOpportunityPortfolioResponse(
         opportunities=(
@@ -841,48 +853,199 @@ def list_production_opportunity_portfolio(
                 review_ready_count=0,
                 blocked_field_count=0,
                 source_limitation_count=0,
+                attention_reason="Demo workspace sample packet is available.",
+                attention_route_label="Open demo roadmap",
+                attention_route_mode="packet",
                 is_demo=True,
             ),
-            *(_portfolio_item_from_scaffold(scaffold) for scaffold in store.list_scaffolds()),
+            *(
+                _portfolio_item_from_scaffold(
+                    scaffold,
+                    answer_store=answer_store,
+                )
+                for scaffold in store.list_scaffolds()
+            ),
         )
     )
 
 
 def _portfolio_item_from_scaffold(
     scaffold: ProductionOpportunityScaffold,
+    *,
+    answer_store: PacketFieldAnswerStore | None = None,
 ) -> ProductionOpportunityPortfolioItem:
+    activation_run = _activation_run_for_scaffold(
+        scaffold,
+        answer_store=answer_store,
+    )
+    digest = activation_run.activation_digest
+    attention_item = _attention_item_from_matrix(
+        activation_run.packet_field_action_matrix
+    )
     return ProductionOpportunityPortfolioItem(
         id=scaffold.opportunity.id,
         name=scaffold.opportunity.name,
         lifecycle_state=scaffold.opportunity.lifecycle_state,
         gate_status=scaffold.opportunity.gate_status,
-        packet_readiness_label=scaffold.packet.readiness_label,
-        review_ready_count=scaffold.activation_digest.review_ready_count,
-        blocked_field_count=scaffold.activation_digest.blocked_field_count,
-        source_limitation_count=len(scaffold.activation_digest.source_limitations),
+        packet_readiness_label=_packet_readiness_label(
+            activation_run.packet_field_action_matrix
+        ),
+        review_ready_count=digest.review_ready_count,
+        blocked_field_count=digest.blocked_field_count,
+        source_limitation_count=len(digest.source_limitations),
+        attention_reason=_attention_reason(
+            digest=digest,
+            attention_item=attention_item,
+        ),
+        attention_route_label=_attention_route_label(attention_item),
+        attention_route_mode=_attention_route_mode(attention_item),
+        attention_field_key=attention_item.field_key if attention_item else None,
     )
+
+
+def _activation_run_for_scaffold(
+    scaffold: ProductionOpportunityScaffold,
+    *,
+    answer_store: PacketFieldAnswerStore | None = None,
+) -> OpportunityActivationRun:
+    return run_opportunity_activation(
+        opportunity_id=scaffold.opportunity.id,
+        definitions=build_default_packet_field_definitions(),
+        answers=(
+            answer_store.list(opportunity_id=scaffold.opportunity.id)
+            if answer_store is not None
+            else ()
+        ),
+        trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+    )
+
+
+def _attention_item_from_matrix(
+    matrix: PacketFieldActionMatrix,
+) -> PacketFieldActionItem | None:
+    for action_state in (
+        PacketFieldActionState.BLOCKED,
+        PacketFieldActionState.REVIEW_READY,
+    ):
+        for item in matrix.fields:
+            if item.action_state is action_state:
+                return item
+    return None
+
+
+def _attention_reason(
+    *,
+    digest: OpportunityActivationDigest,
+    attention_item: PacketFieldActionItem | None,
+) -> str:
+    if attention_item is not None:
+        return f"{attention_item.label}: {attention_item.recommended_route}"
+    if digest.next_best_actions:
+        return digest.next_best_actions[0]
+    return "Roadmap has no urgent gaps in current pulse data."
+
+
+def _attention_route_label(attention_item: PacketFieldActionItem | None) -> str:
+    if attention_item is None:
+        return "Open roadmap"
+    return f"Open roadmap: {attention_item.label}"
+
+
+def _attention_route_mode(attention_item: PacketFieldActionItem | None) -> str:
+    if attention_item is None:
+        return "packet"
+    normalized_route = attention_item.recommended_route.lower()
+    if any(
+        token in normalized_route
+        for token in ("document", "source", "parser", "material")
+    ):
+        return "documents"
+    if any(
+        token in normalized_route
+        for token in ("research", "competitor", "teaming", "partner", "lookup")
+    ):
+        return "research"
+    if any(
+        token in normalized_route
+        for token in ("call", "customer", "engagement", "capture lead")
+    ):
+        return "engagement"
+    if any(
+        token in normalized_route
+        for token in ("artifact", "visual", "renderer", "export")
+    ):
+        return "artifacts"
+    return "activation"
+
+
+def _packet_view_from_matrix(
+    title: str,
+    matrix: PacketFieldActionMatrix,
+) -> ProductionCommandCenterPacket:
+    section_states: dict[str, list[PacketFieldActionState]] = {}
+    for item in matrix.fields:
+        section_states.setdefault(item.section, []).append(item.action_state)
+
+    answered_section_count = 0
+    partial_section_count = 0
+    gap_section_count = 0
+    for states in section_states.values():
+        if all(state is PacketFieldActionState.ANSWERED for state in states):
+            answered_section_count += 1
+        elif any(state is PacketFieldActionState.ANSWERED for state in states):
+            partial_section_count += 1
+        else:
+            gap_section_count += 1
+
+    return ProductionCommandCenterPacket(
+        title=title,
+        readiness_label=_packet_readiness_label(matrix),
+        answered_section_count=answered_section_count,
+        gap_section_count=gap_section_count,
+        partial_section_count=partial_section_count,
+    )
+
+
+def _packet_readiness_label(matrix: PacketFieldActionMatrix) -> str:
+    if matrix.blocked_field_count == 0 and matrix.review_ready_count == 0:
+        return "decision_ready"
+    if matrix.review_ready_count > 0:
+        return "review_ready"
+    if matrix.answered_field_count > 0:
+        return "draft_ready"
+    return "not_ready"
 
 
 def _workspace_from_scaffold(
     scaffold: ProductionOpportunityScaffold,
+    *,
+    answer_store: PacketFieldAnswerStore | None = None,
 ) -> ProductionCommandCenterWorkspace:
+    activation_run = _activation_run_for_scaffold(
+        scaffold,
+        answer_store=answer_store,
+    )
+    matrix = activation_run.packet_field_action_matrix
+    packet = _packet_view_from_matrix(scaffold.packet.title, matrix)
     return ProductionCommandCenterWorkspace(
         production_ui_contract="nextjs_command_center_shell",
         scaffold_role="standard_opportunity_scaffold",
         opportunity=scaffold.opportunity,
-        packet=scaffold.packet,
+        packet=packet,
         context_summary=ProductionCommandCenterContextSummary(
-            trusted_count=0,
-            reviewable_count=scaffold.activation_digest.review_ready_count,
-            gap_count=scaffold.activation_digest.blocked_field_count,
-            source_limitation_count=len(scaffold.activation_digest.source_limitations),
+            trusted_count=matrix.answered_field_count,
+            reviewable_count=activation_run.activation_digest.review_ready_count,
+            gap_count=activation_run.activation_digest.blocked_field_count,
+            source_limitation_count=len(
+                activation_run.activation_digest.source_limitations
+            ),
         ),
         layout_regions=_production_layout_regions(),
         work_modes=(
             ProductionCommandCenterWorkMode(
                 id="packet",
                 label="Packet",
-                pending_count=scaffold.activation_digest.blocked_field_count,
+                pending_count=activation_run.activation_digest.blocked_field_count,
             ),
             ProductionCommandCenterWorkMode(
                 id="actions",
@@ -893,7 +1056,9 @@ def _workspace_from_scaffold(
             ProductionCommandCenterWorkMode(
                 id="research",
                 label="Research",
-                pending_count=len(scaffold.activation_digest.approval_required_routes),
+                pending_count=len(
+                    activation_run.activation_digest.approval_required_routes
+                ),
             ),
             ProductionCommandCenterWorkMode(id="documents", label="Documents"),
             ProductionCommandCenterWorkMode(id="artifacts", label="Artifacts"),

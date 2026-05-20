@@ -226,6 +226,26 @@ def test_production_command_center_promotes_activation_field_answer(tmp_path) ->
     assert rerun_customer["action_state"] == "answered"
     assert rerun_customer["current_value"] == "Space Force"
 
+    workspace_response = client.get(
+        f"/api/production-command-center/workspace?opportunity_id={opportunity_id}"
+    )
+    workspace = workspace_response.json()["workspace"]
+    assert workspace["context_summary"]["trusted_count"] == 1
+    assert workspace["packet"]["readiness_label"] == "draft_ready"
+
+    portfolio_response = client.get("/api/production-command-center/opportunities")
+    portfolio_item = next(
+        opportunity
+        for opportunity in portfolio_response.json()["opportunities"]
+        if opportunity["id"] == opportunity_id
+    )
+    assert portfolio_item["packet_readiness_label"] == "draft_ready"
+    assert portfolio_item["blocked_field_count"] == len(
+        create_response.json()["scaffold"]["packet_fields"]
+    ) - 1
+    assert portfolio_item["attention_field_key"] != "customer"
+    assert portfolio_item["attention_route_label"].startswith("Open roadmap:")
+
 
 def test_production_command_center_routes_activation_field_without_answer(tmp_path) -> None:
     from fastapi.testclient import TestClient
@@ -313,6 +333,17 @@ def test_production_command_center_lists_created_opportunities(tmp_path) -> None
     assert created["name"] == "DISA cloud sustainment watch"
     assert created["packet_readiness_label"] == "not_ready"
     assert created["blocked_field_count"] >= 8
+    assert created["attention_reason"]
+    assert created["attention_route_label"].startswith("Open roadmap:")
+    assert created["attention_route_mode"] in {
+        "activation",
+        "artifacts",
+        "documents",
+        "engagement",
+        "packet",
+        "research",
+    }
+    assert created["attention_field_key"]
     assert created["is_demo"] is False
 
 

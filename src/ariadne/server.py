@@ -602,6 +602,9 @@ def create_app(
                 opportunity_store=OpportunityScaffoldStore(
                     runtime_settings.ariadne_opportunities_dir
                 ),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -619,6 +622,9 @@ def create_app(
     def production_command_center_opportunities() -> ProductionOpportunityPortfolioResponse:
         return list_production_opportunity_portfolio(
             store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+            answer_store=PacketFieldAnswerStore(
+                runtime_settings.ariadne_packet_field_answers_dir
+            ),
         )
 
     @app.post("/api/production-command-center/opportunities")

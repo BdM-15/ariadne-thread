@@ -29,6 +29,7 @@ from ariadne.opportunity_activation import (
     recommend_packet_field_route,
 )
 from ariadne.packet_knowledge import (
+    PacketFieldAnswer,
     PacketFieldAnswerStore,
     PacketFieldAnswerStatus,
     PacketFieldDefinition,
@@ -242,6 +243,7 @@ class AssistedRouteOutput(BaseModel):
     id: str
     recommendation_id: str
     opportunity_id: str
+    packet_field_key: str | None = None
     title: str
     summary: str
     recommended_destination: AssistedCaptureWorkProduct
@@ -318,6 +320,7 @@ class AssistedRouteOutputReviewResponse(BaseModel):
     output: AssistedRouteOutput
     decision: AssistedRouteOutputReviewDecision
     accepted_updates: tuple[WorkProductUpdateProjection, ...]
+    packet_field_answer: PacketFieldAnswer | None = None
 
 
 class AssistedRouteProvenanceView(BaseModel):
@@ -1249,6 +1252,7 @@ def execute_assisted_capture_route(
         id=f"output_{recommendation.id}_reviewable-draft",
         recommendation_id=recommendation.id,
         opportunity_id=recommendation.opportunity_id,
+        packet_field_key=recommendation.packet_field_key,
         title=_output_title_for_route(recommendation),
         summary=_output_summary_for_route(recommendation),
         recommended_destination=recommendation.work_product_targets[0],
@@ -1299,6 +1303,7 @@ def execute_assisted_capture_route(
 def review_assisted_route_output(
     *,
     store: WorkflowRoutingStore,
+    answer_store: PacketFieldAnswerStore | None = None,
     output_id: str,
     request: AssistedRouteOutputReviewRequest,
 ) -> AssistedRouteOutputReviewResponse:
@@ -1311,7 +1316,10 @@ def review_assisted_route_output(
     reviewed_output = output.model_copy(update={"review_state": review_state})
     store.write_output(reviewed_output)
     decision = AssistedRouteOutputReviewDecision(
-        id=f"decision_{output_id}_{request.decision.value}",
+        id=_route_review_decision_id(
+            output_id=output_id,
+            decision=request.decision,
+        ),
         output_id=output_id,
         decision=request.decision,
         reviewer_rationale=request.reviewer_rationale,
@@ -1330,10 +1338,22 @@ def review_assisted_route_output(
     )
     for update in accepted_updates:
         store.write_work_product_update(update)
+    packet_field_answer = None
+    if (
+        request.decision is AssistedRouteReviewDecisionType.ACCEPT
+        and answer_store is not None
+        and reviewed_output.packet_field_key is not None
+    ):
+        packet_field_answer = _packet_field_answer_from_assisted_route(
+            output=reviewed_output,
+            decision=decision,
+        )
+        answer_store.write(packet_field_answer)
     return AssistedRouteOutputReviewResponse(
         output=reviewed_output,
         decision=decision,
         accepted_updates=accepted_updates,
+        packet_field_answer=packet_field_answer,
     )
 
 
@@ -1686,7 +1706,7 @@ def _work_product_updates_for_acceptance(
 ) -> tuple[WorkProductUpdateProjection, ...]:
     return tuple(
         WorkProductUpdateProjection(
-            id=f"update_{output.id}_{destination.value}",
+            id=_work_product_update_id(output=output, destination=destination),
             source_output_id=output.id,
             review_decision_id=decision.id,
             destination=destination,
@@ -1696,6 +1716,54 @@ def _work_product_updates_for_acceptance(
             source_refs=output.source_refs,
         )
         for destination in output.work_product_targets
+    )
+
+
+def _route_review_decision_id(
+    *,
+    output_id: str,
+    decision: AssistedRouteReviewDecisionType,
+) -> str:
+    digest = sha256(f"{output_id}:{decision.value}".encode("utf-8")).hexdigest()[:12]
+    return f"decision_{digest}_{decision.value}"
+
+
+def _work_product_update_id(
+    *,
+    output: AssistedRouteOutput,
+    destination: AssistedCaptureWorkProduct,
+) -> str:
+    digest = sha256(f"{output.id}:{destination.value}".encode("utf-8")).hexdigest()[:12]
+    return f"update_{digest}_{destination.value}"
+
+
+def _packet_field_answer_from_assisted_route(
+    *,
+    output: AssistedRouteOutput,
+    decision: AssistedRouteOutputReviewDecision,
+) -> PacketFieldAnswer:
+    if output.packet_field_key is None:
+        raise ValueError("Assisted route output is not tied to a packet field")
+    return create_packet_field_answer(
+        field_key=output.packet_field_key,
+        opportunity_id=output.opportunity_id,
+        value=output.summary,
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=EvidenceStatus.ASSUMPTION,
+        evidence_ids=output.source_refs,
+        assumption="Accepted assisted route output; source support still needs operator validation.",
+        confidence=0.6,
+        gap_summary=None,
+        provenance_note=(
+            f"Promoted from assisted route output {output.id} after "
+            f"{decision.review_gate} review."
+        ),
+        review_status=decision.decision.value,
+        source_draft_id=output.id,
+        review_edits=(
+            f"assisted route: {output.recommendation_id}",
+            f"review decision: {decision.id}",
+        ),
     )
 
 

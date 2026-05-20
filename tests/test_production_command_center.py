@@ -34,7 +34,7 @@ def test_production_command_center_workspace_api_exposes_opportunity_context(
         "/api/production-command-center/workspace"
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     workspace = response.json()["workspace"]
     assert workspace["production_ui_contract"] == "nextjs_command_center_shell"
     assert workspace["scaffold_role"] == "fallback_debug_only"
@@ -609,6 +609,60 @@ def test_assisted_capture_route_output_acceptance_projects_work_updates(
     )
     assert body["accepted_updates"][0]["source_output_id"] == output_id
     assert "Accepted for call prep" in body["decision"]["reviewer_rationale"]
+    assert body["packet_field_answer"] is None
+
+
+def test_field_specific_route_acceptance_promotes_packet_field_answer(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    recommendation_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap", "packet_field_key": "customer"},
+    )
+    recommendation_id = recommendation_response.json()["recommendations"][0]["id"]
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation_id}/runs",
+        json={"approved": True},
+    )
+    output_id = run_response.json()["run"]["output"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/route-outputs/{output_id}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Accepted as current customer packet answer.",
+            "accepted_destination": "living_packet",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    packet_field_answer = body["packet_field_answer"]
+    assert packet_field_answer["field_key"] == "customer"
+    assert packet_field_answer["opportunity_id"] == opportunity_id
+    assert packet_field_answer["status"] == "answered"
+    assert packet_field_answer["evidence_status"] == "assumption"
+    assert packet_field_answer["source_draft_id"] == output_id
+
+    rerun_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    customer = next(
+        field
+        for field in rerun_response.json()["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "customer"
+    )
+    assert customer["action_state"] == "answered"
+    assert customer["current_value"] == packet_field_answer["value"]
 
 
 def test_assisted_capture_route_provenance_includes_reasoning_and_review_trace(

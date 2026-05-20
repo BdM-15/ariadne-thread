@@ -758,6 +758,9 @@ def create_app(
         try:
             return review_assisted_route_output(
                 store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
                 output_id=output_id,
                 request=request,
             )

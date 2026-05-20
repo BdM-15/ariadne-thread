@@ -258,6 +258,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - The **Capability Studio** is visible as an advanced surface but visually secondary to day-to-day opportunity, packet, action-plan, quick-capture, and knowledge work.
 - The **Capability Run Store** records what happened when a **Capability Module** ran, while the **Capability Catalog** records what can run and the **Evidence Store** records trusted support.
 - **Capability Run Outputs** land in review before becoming **Evidence Items**, **Opportunity Knowledge**, **Action Plan Items**, **Reusable Capture Insight** candidates, or final artifacts.
+- Accepted field-specific **Assisted Capture Loop** outputs can create **Packet Field Answers** for the selected **Opportunity** and **Packet Field Definition**, preserving source refs, assumptions, confidence, route output ID, and review decision provenance.
 - **Capability Run Outputs** can move through **Capability Iterations** before acceptance or promotion.
 - A **Capability Reasoning View** presents **Capability Provenance** for a **Capability Run Output** without making the toolchain the primary capture workflow.
 - A **Capability Reasoning View** can include a **Model Rationale Summary**, but Ariadne should not depend on storing raw hidden model reasoning as the source of truth.

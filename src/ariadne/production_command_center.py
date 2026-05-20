@@ -259,6 +259,39 @@ class ProductionCommandCenterHealthResponse(BaseModel):
     external_model_required: bool = False
 
 
+class RendererCapability(BaseModel):
+    id: str
+    label: str
+    engine: str
+    output_formats: tuple[str, ...]
+    readiness_state: str
+    mvp_required: bool
+    role: str
+
+
+class RendererExportAction(BaseModel):
+    id: str
+    label: str
+    renderer_id: str
+    output_format: str
+    review_required: bool
+    enabled: bool
+    disabled_reason: str
+
+
+class RendererReadinessView(BaseModel):
+    target_artifact: str
+    target_label: str
+    target_rationale: str
+    renderers: tuple[RendererCapability, ...]
+    export_actions: tuple[RendererExportAction, ...]
+    backend_blockers: tuple[str, ...]
+
+
+class RendererReadinessResponse(BaseModel):
+    readiness: RendererReadinessView
+
+
 class ProductionCommandCenterWorkspace(BaseModel):
     production_ui_contract: str
     scaffold_role: str
@@ -552,6 +585,80 @@ def build_production_command_center_workspace(
 
 def production_command_center_health() -> ProductionCommandCenterHealthResponse:
     return ProductionCommandCenterHealthResponse()
+
+
+def build_renderer_readiness() -> RendererReadinessResponse:
+    readiness = RendererReadinessView(
+        target_artifact="living_milestone_decision_briefing_packet",
+        target_label="Living Milestone Decision Briefing Packet",
+        target_rationale=(
+            "The Living Packet is the central accumulation artifact for capture "
+            "decisions, call prep, and downstream export readiness."
+        ),
+        renderers=(
+            RendererCapability(
+                id="huashu_design_pptx",
+                label="Milestone briefing deck",
+                engine="huashu-design",
+                output_formats=("pptx",),
+                readiness_state="planned_integration",
+                mvp_required=True,
+                role="Visual briefing deck and slide export path.",
+            ),
+            RendererCapability(
+                id="pandoc_docx",
+                label="Narrative briefing document",
+                engine="pandoc",
+                output_formats=("docx",),
+                readiness_state="planned_integration",
+                mvp_required=True,
+                role="DOCX narrative packet export path.",
+            ),
+            RendererCapability(
+                id="xlsx_export",
+                label="Capture workbook export",
+                engine="xlsx-export",
+                output_formats=("xlsx",),
+                readiness_state="planned_integration",
+                mvp_required=True,
+                role="XLSX tabular export path for action, risk, and evidence views.",
+            ),
+        ),
+        export_actions=(
+            RendererExportAction(
+                id="export_packet_pptx",
+                label="Prepare PPTX briefing deck",
+                renderer_id="huashu_design_pptx",
+                output_format="pptx",
+                review_required=True,
+                enabled=False,
+                disabled_reason="huashu-design adapter is not wired yet.",
+            ),
+            RendererExportAction(
+                id="export_packet_docx",
+                label="Prepare DOCX narrative brief",
+                renderer_id="pandoc_docx",
+                output_format="docx",
+                review_required=True,
+                enabled=False,
+                disabled_reason="Pandoc DOCX adapter is not wired yet.",
+            ),
+            RendererExportAction(
+                id="export_packet_xlsx",
+                label="Prepare XLSX capture workbook",
+                renderer_id="xlsx_export",
+                output_format="xlsx",
+                review_required=True,
+                enabled=False,
+                disabled_reason="XLSX export adapter is not wired yet.",
+            ),
+        ),
+        backend_blockers=(
+            "Renderer execution adapters are not wired in this UI epic.",
+            "Exports stay disabled until renderer adapters produce reviewable artifact drafts.",
+        ),
+    )
+    return RendererReadinessResponse(readiness=readiness)
 
 
 def recommend_assisted_capture_routes(

@@ -114,6 +114,27 @@ button {
   padding: 18px;
 }
 
+.renderer-readiness {
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  margin-top: 28px;
+  padding: 18px;
+}
+
+.export-action {
+  background: rgba(16, 21, 27, 0.82);
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  min-height: 198px;
+  padding: 14px;
+}
+
+.export-action span {
+  color: #f2c94c;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
 .command-button {
   background: #10151b;
   border: 1px solid #26313c;

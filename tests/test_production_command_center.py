@@ -356,3 +356,38 @@ def test_production_command_center_health_reports_hardened_contract(tmp_path) ->
         "external_network_required": False,
         "external_model_required": False,
     }
+
+
+def test_renderer_readiness_api_selects_living_packet_export_paths(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(_command_center_settings(tmp_path))).get(
+        "/api/production-command-center/renderer-readiness"
+    )
+
+    assert response.status_code == 200
+    readiness = response.json()["readiness"]
+    assert readiness["target_artifact"] == (
+        "living_milestone_decision_briefing_packet"
+    )
+    assert readiness["target_label"] == "Living Milestone Decision Briefing Packet"
+    assert [renderer["id"] for renderer in readiness["renderers"]] == [
+        "huashu_design_pptx",
+        "pandoc_docx",
+        "xlsx_export",
+    ]
+    assert readiness["renderers"][0]["engine"] == "huashu-design"
+    assert readiness["renderers"][0]["output_formats"] == ["pptx"]
+    assert readiness["renderers"][1]["engine"] == "pandoc"
+    assert readiness["renderers"][1]["output_formats"] == ["docx"]
+    assert readiness["renderers"][2]["output_formats"] == ["xlsx"]
+    assert [action["output_format"] for action in readiness["export_actions"]] == [
+        "pptx",
+        "docx",
+        "xlsx",
+    ]
+    assert all(action["review_required"] for action in readiness["export_actions"])
+    assert readiness["backend_blockers"] == [
+        "Renderer execution adapters are not wired in this UI epic.",
+        "Exports stay disabled until renderer adapters produce reviewable artifact drafts.",
+    ]

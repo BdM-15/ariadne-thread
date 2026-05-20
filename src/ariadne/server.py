@@ -191,6 +191,7 @@ from ariadne.usaspending import (
     resolve_usaspending_piid,
 )
 from ariadne.production_command_center import (
+    AssistedCaptureWorkProduct,
     AssistedRouteRecommendationRequest,
     AssistedRouteRecommendationResponse,
     AssistedRouteOutputReviewRequest,
@@ -813,9 +814,14 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/production-command-center/work-product-updates")
-    def production_command_center_work_product_updates() -> WorkProductUpdateListResponse:
+    def production_command_center_work_product_updates(
+        opportunity_id: str | None = None,
+        destination: AssistedCaptureWorkProduct | None = None,
+    ) -> WorkProductUpdateListResponse:
         return list_work_product_update_projections(
-            store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir)
+            store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+            opportunity_id=opportunity_id,
+            destination=destination,
         )
 
     @app.get("/", response_class=HTMLResponse)

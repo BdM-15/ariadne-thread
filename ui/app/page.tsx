@@ -136,6 +136,22 @@ type RendererReadinessResponse = {
   readiness: RendererReadiness;
 };
 
+type WorkProductUpdateProjection = {
+  id: string;
+  source_output_id: string;
+  review_decision_id: string;
+  destination: string;
+  state: string;
+  before_summary: string;
+  after_summary: string;
+  source_refs: string[];
+};
+
+type WorkProductUpdateListResponse = {
+  updates: WorkProductUpdateProjection[];
+  summary: Record<string, number>;
+};
+
 type OpportunityActivationRunListResponse = {
   runs: OpportunityActivationRun[];
 };
@@ -306,6 +322,27 @@ async function loadLatestActivationRun(
   }
 }
 
+async function loadWorkProductUpdates(
+  opportunityId: string,
+  destination: string,
+): Promise<WorkProductUpdateProjection[]> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/work-product-updates`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    url.searchParams.set("destination", destination);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as WorkProductUpdateListResponse;
+    return body.updates;
+  } catch {
+    return [];
+  }
+}
+
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
@@ -331,9 +368,10 @@ export default async function CommandCenterPage({
     return <OfflineShell />;
   }
 
-  const latestActivationRun = await loadLatestActivationRun(
-    workspace.opportunity.id,
-  );
+  const [latestActivationRun, actionPlanUpdates] = await Promise.all([
+    loadLatestActivationRun(workspace.opportunity.id),
+    loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
+  ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
       (field) => field.field_key === requestedPacketFieldKey,
@@ -550,6 +588,14 @@ export default async function CommandCenterPage({
               initialPacketFieldLabel={targetedPacketField?.label}
               key={workspace.opportunity.id}
               opportunityId={workspace.opportunity.id}
+            />
+          ) : null}
+
+          {selectedModeId === "actions" ? (
+            <ActionPlanMode
+              latestActivationRun={latestActivationRun}
+              selectedOpportunityId={workspace.opportunity.id}
+              updates={actionPlanUpdates}
             />
           ) : null}
 
@@ -1279,6 +1325,146 @@ function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
   );
 }
 
+function ActionPlanMode({
+  latestActivationRun,
+  selectedOpportunityId,
+  updates,
+}: {
+  latestActivationRun: OpportunityActivationRun | null;
+  selectedOpportunityId: string;
+  updates: WorkProductUpdateProjection[];
+}) {
+  const matrix = latestActivationRun?.packet_field_action_matrix;
+  const actionFields = matrix?.fields.filter(
+    (field) =>
+      field.action_state === "blocked" || field.action_state === "review_ready",
+  );
+  const currentGateActionFields =
+    actionFields?.filter((field) => field.current_gate_required) ?? [];
+  const visibleActionFields =
+    currentGateActionFields.length > 0
+      ? currentGateActionFields.slice(0, 4)
+      : (actionFields ?? []).slice(0, 4);
+  const sourceCount = new Set(updates.flatMap((update) => update.source_refs))
+    .size;
+
+  return (
+    <section className="action-plan-mode" aria-labelledby="action-plan-title">
+      <div className="action-plan-hero">
+        <div>
+          <p>Capture Action Plan</p>
+          <h3 id="action-plan-title">Review route-born follow-up work.</h3>
+          <span>
+            Accepted route outputs land here as review-ready Action Plan
+            updates. Packet gaps stay linked to the route that can produce the
+            next action.
+          </span>
+        </div>
+        <a
+          className="packet-action-link"
+          href={modeHref("capture", selectedOpportunityId, {
+            route_goal: "build_capture_action_plan",
+          })}
+        >
+          Sequence next actions
+        </a>
+      </div>
+
+      <dl className="action-plan-metric-grid">
+        <Metric
+          label="Ready updates"
+          value={updates.length.toString()}
+          tone="cyan"
+        />
+        <Metric
+          label="Open action fields"
+          value={(actionFields?.length ?? 0).toString()}
+          tone="rose"
+        />
+        <Metric
+          label="Source refs"
+          value={sourceCount.toString()}
+          tone="copper"
+        />
+      </dl>
+
+      <div className="action-plan-lanes">
+        <section className="action-plan-lane" aria-labelledby="route-updates-title">
+          <div className="action-plan-lane-heading">
+            <p>Review-ready updates</p>
+            <h4 id="route-updates-title">Accepted route outputs</h4>
+          </div>
+          {updates.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {updates.map((update) => (
+                <article className="action-update-card" key={update.id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(update.destination)}</span>
+                    <span>{formatLabel(update.state)}</span>
+                  </div>
+                  <p>{update.after_summary}</p>
+                  <dl>
+                    <div>
+                      <dt>Before</dt>
+                      <dd>{update.before_summary}</dd>
+                    </div>
+                    <div>
+                      <dt>Sources</dt>
+                      <dd>
+                        {update.source_refs.length > 0
+                          ? update.source_refs
+                              .map((sourceRef) => formatReferenceLabel(sourceRef))
+                              .join(", ")
+                          : "No source refs"}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No Action Plan updates ready.</p>
+              <span>Run and accept an action route to stage follow-up work.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="action-gaps-title">
+          <div className="action-plan-lane-heading">
+            <p>Next action inputs</p>
+            <h4 id="action-gaps-title">Packet gaps that can become tasks</h4>
+          </div>
+          {visibleActionFields.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {visibleActionFields.map((field) => (
+                <article className="action-gap-card" key={field.field_key}>
+                  <div>
+                    <span>{formatLabel(field.section)}</span>
+                    <h5>{field.label}</h5>
+                    <p>{field.gap_summary ?? field.route_rationale}</p>
+                  </div>
+                  <a
+                    className="packet-action-link"
+                    href={packetFieldRouteHref(field, selectedOpportunityId)}
+                  >
+                    Start route
+                  </a>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No blocking packet fields.</p>
+              <span>Current packet state has no action-producing gaps.</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function PulseSignal({ label, value, description, tone }: PulseSignalModel) {
   return (
     <article className={`pulse-signal pulse-signal-${tone}`}>
@@ -1392,6 +1578,20 @@ function formatLabel(value: string): string {
     .join(" ");
 }
 
+function formatReferenceLabel(value: string): string {
+  const labels: Record<string, string> = {
+    "packet.customer_context": "Customer context in the Living Packet",
+    "packet.risks_and_gaps": "Open packet risks and gaps",
+    "evidence.ev_customer_call": "Customer call evidence",
+    "action_plan.customer_insight_backfill": "Customer insight backfill action",
+    action_plan: "Current capture action plan",
+    "packet.gaps": "Open packet gaps",
+    capability_catalog: "Available Ariadne capabilities",
+  };
+
+  return labels[value] ?? formatLabel(value.replace(/^ev_/, "").replace(/\./g, "_"));
+}
+
 function firstSearchParam(
   value: string | string[] | undefined,
 ): string | undefined {
@@ -1483,7 +1683,6 @@ function opportunityAttentionMode(opportunity: PortfolioOpportunity): string {
 
 function isPlaceholderMode(modeId: string): boolean {
   return [
-    "actions",
     "engagement",
     "research",
     "documents",

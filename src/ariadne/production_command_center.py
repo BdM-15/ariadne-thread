@@ -1527,8 +1527,26 @@ def get_assisted_route_provenance(
 def list_work_product_update_projections(
     *,
     store: WorkflowRoutingStore,
+    opportunity_id: str | None = None,
+    destination: AssistedCaptureWorkProduct | None = None,
 ) -> WorkProductUpdateListResponse:
-    updates = _ordered_work_product_updates(store.list_work_product_updates())
+    updates = store.list_work_product_updates()
+    if opportunity_id is not None:
+        output_ids_for_opportunity = {
+            run.output.id
+            for run in store.list_runs()
+            if run.output.opportunity_id == opportunity_id
+        }
+        updates = tuple(
+            update
+            for update in updates
+            if update.source_output_id in output_ids_for_opportunity
+        )
+    if destination is not None:
+        updates = tuple(
+            update for update in updates if update.destination == destination
+        )
+    updates = _ordered_work_product_updates(updates)
     summary: dict[str, int] = {}
     for update in updates:
         summary[update.destination.value] = summary.get(update.destination.value, 0) + 1

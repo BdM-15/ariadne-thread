@@ -1065,6 +1065,26 @@ def test_work_product_updates_api_lists_before_after_projection_surfaces(
     ]
     assert updates_by_destination["living_packet"]["state"] == "ready_for_apply"
 
+    action_response = client.get(
+        "/api/production-command-center/work-product-updates",
+        params={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "destination": "action_plan",
+        },
+    )
+    assert action_response.status_code == 200
+    action_body = action_response.json()
+    assert action_body["summary"] == {"action_plan": 1}
+    assert len(action_body["updates"]) == 1
+    assert action_body["updates"][0]["destination"] == "action_plan"
+
+    other_opportunity_response = client.get(
+        "/api/production-command-center/work-product-updates",
+        params={"opportunity_id": "opp-other", "destination": "action_plan"},
+    )
+    assert other_opportunity_response.status_code == 200
+    assert other_opportunity_response.json() == {"updates": [], "summary": {}}
+
 
 def test_production_command_center_health_reports_hardened_contract(tmp_path) -> None:
     from fastapi.testclient import TestClient

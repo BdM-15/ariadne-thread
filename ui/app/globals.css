@@ -228,6 +228,33 @@ button {
   z-index: 30;
 }
 
+.portfolio-menu-group {
+  display: grid;
+  gap: 6px;
+}
+
+.portfolio-menu-group + .portfolio-menu-group {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 7px;
+}
+
+.portfolio-menu-group-heading {
+  color: #4dd8cf;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  margin: 2px 4px 0;
+  text-transform: uppercase;
+}
+
+.portfolio-menu-group-empty {
+  color: #647384;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 4px 6px 7px;
+}
+
 .portfolio-menu-link {
   border: 1px solid transparent;
   border-radius: 5px;
@@ -271,6 +298,11 @@ button {
   font-size: 11px;
   line-height: 1;
   padding: 5px 7px;
+}
+
+.portfolio-opportunity-status .portfolio-status-chip {
+  border-color: rgba(77, 216, 207, 0.38);
+  color: #9ae7e2;
 }
 
 .portfolio-empty {

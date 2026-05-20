@@ -33,6 +33,7 @@ type Opportunity = {
   name: string;
   lifecycle_state: string;
   gate_status: string;
+  portfolio_status: string;
 };
 
 type Packet = {
@@ -86,6 +87,7 @@ type PortfolioOpportunity = {
   name: string;
   lifecycle_state: string;
   gate_status: string;
+  portfolio_status: string;
   packet_readiness_label: string;
   review_ready_count: number;
   blocked_field_count: number;
@@ -428,6 +430,11 @@ export default async function CommandCenterPage({
               value={formatLabel(workspace.opportunity.gate_status)}
               tone="copper"
             />
+            <Metric
+              label="Portfolio"
+              value={formatLabel(workspace.opportunity.portfolio_status)}
+              tone="signal"
+            />
           </dl>
 
           <nav
@@ -568,13 +575,21 @@ function OpportunityPortfolioSwitcher({
   const selectedName = selectedOpportunity?.name ?? currentOpportunity.name;
   const selectedLifecycle =
     selectedOpportunity?.lifecycle_state ?? currentOpportunity.lifecycle_state;
+  const selectedPortfolioStatus =
+    selectedOpportunity?.portfolio_status ?? currentOpportunity.portfolio_status;
   const selectedReadiness = selectedOpportunity?.packet_readiness_label;
+  const groupedOpportunities = groupPortfolioOpportunities(opportunities);
+  const activeCount = opportunities.filter(
+    (opportunity) => opportunity.portfolio_status === "active",
+  ).length;
 
   return (
     <section className="portfolio-switcher" aria-labelledby="portfolio-title">
       <div className="portfolio-switcher-heading">
         <p id="portfolio-title">Opportunity</p>
-        <span>{opportunities.length} managed</span>
+        <span>
+          {opportunities.length} managed / {activeCount} active
+        </span>
       </div>
       <details className="portfolio-dropdown">
         <summary
@@ -584,6 +599,7 @@ function OpportunityPortfolioSwitcher({
           <span>
             <span className="portfolio-current-name">{selectedName}</span>
             <span className="portfolio-current-meta">
+              {formatLabel(selectedPortfolioStatus)} /{" "}
               {formatLabel(selectedLifecycle)}
               {selectedReadiness !== undefined
                 ? ` / ${formatLabel(selectedReadiness)}`
@@ -594,35 +610,51 @@ function OpportunityPortfolioSwitcher({
         </summary>
         <nav className="portfolio-menu" aria-label="Managed Opportunities">
           {opportunities.length > 0 ? (
-            opportunities.map((opportunity) => {
-              const isSelected = opportunity.id === selectedOpportunityId;
-              const href = opportunityAttentionHref(opportunity);
-              return (
-                <a
-                  aria-current={isSelected ? "page" : undefined}
-                  className={`portfolio-menu-link${isSelected ? " active" : ""}`}
-                  href={href}
-                  key={opportunity.id}
-                >
-                  <span className="portfolio-opportunity-name">
-                    {opportunity.name}
-                  </span>
-                  <span className="portfolio-opportunity-meta">
-                    {formatLabel(opportunity.lifecycle_state)} /{" "}
-                    {formatLabel(opportunity.packet_readiness_label)}
-                  </span>
-                  <span className="portfolio-opportunity-status">
-                    {opportunity.is_demo ? <span>Demo</span> : null}
-                    {opportunity.blocked_field_count > 0 ? (
-                      <span>{opportunity.blocked_field_count} fields</span>
-                    ) : null}
-                    {opportunity.review_ready_count > 0 ? (
-                      <span>{opportunity.review_ready_count} reviews</span>
-                    ) : null}
-                  </span>
-                </a>
-              );
-            })
+            groupedOpportunities.map((group) => (
+              <div className="portfolio-menu-group" key={group.id}>
+                <p className="portfolio-menu-group-heading">
+                  {group.label} / {group.opportunities.length}
+                </p>
+                {group.opportunities.length > 0 ? (
+                  group.opportunities.map((opportunity) => {
+                    const isSelected = opportunity.id === selectedOpportunityId;
+                    const href = opportunityAttentionHref(opportunity);
+                    return (
+                      <a
+                        aria-current={isSelected ? "page" : undefined}
+                        className={`portfolio-menu-link${isSelected ? " active" : ""}`}
+                        href={href}
+                        key={opportunity.id}
+                      >
+                        <span className="portfolio-opportunity-name">
+                          {opportunity.name}
+                        </span>
+                        <span className="portfolio-opportunity-meta">
+                          {formatLabel(opportunity.lifecycle_state)} /{" "}
+                          {formatLabel(opportunity.packet_readiness_label)}
+                        </span>
+                        <span className="portfolio-opportunity-status">
+                          <span className="portfolio-status-chip">
+                            {formatLabel(opportunity.portfolio_status)}
+                          </span>
+                          {opportunity.is_demo ? <span>Demo</span> : null}
+                          {opportunity.blocked_field_count > 0 ? (
+                            <span>{opportunity.blocked_field_count} fields</span>
+                          ) : null}
+                          {opportunity.review_ready_count > 0 ? (
+                            <span>{opportunity.review_ready_count} reviews</span>
+                          ) : null}
+                        </span>
+                      </a>
+                    );
+                  })
+                ) : (
+                  <p className="portfolio-menu-group-empty">
+                    No Opportunities
+                  </p>
+                )}
+              </div>
+            ))
           ) : (
             <p className="portfolio-empty">No saved Opportunities found.</p>
           )}
@@ -722,12 +754,17 @@ function CommandCenterHome({
                   href={attentionHref}
                   key={opportunity.id}
                   aria-current={
-                    opportunity.id === selectedOpportunityId ? "page" : undefined
+                    opportunity.id === selectedOpportunityId
+                      ? "page"
+                      : undefined
                   }
                 >
                   <div className="global-pulse-card-heading">
                     <div>
-                      <p>{formatLabel(opportunity.lifecycle_state)}</p>
+                      <p>
+                        {formatLabel(opportunity.portfolio_status)} /{" "}
+                        {formatLabel(opportunity.lifecycle_state)}
+                      </p>
                       <h4>{opportunity.name}</h4>
                     </div>
                     <span>{opportunity.urgencyLabel}</span>
@@ -736,7 +773,10 @@ function CommandCenterHome({
                     {opportunity.reason}
                   </span>
                   <div className="global-pulse-chip-row">
-                    <span>{formatLabel(opportunity.packet_readiness_label)}</span>
+                    <span>{formatLabel(opportunity.portfolio_status)}</span>
+                    <span>
+                      {formatLabel(opportunity.packet_readiness_label)}
+                    </span>
                     <span>{routeLabel} route</span>
                     {opportunity.blocked_field_count > 0 ? (
                       <span>{opportunity.blocked_field_count} gaps</span>
@@ -1370,6 +1410,45 @@ function buildGlobalOpportunityPulse(
     .slice(0, 6);
 }
 
+function groupPortfolioOpportunities(
+  opportunities: PortfolioOpportunity[],
+): Array<{
+  id: string;
+  label: string;
+  opportunities: PortfolioOpportunity[];
+}> {
+  const groups = [
+    { id: "active", label: "Active" },
+    { id: "future", label: "Future / Watchlist" },
+    { id: "held", label: "Held" },
+    { id: "past", label: "Past / Archive" },
+  ];
+  return groups.map((group) => ({
+    ...group,
+    opportunities: opportunities
+      .filter((opportunity) => portfolioGroupId(opportunity) === group.id)
+      .sort((firstOpportunity, secondOpportunity) =>
+        firstOpportunity.name.localeCompare(secondOpportunity.name),
+      ),
+  }));
+}
+
+function portfolioGroupId(opportunity: PortfolioOpportunity): string {
+  if (opportunity.is_demo || opportunity.portfolio_status === "active") {
+    return "active";
+  }
+  if (
+    opportunity.portfolio_status === "future" ||
+    opportunity.portfolio_status === "watchlist"
+  ) {
+    return "future";
+  }
+  if (opportunity.portfolio_status === "held") {
+    return "held";
+  }
+  return "past";
+}
+
 function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
   const readinessScore =
     opportunity.packet_readiness_label === "not_ready"
@@ -1377,17 +1456,32 @@ function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
       : opportunity.packet_readiness_label === "draft_ready"
         ? 2
         : 0;
+  const statusScore =
+    opportunity.portfolio_status === "active"
+      ? 4
+      : opportunity.portfolio_status === "future" ||
+          opportunity.portfolio_status === "watchlist"
+        ? 2
+        : opportunity.portfolio_status === "held"
+          ? 1
+          : 0;
   return (
     opportunity.blocked_field_count * 5 +
     opportunity.review_ready_count * 3 +
     opportunity.source_limitation_count * 2 +
-    readinessScore
+    readinessScore +
+    statusScore
   );
 }
 
 function opportunityPulseReason(opportunity: PortfolioOpportunity): string {
   if (opportunity.attention_reason) {
     return opportunity.attention_reason;
+  }
+  if (
+    ["archived", "won", "lost"].includes(opportunity.portfolio_status)
+  ) {
+    return `${formatLabel(opportunity.portfolio_status)} Opportunity. Open roadmap for trace and lessons.`;
   }
   if (opportunity.blocked_field_count > 0) {
     return `${opportunity.blocked_field_count} packet fields still block this roadmap.`;

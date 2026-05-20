@@ -10,6 +10,7 @@ type OpportunityScaffold = {
     name: string;
     lifecycle_state: string;
     gate_status: string;
+    portfolio_status: string;
   };
   workstreams: { id: string; label: string; status: string }[];
   backfill_needs: { workstream_id: string; label: string; rationale: string }[];
@@ -43,6 +44,7 @@ export function OpportunityIntakePanel() {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
+  const [portfolioStatus, setPortfolioStatus] = useState("watchlist");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export function OpportunityIntakePanel() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, portfolio_status: portfolioStatus }),
         },
       );
       if (!response.ok) {
@@ -83,6 +85,7 @@ export function OpportunityIntakePanel() {
       const body = (await response.json()) as OpportunityCreateResponse;
       setScaffold(body.scaffold);
       setName("");
+      setPortfolioStatus("watchlist");
       setIsOpeningWorkspace(true);
       setIsOpen(false);
       router.push(
@@ -160,6 +163,23 @@ export function OpportunityIntakePanel() {
                 />
               </label>
 
+              <label className="intake-field" htmlFor="portfolio-status">
+                <span>Portfolio status</span>
+                <select
+                  id="portfolio-status"
+                  onChange={(event) => setPortfolioStatus(event.target.value)}
+                  value={portfolioStatus}
+                >
+                  <option value="watchlist">Watchlist</option>
+                  <option value="future">Future</option>
+                  <option value="active">Active</option>
+                  <option value="held">Held</option>
+                  <option value="archived">Archived</option>
+                  <option value="won">Won</option>
+                  <option value="lost">Lost</option>
+                </select>
+              </label>
+
               <p className="modal-helper-text">
                 Ariadne will build the standard capture workspace, packet
                 sections, workstreams, field slots, and first activation digest.
@@ -202,8 +222,10 @@ export function OpportunityIntakePanel() {
 
                   <dl className="mt-3 grid grid-cols-3 gap-2">
                     <div>
-                      <dt>Workstreams</dt>
-                      <dd>{scaffold.workstreams.length}</dd>
+                      <dt>Status</dt>
+                      <dd>
+                        {formatLabel(scaffold.opportunity.portfolio_status)}
+                      </dd>
                     </div>
                     <div>
                       <dt>Sections</dt>
@@ -238,4 +260,11 @@ export function OpportunityIntakePanel() {
       ) : null}
     </>
   );
+}
+
+function formatLabel(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

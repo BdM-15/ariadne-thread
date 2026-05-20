@@ -375,6 +375,7 @@ export function OpportunityActivationPanel({
                     }
                     onReview={(decision) => reviewField(field, decision)}
                     output={outputByField.get(field.field_key) ?? null}
+                    routeHref={fieldRouteHref(opportunityId, field.field_key)}
                   />
                 ))}
               </div>
@@ -396,6 +397,7 @@ function ActivationFieldCard({
   onFieldValueChange,
   onReview,
   output,
+  routeHref,
 }: {
   field: PacketFieldActionItem;
   fieldNote: string;
@@ -406,10 +408,12 @@ function ActivationFieldCard({
   onFieldValueChange: (value: string) => void;
   onReview: (decision: FieldReviewDecision) => void;
   output: OpportunityActivationRunOutput | null;
+  routeHref: string;
 }) {
   const isReviewed =
     output !== null && output.review_state !== "pending_review";
   const canReview = output !== null && output.review_state === "pending_review";
+  const canStartRoute = field.action_state !== "answered";
 
   return (
     <article
@@ -444,6 +448,13 @@ function ActivationFieldCard({
           <CheckCircle2 size={15} aria-hidden />
           <span>{field.current_value ?? "Answer accepted"}</span>
         </div>
+      ) : null}
+
+      {canStartRoute ? (
+        <a className="activation-assisted-route-link" href={routeHref}>
+          <Route size={15} aria-hidden />
+          <span>Start assisted route</span>
+        </a>
       ) : null}
 
       {canReview ? (
@@ -518,6 +529,16 @@ function ActivationFieldCard({
       ) : null}
     </article>
   );
+}
+
+function fieldRouteHref(opportunityId: string, fieldKey: string): string {
+  const params = new URLSearchParams({
+    opportunity_id: opportunityId,
+    mode: "capture",
+    packet_field_key: fieldKey,
+    route_goal: "close_packet_gap",
+  });
+  return `/?${params.toString()}`;
 }
 
 function ActivationMetric({

@@ -1259,6 +1259,26 @@ button {
   margin-top: 1px;
 }
 
+.activation-assisted-route-link {
+  align-items: center;
+  background: #173038;
+  border: 1px solid rgba(77, 216, 207, 0.45);
+  border-radius: 6px;
+  color: #e9fffd;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 7px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 9px 11px;
+  text-decoration: none;
+  width: 100%;
+}
+
+.activation-assisted-route-link svg {
+  flex: 0 0 auto;
+}
+
 .activation-field-status {
   color: #f0b573;
   font-size: 12px;

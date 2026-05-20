@@ -35,6 +35,7 @@ type PacketFieldActionItem = {
   answer_paths: string[];
   required_milestone_gates?: string[];
   current_gate_required?: boolean;
+  route_kind?: string;
   recommended_route: string;
   route_rationale: string;
   requires_review: boolean;

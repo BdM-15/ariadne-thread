@@ -152,6 +152,12 @@ type PacketRoadmapSection = {
   blocked: number;
 };
 
+type LivePacketSection = PacketRoadmapSection & {
+  fields: PacketRoadmapField[];
+  routeKinds: string[];
+  sourceCount: number;
+};
+
 type GlobalOpportunityPulseUrgency = "critical" | "review" | "watch" | "steady";
 
 type GlobalOpportunityPulseItem = PortfolioOpportunity & {
@@ -889,6 +895,7 @@ function PacketMode({
       : (matrix?.fields ?? [])),
   ].sort(compareRoadmapFields);
   const roadmapSections = buildRoadmapSections(roadmapFields);
+  const livePacketSections = buildLivePacketSections(roadmapFields);
   const supportedFields = roadmapFields.filter(isRoadmapFieldAnswered);
   const needsActionFields = roadmapFields.filter((field) =>
     isRoadmapFieldActionable(field),
@@ -918,6 +925,28 @@ function PacketMode({
 
       {!compact && matrix !== undefined ? (
         <>
+          <section
+            className="workspace-section"
+            aria-labelledby="live-packet-title"
+          >
+            <div className="section-heading">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                  Living Packet Live View
+                </p>
+                <h3 id="live-packet-title">
+                  Sections, data elements, support, routes
+                </h3>
+              </div>
+              <FileText className="text-ariadne-cyan" size={22} aria-hidden />
+            </div>
+            <LivingPacketLiveView
+              currentGateLabel={currentGateLabel}
+              sections={livePacketSections}
+              selectedOpportunityId={selectedOpportunityId}
+            />
+          </section>
+
           <section
             className="workspace-section"
             aria-labelledby="packet-roadmap-title"
@@ -1080,10 +1109,7 @@ function PacketRoadmapFieldCard({
   field: PacketRoadmapField;
   selectedOpportunityId: string;
 }) {
-  const routeHref = modeHref("capture", selectedOpportunityId, {
-    packet_field_key: field.field_key,
-    route_goal: "close_packet_gap",
-  });
+  const routeHref = packetFieldRouteHref(field, selectedOpportunityId);
   return (
     <article className={`packet-field-card ${packetFieldToneClass(field)}`}>
       <div className="packet-field-card-heading">
@@ -1118,6 +1144,98 @@ function PacketRoadmapFieldCard({
         </a>
       </div>
     </article>
+  );
+}
+
+function LivingPacketLiveView({
+  currentGateLabel,
+  sections,
+  selectedOpportunityId,
+}: {
+  currentGateLabel: string;
+  sections: LivePacketSection[];
+  selectedOpportunityId: string;
+}) {
+  const totalFields = sections.reduce(
+    (count, section) => count + section.total,
+    0,
+  );
+  const supportedFields = sections.reduce(
+    (count, section) => count + section.answered,
+    0,
+  );
+  const reviewFields = sections.reduce(
+    (count, section) => count + section.reviewReady,
+    0,
+  );
+  const blockedFields = sections.reduce(
+    (count, section) => count + section.blocked,
+    0,
+  );
+
+  return (
+    <div className="live-packet-view">
+      <div className="live-packet-summary-strip" aria-label="Packet coverage">
+        <span>{currentGateLabel}</span>
+        <span>{totalFields} fields</span>
+        <span>{supportedFields} supported</span>
+        <span>{reviewFields} review</span>
+        <span>{blockedFields} gaps</span>
+      </div>
+      <div className="live-packet-section-flow">
+        {sections.map((section) => (
+          <article className="live-packet-section" key={section.id}>
+            <div className="live-packet-section-head">
+              <div>
+                <p>{section.label}</p>
+                <strong>
+                  {section.answered}/{section.total} supported
+                </strong>
+              </div>
+              <span>{section.sourceCount} sources</span>
+            </div>
+            <div className="live-packet-route-kind-row">
+              {section.routeKinds.map((routeKind) => (
+                <span key={routeKind}>{formatLabel(routeKind)}</span>
+              ))}
+            </div>
+            <div className="live-packet-field-stack">
+              {section.fields.map((field) => (
+                <div
+                  className={`live-packet-field ${livePacketFieldToneClass(field)}`}
+                  key={field.field_key}
+                >
+                  <div className="live-packet-field-main">
+                    <span className="live-packet-state-dot" aria-hidden />
+                    <div>
+                      <strong>{field.label}</strong>
+                      <span>
+                        {formatLabel(field.current_status)} /{" "}
+                        {formatLabel(field.evidence_status)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="live-packet-field-trace">
+                    <span>
+                      {field.source_refs.length > 0
+                        ? `${field.source_refs.length} sources`
+                        : "No sources"}
+                    </span>
+                    <span>{formatLabel(field.route_kind ?? "route")}</span>
+                    <a
+                      className="live-packet-route-link"
+                      href={packetFieldRouteHref(field, selectedOpportunityId)}
+                    >
+                      {isRoadmapFieldAnswered(field) ? "Review" : "Start route"}
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1566,6 +1684,45 @@ function buildRoadmapSections(
   return [...sections.values()];
 }
 
+function buildLivePacketSections(
+  fields: PacketRoadmapField[],
+): LivePacketSection[] {
+  const sections = new Map<string, LivePacketSection>();
+  fields.forEach((field) => {
+    const section = sections.get(field.section) ?? {
+      id: field.section,
+      label: formatLabel(field.section),
+      total: 0,
+      answered: 0,
+      reviewReady: 0,
+      blocked: 0,
+      fields: [],
+      routeKinds: [],
+      sourceCount: 0,
+    };
+    section.total += 1;
+    section.sourceCount += field.source_refs.length;
+    section.fields.push(field);
+    const routeKind = field.route_kind ?? "route";
+    if (!section.routeKinds.includes(routeKind)) {
+      section.routeKinds.push(routeKind);
+    }
+    if (isRoadmapFieldAnswered(field)) {
+      section.answered += 1;
+    } else if (field.action_state === "review_ready") {
+      section.reviewReady += 1;
+    } else {
+      section.blocked += 1;
+    }
+    sections.set(field.section, section);
+  });
+  return [...sections.values()].map((section) => ({
+    ...section,
+    fields: [...section.fields].sort(compareRoadmapFields),
+    routeKinds: [...section.routeKinds].sort(),
+  }));
+}
+
 function compareRoadmapFields(
   firstField: PacketRoadmapField,
   secondField: PacketRoadmapField,
@@ -1620,6 +1777,26 @@ function packetFieldToneClass(field: PacketRoadmapField): string {
     return "packet-field-card-review";
   }
   return "packet-field-card-supported";
+}
+
+function livePacketFieldToneClass(field: PacketRoadmapField): string {
+  if (isRoadmapFieldAnswered(field)) {
+    return "live-packet-field-supported";
+  }
+  if (field.requires_review) {
+    return "live-packet-field-review";
+  }
+  return "live-packet-field-gap";
+}
+
+function packetFieldRouteHref(
+  field: PacketRoadmapField,
+  selectedOpportunityId: string,
+): string {
+  return modeHref("capture", selectedOpportunityId, {
+    packet_field_key: field.field_key,
+    route_goal: "close_packet_gap",
+  });
 }
 
 function modeForPacketRoute(route: string): string {

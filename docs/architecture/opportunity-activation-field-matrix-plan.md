@@ -17,17 +17,28 @@ The first slice is deterministic and local-first:
 - Expose API routes to list and request activation runs for one Opportunity.
 - Keep all outputs review-gated; do not create Evidence, Packet Field Answers, Action Plan Items, or other trusted records automatically.
 
+## UI Slice
+
+The first visible Command Center slice keeps activation inside the main Opportunity workspace:
+
+- Load the latest activation run for the selected Opportunity from the Next.js server component.
+- Show an Autonomy Digest panel with coverage gained, blocked and review-ready counts, approval needs, source limitations, skill-chain suggestions, and next-best actions.
+- Show the Packet Field Action Matrix as compact field route cards with field status, evidence status, value kind, approval needs, and recommended route.
+- Let the operator request a new deterministic activation run from the panel, then refresh the workspace without introducing polling or background workers.
+- Keep the panel read-only except for the safe request action; trusted field promotion remains a later review workflow.
+
 ## Architecture Notes
 
 - `src/ariadne/opportunity_activation.py` owns the activation run interface, Packet Field Action Matrix, digest generation, and local store.
 - `src/ariadne/production_command_center.py` calls the activation module during Opportunity Intake and reuses the activation route recommendation helper for field slots.
 - `src/ariadne/server.py` exposes activation runs through the production Command Center API.
+- `ui/components/OpportunityActivationPanel.tsx` renders the main workspace Autonomy Digest, request action, and Packet Field Action Matrix from the latest activation run.
+- `ui/app/page.tsx` loads the latest activation run after selecting or creating an Opportunity and passes it to the panel.
 - `ARIADNE_OPPORTUNITY_ACTIVATION_DIR` keeps activation state separate from Opportunity scaffold state and workflow routing state.
 
 ## Deferred
 
 - Live source collection, hosted/local model synthesis, external API calls, and capability execution during activation.
-- UI Packet Field Action Matrix cards inside the Next.js workspace.
 - Review actions that promote activation outputs into trusted Packet Field Answers, Evidence, Action Plan Items, Call Plan updates, or Research Briefs.
 - Resume/progress UI for long-running activation work.
 - Policy-based graduated autonomy for safe repeated activation routes.
@@ -36,3 +47,4 @@ The first slice is deterministic and local-first:
 
 - Unit tests cover field coverage, answered/review-ready/blocked counts, review-gated outputs, and local store round-trips.
 - Production Command Center tests cover initial activation storage after Opportunity creation and on-demand activation run API behavior.
+- Next.js validation covers the activation panel through `npm --prefix ui run typecheck`, `npm --prefix ui run build`, and local HTTP smoke checks for the panel, matrix, and request action.

@@ -20,6 +20,10 @@ import {
   AssistedCapturePanel,
   type AssistedCaptureGoal,
 } from "../components/AssistedCapturePanel";
+import {
+  OpportunityActivationPanel,
+  type OpportunityActivationRun,
+} from "../components/OpportunityActivationPanel";
 import { OpportunityIntakePanel } from "../components/OpportunityIntakePanel";
 
 export const dynamic = "force-dynamic";
@@ -122,6 +126,10 @@ type RendererReadinessResponse = {
   readiness: RendererReadiness;
 };
 
+type OpportunityActivationRunListResponse = {
+  runs: OpportunityActivationRun[];
+};
+
 type SignalTone = "cyan" | "copper" | "rose" | "signal";
 
 type CommandCenterSearchParams = {
@@ -207,6 +215,29 @@ async function loadRendererReadiness(): Promise<RendererReadiness | null> {
   }
 }
 
+async function loadLatestActivationRun(
+  opportunityId: string,
+): Promise<OpportunityActivationRun | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/production-command-center/opportunities/${encodeURIComponent(opportunityId)}/activation-runs`,
+      {
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) {
+      return null;
+    }
+    const body = (await response.json()) as OpportunityActivationRunListResponse;
+    return [...body.runs].sort(
+      (firstRun, secondRun) =>
+        activationTimestamp(secondRun) - activationTimestamp(firstRun),
+    )[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
@@ -226,6 +257,10 @@ export default async function CommandCenterPage({
   if (workspace === null) {
     return <OfflineShell />;
   }
+
+  const latestActivationRun = await loadLatestActivationRun(
+    workspace.opportunity.id,
+  );
 
   const pulseSignals = [
     {
@@ -448,6 +483,11 @@ export default async function CommandCenterPage({
               ))}
             </div>
           </section>
+
+          <OpportunityActivationPanel
+            opportunityId={workspace.opportunity.id}
+            run={latestActivationRun}
+          />
 
           <AssistedCapturePanel
             goals={workspace.assisted_capture_goals}
@@ -675,4 +715,9 @@ function firstSearchParam(
     return value[0];
   }
   return value;
+}
+
+function activationTimestamp(run: OpportunityActivationRun): number {
+  const timestamp = Date.parse(run.completed_at ?? run.created_at);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 }

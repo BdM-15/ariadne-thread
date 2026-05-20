@@ -247,6 +247,108 @@ type CaptureResearchRunListResponse = {
   runs: CaptureResearchRun[];
 };
 
+type DocumentIntakeRecord = {
+  id: string;
+  source_ref: string;
+  filename: string | null;
+  mime_type: string | null;
+  byte_size: number;
+  material_type: string | null;
+  content_type: string;
+  status: string;
+  queue_state: string | null;
+  opportunity_id: string | null;
+  warnings: string[];
+  capability_hint: string;
+  extraction_bundle_id: string | null;
+  extraction_status: string | null;
+  extraction_review_status: string | null;
+  extraction_warning_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type DocumentIntakeDraftPart = {
+  id: string;
+  part_type: string;
+  content: string;
+  recommended_route: string;
+  suggested_skill_chain: string[];
+  source_intake_record_id: string | null;
+  source_extraction_bundle_id: string | null;
+  source_span_ids: string[];
+  recommendation: string | null;
+  assumptions: string[];
+  confidence_notes: string[];
+};
+
+type DocumentIntakeDraft = {
+  id: string;
+  raw_item_id: string;
+  opportunity_id: string | null;
+  status: string;
+  polished_capture: string;
+  clarity_status: string;
+  assumptions: string[];
+  confidence_notes: string[];
+  gaps: string[];
+  intelligence_pieces: DocumentIntakeDraftPart[];
+  extraction_bundle_id: string | null;
+  extraction_document_id: string | null;
+  extracted_source_span_ids: string[];
+  extraction_warnings_summarized: string | null;
+};
+
+type DocumentIntakeCaptureCandidate = {
+  id: string;
+  candidate_type: string;
+  title: string;
+  content: string;
+  target_workflow: string;
+  recommendation: string;
+  rationale: string;
+  confidence: number | null;
+  review_state: string;
+  trusted_output_written: boolean;
+  source_intake_record_id: string;
+  source_extraction_bundle_id: string;
+  source_draft_id: string;
+  source_draft_part_id: string;
+  source_span_ids: string[];
+  suggested_skill_chain: string[];
+};
+
+type DocumentIntakeCapability = {
+  id: string;
+  name: string;
+  adapter_kind: string;
+  status: string;
+  supported_material_types: string[];
+  expected_output_contract: string;
+  capability_hint: string;
+  deferred_reason: string | null;
+  external_tool_invocation_allowed: boolean;
+};
+
+type DocumentIntakeQueueResponse = {
+  records: DocumentIntakeRecord[];
+};
+
+type DocumentIntakeExtractionDraftsResponse = {
+  drafts: DocumentIntakeDraft[];
+};
+
+type DocumentIntakeCaptureCandidatesResponse = {
+  candidates: DocumentIntakeCaptureCandidate[];
+};
+
+type DocumentIntakeCapabilitiesResponse = {
+  capabilities: DocumentIntakeCapability[];
+  available_count: number;
+  deferred_count: number;
+  extraction_bundle_boundary: string;
+};
+
 type OpportunityActivationRunListResponse = {
   runs: OpportunityActivationRun[];
 };
@@ -475,6 +577,75 @@ async function loadCaptureResearchSourceRegistry(): Promise<CaptureResearchSourc
   }
 }
 
+async function loadDocumentIntakeRecords(): Promise<DocumentIntakeRecord[]> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/document-intake/queue`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as DocumentIntakeQueueResponse;
+    return [...body.records].sort(
+      (firstRecord, secondRecord) =>
+        Date.parse(secondRecord.updated_at) - Date.parse(firstRecord.updated_at),
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function loadDocumentIntakeDrafts(): Promise<DocumentIntakeDraft[]> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/document-intake/extraction-drafts`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const body =
+      (await response.json()) as DocumentIntakeExtractionDraftsResponse;
+    return body.drafts;
+  } catch {
+    return [];
+  }
+}
+
+async function loadDocumentIntakeCandidates(): Promise<
+  DocumentIntakeCaptureCandidate[]
+> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/document-intake/capture-candidates`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const body =
+      (await response.json()) as DocumentIntakeCaptureCandidatesResponse;
+    return body.candidates;
+  } catch {
+    return [];
+  }
+}
+
+async function loadDocumentIntakeCapabilities(): Promise<DocumentIntakeCapabilitiesResponse | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/document-intake/capabilities`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as DocumentIntakeCapabilitiesResponse;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
@@ -506,12 +677,20 @@ export default async function CommandCenterPage({
     callPlanUpdates,
     researchRuns,
     researchSourceRegistry,
+    documentRecords,
+    documentDrafts,
+    documentCandidates,
+    documentCapabilities,
   ] = await Promise.all([
       loadLatestActivationRun(workspace.opportunity.id),
       loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
       loadWorkProductUpdates(workspace.opportunity.id, "call_plan"),
       loadCaptureResearchRuns(workspace.opportunity.id),
       loadCaptureResearchSourceRegistry(),
+      loadDocumentIntakeRecords(),
+      loadDocumentIntakeDrafts(),
+      loadDocumentIntakeCandidates(),
+      loadDocumentIntakeCapabilities(),
     ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
@@ -754,6 +933,17 @@ export default async function CommandCenterPage({
               runs={researchRuns}
               selectedOpportunityId={workspace.opportunity.id}
               sourceRegistry={researchSourceRegistry}
+            />
+          ) : null}
+
+          {selectedModeId === "documents" ? (
+            <DocumentsMode
+              capabilities={documentCapabilities}
+              candidates={documentCandidates}
+              drafts={documentDrafts}
+              latestActivationRun={latestActivationRun}
+              records={documentRecords}
+              selectedOpportunityId={workspace.opportunity.id}
             />
           ) : null}
 
@@ -2038,6 +2228,306 @@ function ResearchMode({
   );
 }
 
+function DocumentsMode({
+  capabilities,
+  candidates,
+  drafts,
+  latestActivationRun,
+  records,
+  selectedOpportunityId,
+}: {
+  capabilities: DocumentIntakeCapabilitiesResponse | null;
+  candidates: DocumentIntakeCaptureCandidate[];
+  drafts: DocumentIntakeDraft[];
+  latestActivationRun: OpportunityActivationRun | null;
+  records: DocumentIntakeRecord[];
+  selectedOpportunityId: string;
+}) {
+  const draftParts = drafts.flatMap((draft) =>
+    draft.intelligence_pieces.map((piece) => ({ draft, piece })),
+  );
+  const parserRequiredCount = records.filter(
+    (record) => record.status === "parser_required",
+  ).length;
+  const pendingReviewCount = records.filter((record) =>
+    ["pending_review", "in_review"].includes(
+      record.extraction_review_status ?? "",
+    ),
+  ).length;
+  const matrix = latestActivationRun?.packet_field_action_matrix;
+  const sourceBackedFields = matrix?.fields.filter((field) => {
+    const routeText = [
+      field.field_key,
+      field.label,
+      field.question,
+      field.section,
+      field.route_kind,
+      field.recommended_route,
+      field.route_rationale,
+      ...field.answer_paths,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return (
+      isRoadmapFieldActionable(field) &&
+      (routeText.includes("source_backed_answer") ||
+        routeText.includes("source material") ||
+        routeText.includes("extract") ||
+        routeText.includes("document"))
+    );
+  });
+  const visibleSourceBackedFields = [...(sourceBackedFields ?? [])]
+    .sort(compareRoadmapFields)
+    .slice(0, 4);
+
+  return (
+    <section className="action-plan-mode" aria-labelledby="documents-title">
+      <div className="action-plan-hero">
+        <div>
+          <p>Document Intake</p>
+          <h3 id="documents-title">Turn source material into review work.</h3>
+          <span>
+            Intake records, extraction drafts, parser gaps, and document-derived
+            candidates stay visible before any source span becomes trusted evidence.
+          </span>
+        </div>
+        <a
+          className="packet-action-link"
+          href={modeHref("capture", selectedOpportunityId, {
+            route_goal: "close_packet_gap",
+          })}
+        >
+          Route document gap
+        </a>
+      </div>
+
+      <dl className="action-plan-metric-grid">
+        <Metric
+          label="Intake records"
+          value={records.length.toString()}
+          tone="cyan"
+        />
+        <Metric
+          label="Review queue"
+          value={`${pendingReviewCount}/${draftParts.length}`}
+          tone="copper"
+        />
+        <Metric
+          label="Parser gaps"
+          value={parserRequiredCount.toString()}
+          tone="rose"
+        />
+        <Metric
+          label="Deferred adapters"
+          value={(capabilities?.deferred_count ?? 0).toString()}
+          tone="signal"
+        />
+      </dl>
+
+      <div className="action-plan-lanes">
+        <section className="action-plan-lane" aria-labelledby="document-queue-title">
+          <div className="action-plan-lane-heading">
+            <p>Source queue</p>
+            <h4 id="document-queue-title">Intake records</h4>
+          </div>
+          {records.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {records.slice(0, 5).map((record) => (
+                <article className="action-update-card" key={record.id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(record.queue_state ?? record.status)}</span>
+                    <span>{formatLabel(record.material_type ?? "source")}</span>
+                  </div>
+                  <p>{record.filename ?? record.source_ref}</p>
+                  <dl>
+                    <div>
+                      <dt>Extraction</dt>
+                      <dd>
+                        {formatLabel(record.extraction_status ?? "not_started")} / {formatLabel(record.extraction_review_status ?? "not_ready")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Opportunity</dt>
+                      <dd>{record.opportunity_id ?? "Unassigned"}</dd>
+                    </div>
+                    <div>
+                      <dt>Warnings</dt>
+                      <dd>{record.extraction_warning_count.toString()}</dd>
+                    </div>
+                    <div>
+                      <dt>Source</dt>
+                      <dd>{record.source_ref}</dd>
+                    </div>
+                  </dl>
+                  <span className="action-update-note">
+                    {record.capability_hint}
+                  </span>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No intake records.</p>
+              <span>Upload or register source material to start Document Intake.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="document-drafts-title">
+          <div className="action-plan-lane-heading">
+            <p>Extraction review</p>
+            <h4 id="document-drafts-title">Document-derived draft parts</h4>
+          </div>
+          {draftParts.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {draftParts.slice(0, 5).map(({ draft, piece }) => (
+                <article className="action-update-card" key={piece.id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(piece.part_type)}</span>
+                    <span>{formatLabel(draft.status)}</span>
+                  </div>
+                  <p>{piece.content}</p>
+                  <dl>
+                    <div>
+                      <dt>Route</dt>
+                      <dd>{formatLabel(piece.recommended_route)}</dd>
+                    </div>
+                    <div>
+                      <dt>Skill chain</dt>
+                      <dd>{joinOrNone(piece.suggested_skill_chain)}</dd>
+                    </div>
+                    <div>
+                      <dt>Source spans</dt>
+                      <dd>{joinOrNone(piece.source_span_ids)}</dd>
+                    </div>
+                    <div>
+                      <dt>Bundle</dt>
+                      <dd>{piece.source_extraction_bundle_id ?? draft.extraction_bundle_id ?? "None"}</dd>
+                    </div>
+                  </dl>
+                  {piece.recommendation ? (
+                    <span className="action-update-note">
+                      {piece.recommendation}
+                    </span>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No extraction drafts.</p>
+              <span>Readable text or Markdown intake creates reviewable draft parts.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="document-candidates-title">
+          <div className="action-plan-lane-heading">
+            <p>Review-gated outputs</p>
+            <h4 id="document-candidates-title">Capture candidates</h4>
+          </div>
+          {candidates.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {candidates.slice(0, 5).map((candidate) => (
+                <article className="action-update-card" key={candidate.id}>
+                  <div className="action-update-card-head">
+                    <span>{formatLabel(candidate.target_workflow)}</span>
+                    <span>{formatLabel(candidate.review_state)}</span>
+                  </div>
+                  <p>{candidate.title}</p>
+                  <span className="action-update-note">{candidate.content}</span>
+                  <dl>
+                    <div>
+                      <dt>Skill chain</dt>
+                      <dd>{joinOrNone(candidate.suggested_skill_chain)}</dd>
+                    </div>
+                    <div>
+                      <dt>Trace</dt>
+                      <dd>{candidate.source_extraction_bundle_id}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No capture candidates.</p>
+              <span>Draft parts can queue Action Plan, Packet, Risk, or Call Plan candidates after review prep.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="document-capabilities-title">
+          <div className="action-plan-lane-heading">
+            <p>Parser boundary</p>
+            <h4 id="document-capabilities-title">Intake capabilities</h4>
+          </div>
+          {capabilities ? (
+            <div className="action-plan-card-stack">
+              <article className="action-update-card">
+                <div className="action-update-card-head">
+                  <span>{capabilities.available_count} available</span>
+                  <span>{capabilities.deferred_count} deferred</span>
+                </div>
+                <p>{capabilities.extraction_bundle_boundary}</p>
+              </article>
+              {capabilities.capabilities.slice(0, 5).map((capability) => (
+                <article className="action-gap-card" key={capability.id}>
+                  <div>
+                    <span>{formatLabel(capability.status)}</span>
+                    <h5>{capability.name}</h5>
+                    <p>{capability.capability_hint}</p>
+                    <small>
+                      {formatLabel(capability.adapter_kind)} - {joinOrNone(capability.supported_material_types)}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>Capability report unavailable.</p>
+              <span>Document Intake capability endpoint did not respond.</span>
+            </div>
+          )}
+        </section>
+
+        <section className="action-plan-lane" aria-labelledby="document-gaps-title">
+          <div className="action-plan-lane-heading">
+            <p>Packet inputs</p>
+            <h4 id="document-gaps-title">Source-backed packet gaps</h4>
+          </div>
+          {visibleSourceBackedFields.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {visibleSourceBackedFields.map((field) => (
+                <article className="action-gap-card" key={field.field_key}>
+                  <div>
+                    <span>{formatLabel(field.route_kind ?? field.section)}</span>
+                    <h5>{field.label}</h5>
+                    <p>{field.gap_summary ?? field.route_rationale}</p>
+                  </div>
+                  <a
+                    className="packet-action-link"
+                    href={packetFieldRouteHref(field, selectedOpportunityId)}
+                  >
+                    Start route
+                  </a>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No source-backed packet gaps.</p>
+              <span>Current packet routes do not require document/source extraction.</span>
+            </div>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function PulseSignal({ label, value, description, tone }: PulseSignalModel) {
   return (
     <article className={`pulse-signal pulse-signal-${tone}`}>
@@ -2261,7 +2751,7 @@ function opportunityAttentionMode(opportunity: PortfolioOpportunity): string {
 }
 
 function isPlaceholderMode(modeId: string): boolean {
-  return ["documents", "capability_studio"].includes(modeId);
+  return ["capability_studio"].includes(modeId);
 }
 
 function buildGlobalOpportunityPulse(

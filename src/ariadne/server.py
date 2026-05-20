@@ -189,12 +189,14 @@ from ariadne.production_command_center import (
     AssistedRouteRunRequest,
     AssistedRouteRunResponse,
     ProductionCommandCenterWorkspace,
+    ProductionCommandCenterHealthResponse,
     WorkflowRoutingStore,
     WorkProductUpdateListResponse,
     build_production_command_center_workspace,
     execute_assisted_capture_route,
     get_assisted_route_provenance,
     list_work_product_update_projections,
+    production_command_center_health,
     recommend_assisted_capture_routes,
     review_assisted_route_output,
 )
@@ -576,6 +578,10 @@ def create_app(
                 workspace_root=Path.cwd(),
             )
         )
+
+    @app.get("/api/production-command-center/health")
+    def production_command_center_health_status() -> ProductionCommandCenterHealthResponse:
+        return production_command_center_health()
 
     @app.post(
         "/api/production-command-center/opportunities/{opportunity_id}/"

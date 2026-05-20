@@ -50,6 +50,12 @@ button {
   color: #ffffff;
 }
 
+.command-button:disabled,
+.goal-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .mode-count {
   align-items: center;
   background: rgba(216, 138, 54, 0.16);
@@ -230,6 +236,12 @@ button {
   gap: 8px;
   grid-template-columns: 1fr;
   margin-top: 10px;
+}
+
+@media (min-width: 520px) {
+  .review-action-row {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .update-projection {

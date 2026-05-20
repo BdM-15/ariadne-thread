@@ -229,6 +229,7 @@ export function AssistedCapturePanel({
           <button
             aria-selected={selectedGoalId === goal.id}
             className="goal-button"
+            disabled={isPending}
             key={goal.id}
             onClick={() => requestRoutes(goal.id)}
             type="button"
@@ -279,6 +280,7 @@ export function AssistedCapturePanel({
             </div>
             <button
               className="command-button route-run-button"
+              disabled={isPending}
               onClick={() => runRoute(routeRecommendation.id)}
               type="button"
             >
@@ -286,6 +288,7 @@ export function AssistedCapturePanel({
             </button>
             <button
               className="command-button route-run-button"
+              disabled={isPending}
               onClick={() => inspectProvenance(routeRecommendation.id)}
               type="button"
             >
@@ -325,6 +328,7 @@ export function AssistedCapturePanel({
                   <div className="review-action-row">
                     <button
                       className="command-button"
+                      disabled={isPending}
                       onClick={() =>
                         reviewOutput(runsByRouteId[routeRecommendation.id].output.id, "accept")
                       }
@@ -334,6 +338,7 @@ export function AssistedCapturePanel({
                     </button>
                     <button
                       className="command-button danger"
+                      disabled={isPending}
                       onClick={() =>
                         reviewOutput(runsByRouteId[routeRecommendation.id].output.id, "reject")
                       }

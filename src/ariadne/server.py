@@ -723,6 +723,7 @@ def create_app(
             return recommend_assisted_capture_routes(
                 opportunity_id=opportunity_id,
                 goal_id=request.goal_id,
+                packet_field_key=request.packet_field_key,
                 store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
             )
         except ValueError as error:

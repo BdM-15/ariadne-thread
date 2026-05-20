@@ -34,6 +34,7 @@ from ariadne.packet_knowledge import (
     PacketFieldDefinition,
     build_default_packet_field_definitions,
     create_packet_field_answer,
+    get_packet_field_definition,
 )
 from ariadne.packets import EvidenceStatus, create_living_briefing_packet
 from ariadne.quick_capture_demo import build_quick_capture_demo_thread
@@ -190,6 +191,7 @@ class AssistedRouteRecommendation(BaseModel):
     id: str
     opportunity_id: str
     goal_id: str
+    packet_field_key: str | None = None
     route_label: str
     route_summary: str
     autonomy_tier: AssistedCaptureAutonomyTier
@@ -288,6 +290,7 @@ class WorkProductUpdateProjection(BaseModel):
 
 class AssistedRouteRecommendationRequest(BaseModel):
     goal_id: str
+    packet_field_key: str | None = None
     operator_intent: str | None = None
 
 
@@ -1207,10 +1210,15 @@ def recommend_assisted_capture_routes(
     *,
     opportunity_id: str,
     goal_id: str,
+    packet_field_key: str | None = None,
     store: WorkflowRoutingStore | None = None,
 ) -> AssistedRouteRecommendationResponse:
     goal = _goal_by_id(goal_id)
-    recommendations = _recommendations_for_goal(opportunity_id=opportunity_id, goal=goal)
+    recommendations = _recommendations_for_goal(
+        opportunity_id=opportunity_id,
+        goal=goal,
+        packet_field_key=packet_field_key,
+    )
     if store is not None:
         store.write_recommendations(recommendations)
     return AssistedRouteRecommendationResponse(
@@ -1443,6 +1451,7 @@ def _recommendations_for_goal(
     *,
     opportunity_id: str,
     goal: AssistedCaptureGoal,
+    packet_field_key: str | None = None,
 ) -> tuple[AssistedRouteRecommendation, ...]:
     if goal.id == "prepare_customer_call":
         return (
@@ -1520,6 +1529,14 @@ def _recommendations_for_goal(
             ),
         )
     if goal.id == "close_packet_gap":
+        if packet_field_key is not None:
+            return (
+                _packet_field_gap_recommendation(
+                    opportunity_id=opportunity_id,
+                    goal=goal,
+                    packet_field_key=packet_field_key,
+                ),
+            )
         return (
             AssistedRouteRecommendation(
                 id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_packet-answer-draft"),
@@ -1577,6 +1594,66 @@ def _recommendations_for_goal(
                 "before downstream capture work depends on them.",
             ),
         ),
+    )
+
+
+def _packet_field_gap_recommendation(
+    *,
+    opportunity_id: str,
+    goal: AssistedCaptureGoal,
+    packet_field_key: str,
+) -> AssistedRouteRecommendation:
+    try:
+        definition = get_packet_field_definition(
+            build_default_packet_field_definitions(),
+            packet_field_key,
+        )
+    except KeyError as error:
+        raise ValueError(f"Unsupported packet field: {packet_field_key}") from error
+
+    recommended_route = recommend_packet_field_route(definition)
+    recommendation_id = f"route_{opportunity_id}_{goal.id}_packet-field-{definition.key}"
+    capability_chain = _capability_chain_for_packet_field_route(recommended_route)
+    return AssistedRouteRecommendation(
+        id=recommendation_id,
+        opportunity_id=opportunity_id,
+        goal_id=goal.id,
+        packet_field_key=definition.key,
+        route_label=f"Close packet gap: {definition.label}",
+        route_summary=f"Advance {definition.label}: {recommended_route}",
+        autonomy_tier=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+        work_product_targets=goal.work_product_targets,
+        recommended_capability_chain=capability_chain,
+        capability_route_card=_capability_route_card(
+            recommendation_id=recommendation_id,
+            title=f"Close packet gap: {definition.label}",
+            capability_chain=capability_chain,
+        ),
+        input_refs=(
+            f"packet_field.{definition.key}",
+            f"packet_section.{definition.section.value}",
+            "opportunity_activation.latest_matrix",
+        ),
+        reasoning=(
+            f"{definition.label} is required by the current packet roadmap or visible as a staged future-gate field.",
+            f"Question to answer: {definition.question}",
+            f"Recommended route: {recommended_route}",
+        ),
+    )
+
+
+def _capability_chain_for_packet_field_route(route: str) -> tuple[str, ...]:
+    normalized_route = route.lower()
+    if any(token in normalized_route for token in ("research", "lookup")):
+        return (
+            "knowledge_context_review",
+            "capture_research_enrichment",
+            "packet_answer_draft",
+        )
+    return (
+        "knowledge_context_review",
+        "packet_gap_review",
+        "packet_answer_draft",
     )
 
 

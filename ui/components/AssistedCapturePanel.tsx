@@ -1,7 +1,7 @@
 "use client";
 
 import { Route, ShieldCheck, Target } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 export type AssistedCaptureGoal = {
   id: string;
@@ -15,6 +15,7 @@ type AssistedRouteRecommendation = {
   id: string;
   opportunity_id: string;
   goal_id: string;
+  packet_field_key?: string | null;
   route_label: string;
   route_summary: string;
   autonomy_tier: string;
@@ -100,12 +101,24 @@ type ProvenanceResponse = {
 
 export function AssistedCapturePanel({
   goals,
+  initialGoalId,
+  initialPacketFieldKey,
+  initialPacketFieldLabel,
   opportunityId,
 }: {
   goals: AssistedCaptureGoal[];
+  initialGoalId?: string;
+  initialPacketFieldKey?: string;
+  initialPacketFieldLabel?: string;
   opportunityId: string;
 }) {
-  const [selectedGoalId, setSelectedGoalId] = useState(goals[0]?.id ?? "");
+  const [selectedGoalId, setSelectedGoalId] = useState(
+    initialGoalId ?? goals[0]?.id ?? "",
+  );
+  const [targetPacketFieldKey, setTargetPacketFieldKey] = useState<
+    string | null
+  >(initialPacketFieldKey ?? null);
+  const [autoRequestKey, setAutoRequestKey] = useState<string | null>(null);
   const [routes, setRoutes] = useState<AssistedRouteRecommendation[]>([]);
   const [runsByRouteId, setRunsByRouteId] = useState<
     Record<string, AssistedRouteRun>
@@ -122,8 +135,34 @@ export function AssistedCapturePanel({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function requestRoutes(goalId: string) {
+  const targetPacketFieldLabel =
+    initialPacketFieldLabel ?? targetPacketFieldKey;
+
+  useEffect(() => {
+    if (initialGoalId === undefined && initialPacketFieldKey === undefined) {
+      return;
+    }
+    const goalId = initialGoalId ?? selectedGoalId;
+    if (!goalId) {
+      return;
+    }
+    const requestKey = `${opportunityId}:${goalId}:${initialPacketFieldKey ?? ""}`;
+    if (autoRequestKey === requestKey) {
+      return;
+    }
+    setAutoRequestKey(requestKey);
+    requestRoutes(goalId, initialPacketFieldKey ?? null);
+  }, [
+    autoRequestKey,
+    initialGoalId,
+    initialPacketFieldKey,
+    opportunityId,
+    selectedGoalId,
+  ]);
+
+  function requestRoutes(goalId: string, packetFieldKey: string | null = null) {
     setSelectedGoalId(goalId);
+    setTargetPacketFieldKey(packetFieldKey);
     setError(null);
     startTransition(async () => {
       const response = await fetch(
@@ -131,7 +170,10 @@ export function AssistedCapturePanel({
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ goal_id: goalId }),
+          body: JSON.stringify({
+            goal_id: goalId,
+            packet_field_key: packetFieldKey ?? undefined,
+          }),
         },
       );
       if (!response.ok) {
@@ -241,6 +283,11 @@ export function AssistedCapturePanel({
             returns reviewable updates for the packet, call plan, action plan,
             research, or artifact it can improve.
           </p>
+          {targetPacketFieldLabel !== null ? (
+            <p className="mt-2 text-sm text-ariadne-signal">
+              Target packet field: {formatLabel(targetPacketFieldLabel)}
+            </p>
+          ) : null}
         </div>
         <Target className="text-ariadne-cyan" size={20} aria-hidden />
       </div>
@@ -286,6 +333,12 @@ export function AssistedCapturePanel({
                 <h4 className="mt-1 text-sm font-semibold text-slate-100">
                   {routeRecommendation.route_label}
                 </h4>
+                {routeRecommendation.packet_field_key !== undefined &&
+                routeRecommendation.packet_field_key !== null ? (
+                  <p className="mt-1 text-xs text-ariadne-signal">
+                    {formatLabel(routeRecommendation.packet_field_key)} field
+                  </p>
+                ) : null}
               </div>
               <Route size={18} className="text-ariadne-copper" aria-hidden />
             </div>

@@ -344,6 +344,50 @@ def test_created_opportunity_can_receive_route_recommendations(tmp_path) -> None
     assert recommendation["id"].startswith(f"route_{opportunity_id}_close_packet_gap")
 
 
+def test_packet_field_card_can_request_field_specific_route(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap", "packet_field_key": "competition"},
+    )
+
+    assert response.status_code == 200
+    recommendation = response.json()["recommendations"][0]
+    assert recommendation["packet_field_key"] == "competition"
+    assert recommendation["route_label"] == "Close packet gap: Competition"
+    assert "packet_field.competition" in recommendation["input_refs"]
+    assert "Recommended route:" in recommendation["reasoning"][2]
+
+
+def test_field_specific_route_rejects_unknown_packet_field(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap", "packet_field_key": "missing"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Unsupported packet field: missing"
+
+
 def test_production_command_center_lists_created_opportunities(tmp_path) -> None:
     from fastapi.testclient import TestClient
 

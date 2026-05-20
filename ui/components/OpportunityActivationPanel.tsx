@@ -289,17 +289,25 @@ export function OpportunityActivationPanel({
             <div className="activation-summary-grid">
               <ActivationMetric
                 label="Current gate fields"
-                value={(matrix.current_gate_field_count ?? matrix.fields.length).toString()}
+                value={(
+                  matrix.current_gate_field_count ?? matrix.fields.length
+                ).toString()}
                 description={`Living Packet fields required for ${currentGateLabel}.`}
               />
               <ActivationMetric
                 label="Current gate gaps"
-                value={(matrix.current_gate_blocked_count ?? matrix.blocked_field_count).toString()}
+                value={(
+                  matrix.current_gate_blocked_count ??
+                  matrix.blocked_field_count
+                ).toString()}
                 description="Fields still needing evidence, import, synthesis, or user input."
               />
               <ActivationMetric
                 label="Review ready"
-                value={(matrix.current_gate_review_ready_count ?? matrix.review_ready_count).toString()}
+                value={(
+                  matrix.current_gate_review_ready_count ??
+                  matrix.review_ready_count
+                ).toString()}
                 description="Field candidates waiting for human review."
               />
               <ActivationMetric
@@ -336,7 +344,8 @@ export function OpportunityActivationPanel({
                 <div>
                   <p>Packet Field Action Matrix</p>
                   <h4 id="activation-matrix-title">
-                    {matrix.fields.length} packet fields mapped for {currentGateLabel}
+                    {matrix.fields.length} packet fields mapped for{" "}
+                    {currentGateLabel}
                   </h4>
                 </div>
                 <Route size={20} aria-hidden />

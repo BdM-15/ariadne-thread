@@ -172,6 +172,8 @@ type CommandCenterSearchParams = {
   opportunity_id?: string | string[];
   created?: string | string[];
   mode?: string | string[];
+  packet_field_key?: string | string[];
+  route_goal?: string | string[];
 };
 
 type CommandCenterPageProps = {
@@ -305,6 +307,10 @@ export default async function CommandCenterPage({
     resolvedSearchParams.opportunity_id,
   );
   const requestedMode = firstSearchParam(resolvedSearchParams.mode);
+  const requestedPacketFieldKey = firstSearchParam(
+    resolvedSearchParams.packet_field_key,
+  );
+  const requestedRouteGoal = firstSearchParam(resolvedSearchParams.route_goal);
   const createdWorkspace =
     firstSearchParam(resolvedSearchParams.created) === "1";
   const [workspace, rendererReadiness, portfolio] = await Promise.all([
@@ -320,6 +326,13 @@ export default async function CommandCenterPage({
   const latestActivationRun = await loadLatestActivationRun(
     workspace.opportunity.id,
   );
+  const targetedPacketField =
+    latestActivationRun?.packet_field_action_matrix.fields.find(
+      (field) => field.field_key === requestedPacketFieldKey,
+    );
+  const initialRouteGoal =
+    requestedRouteGoal ??
+    (requestedPacketFieldKey !== undefined ? "close_packet_gap" : undefined);
   const commandModes = buildCommandModes(workspace.work_modes);
   const selectedModeId = normalizeCommandMode(requestedMode, commandModes);
   const selectedMode =
@@ -519,6 +532,9 @@ export default async function CommandCenterPage({
           {selectedModeId === "capture" ? (
             <AssistedCapturePanel
               goals={workspace.assisted_capture_goals}
+              initialGoalId={initialRouteGoal}
+              initialPacketFieldKey={requestedPacketFieldKey}
+              initialPacketFieldLabel={targetedPacketField?.label}
               key={workspace.opportunity.id}
               opportunityId={workspace.opportunity.id}
             />
@@ -827,7 +843,9 @@ function PacketMode({
     (field) => field.current_gate_required !== false,
   );
   const roadmapFields = [
-    ...(currentGateFields.length > 0 ? currentGateFields : (matrix?.fields ?? [])),
+    ...(currentGateFields.length > 0
+      ? currentGateFields
+      : (matrix?.fields ?? [])),
   ].sort(compareRoadmapFields);
   const roadmapSections = buildRoadmapSections(roadmapFields);
   const needsActionFields = roadmapFields.filter((field) =>
@@ -989,7 +1007,10 @@ function PacketRoadmapFieldCard({
   field: PacketRoadmapField;
   selectedOpportunityId: string;
 }) {
-  const routeMode = modeForPacketRoute(field.recommended_route);
+  const routeHref = modeHref("capture", selectedOpportunityId, {
+    packet_field_key: field.field_key,
+    route_goal: "close_packet_gap",
+  });
   return (
     <article className={`packet-field-card ${packetFieldToneClass(field)}`}>
       <div className="packet-field-card-heading">
@@ -1019,11 +1040,8 @@ function PacketRoadmapFieldCard({
       </p>
       <div className="packet-field-route-row">
         <span>{field.recommended_route}</span>
-        <a
-          className="packet-action-link"
-          href={modeHref(routeMode, selectedOpportunityId)}
-        >
-          {routeMode === "activation" ? "Review field" : "Open route"}
+        <a className="packet-action-link" href={routeHref}>
+          Start route
         </a>
       </div>
     </article>
@@ -1211,10 +1229,19 @@ function normalizeCommandMode(
   return "pulse";
 }
 
-function modeHref(modeId: string, opportunityId: string): string {
+function modeHref(
+  modeId: string,
+  opportunityId: string,
+  extraParams: Record<string, string | undefined> = {},
+): string {
   const params = new URLSearchParams({
     opportunity_id: opportunityId,
     mode: modeId,
+  });
+  Object.entries(extraParams).forEach(([key, value]) => {
+    if (value !== undefined) {
+      params.set(key, value);
+    }
   });
   return `/?${params.toString()}`;
 }
@@ -1372,8 +1399,9 @@ function compareRoadmapFields(
   firstField: PacketRoadmapField,
   secondField: PacketRoadmapField,
 ): number {
-  const currentGateDelta = Number(secondField.current_gate_required !== false)
-    - Number(firstField.current_gate_required !== false);
+  const currentGateDelta =
+    Number(secondField.current_gate_required !== false) -
+    Number(firstField.current_gate_required !== false);
   if (currentGateDelta !== 0) {
     return currentGateDelta;
   }

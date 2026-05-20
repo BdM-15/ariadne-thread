@@ -71,6 +71,33 @@ class AssistedCaptureSelectionPrompt(BaseModel):
     label: str = "What do you want Ariadne to help prepare next?"
 
 
+class CapabilityRouteStepStatus(StrEnum):
+    PLANNED = "planned"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class CapabilityRouteStep(BaseModel):
+    capability_id: str
+    label: str
+    capability_type: str
+    executor_kind: str
+    output_target: str
+    status: CapabilityRouteStepStatus = CapabilityRouteStepStatus.PLANNED
+
+
+class CapabilityRouteCard(BaseModel):
+    id: str
+    title: str
+    capability_count: int
+    steps: tuple[CapabilityRouteStep, ...]
+
+
+class CapabilityRouteProgress(BaseModel):
+    percent_complete: int
+    steps: tuple[CapabilityRouteStep, ...]
+
+
 class AssistedRouteRecommendation(BaseModel):
     id: str
     opportunity_id: str
@@ -81,6 +108,7 @@ class AssistedRouteRecommendation(BaseModel):
     requires_review: bool = True
     work_product_targets: tuple[AssistedCaptureWorkProduct, ...]
     recommended_capability_chain: tuple[str, ...]
+    capability_route_card: CapabilityRouteCard
     input_refs: tuple[str, ...]
     reasoning: tuple[str, ...]
     status: str = "recommended"
@@ -145,6 +173,7 @@ class AssistedRouteRun(BaseModel):
     executor_kind: str = "deterministic_python"
     network_required: bool = False
     model_required: bool = False
+    capability_progress: CapabilityRouteProgress
     stages: tuple[AssistedRouteRunStage, ...]
     output: AssistedRouteOutput
 
@@ -379,6 +408,52 @@ ASSISTED_CAPTURE_GOALS: tuple[AssistedCaptureGoal, ...] = (
 )
 
 
+CAPABILITY_STEP_METADATA: dict[str, tuple[str, str, str, str]] = {
+    "knowledge_context_review": (
+        "Knowledge context review",
+        "skill",
+        "deterministic_python",
+        "Route inputs",
+    ),
+    "capture_research_enrichment": (
+        "Capture research enrichment",
+        "workflow",
+        "deterministic_python",
+        "Customer insight",
+    ),
+    "call_plan_draft": (
+        "Call plan draft",
+        "skill",
+        "deterministic_python",
+        "Call Plan",
+    ),
+    "packet_gap_review": (
+        "Packet gap review",
+        "skill",
+        "deterministic_python",
+        "Packet gaps",
+    ),
+    "next_action_recommendation": (
+        "Next action recommendation",
+        "workflow",
+        "deterministic_python",
+        "Action Plan",
+    ),
+    "packet_answer_draft": (
+        "Packet answer draft",
+        "skill",
+        "deterministic_python",
+        "Living Packet",
+    ),
+    "action_plan_update": (
+        "Action plan update",
+        "skill",
+        "deterministic_python",
+        "Action Plan",
+    ),
+}
+
+
 def build_production_command_center_workspace(
     settings: RuntimeSettings,
     *,
@@ -529,6 +604,9 @@ def execute_assisted_capture_route(
                 summary="Created one review-gated work product draft.",
             ),
         ),
+        capability_progress=_capability_progress_for_route(
+            recommendation.capability_route_card
+        ),
         output=output,
     )
     return store.write_run(run)
@@ -629,7 +707,7 @@ def _recommendations_for_goal(
     if goal.id == "prepare_customer_call":
         return (
             AssistedRouteRecommendation(
-                id=f"route_{opportunity_id}_{goal.id}_customer-call-plan",
+                id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_customer-call-plan"),
                 opportunity_id=opportunity_id,
                 goal_id=goal.id,
                 route_label="Customer call plan route",
@@ -644,6 +722,15 @@ def _recommendations_for_goal(
                     "capture_research_enrichment",
                     "call_plan_draft",
                 ),
+                capability_route_card=_capability_route_card(
+                    recommendation_id=recommendation_id,
+                    title="Customer call plan route",
+                    capability_chain=(
+                        "knowledge_context_review",
+                        "capture_research_enrichment",
+                        "call_plan_draft",
+                    ),
+                ),
                 input_refs=(
                     "packet.customer_context",
                     "evidence.ev_customer_call",
@@ -657,7 +744,7 @@ def _recommendations_for_goal(
                 ),
             ),
             AssistedRouteRecommendation(
-                id=f"route_{opportunity_id}_{goal.id}_packet-gap-triage",
+                id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_packet-gap-triage"),
                 opportunity_id=opportunity_id,
                 goal_id=goal.id,
                 route_label="Packet gap triage route",
@@ -674,6 +761,14 @@ def _recommendations_for_goal(
                     "packet_gap_review",
                     "next_action_recommendation",
                 ),
+                capability_route_card=_capability_route_card(
+                    recommendation_id=recommendation_id,
+                    title="Packet gap triage route",
+                    capability_chain=(
+                        "packet_gap_review",
+                        "next_action_recommendation",
+                    ),
+                ),
                 input_refs=(
                     "packet.customer_context",
                     "packet.risks_and_gaps",
@@ -687,7 +782,7 @@ def _recommendations_for_goal(
     if goal.id == "close_packet_gap":
         return (
             AssistedRouteRecommendation(
-                id=f"route_{opportunity_id}_{goal.id}_packet-answer-draft",
+                id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_packet-answer-draft"),
                 opportunity_id=opportunity_id,
                 goal_id=goal.id,
                 route_label="Packet answer draft route",
@@ -698,6 +793,14 @@ def _recommendations_for_goal(
                     "knowledge_context_review",
                     "packet_answer_draft",
                 ),
+                capability_route_card=_capability_route_card(
+                    recommendation_id=recommendation_id,
+                    title="Packet answer draft route",
+                    capability_chain=(
+                        "knowledge_context_review",
+                        "packet_answer_draft",
+                    ),
+                ),
                 input_refs=("packet.customer_context", "evidence.ev_customer_call"),
                 reasoning=(
                     "The Living Packet has a partial customer-context answer that can "
@@ -707,7 +810,7 @@ def _recommendations_for_goal(
         )
     return (
         AssistedRouteRecommendation(
-            id=f"route_{opportunity_id}_{goal.id}_action-plan-sequence",
+            id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_action-plan-sequence"),
             opportunity_id=opportunity_id,
             goal_id=goal.id,
             route_label="Action plan sequencing route",
@@ -718,6 +821,15 @@ def _recommendations_for_goal(
                 "knowledge_context_review",
                 "next_action_recommendation",
                 "action_plan_update",
+            ),
+            capability_route_card=_capability_route_card(
+                recommendation_id=recommendation_id,
+                title="Action plan sequencing route",
+                capability_chain=(
+                    "knowledge_context_review",
+                    "next_action_recommendation",
+                    "action_plan_update",
+                ),
             ),
             input_refs=("action_plan", "packet.gaps", "capability_catalog"),
             reasoning=(
@@ -805,3 +917,50 @@ def _ordered_updates_for_output(
         for destination in output.work_product_targets
         if destination in updates_by_destination
     )
+
+
+def _capability_route_card(
+    *,
+    recommendation_id: str,
+    title: str,
+    capability_chain: tuple[str, ...],
+) -> CapabilityRouteCard:
+    steps = tuple(_capability_route_step(capability_id) for capability_id in capability_chain)
+    return CapabilityRouteCard(
+        id=f"card_{recommendation_id}",
+        title=title,
+        capability_count=len(steps),
+        steps=steps,
+    )
+
+
+def _capability_route_step(
+    capability_id: str,
+    *,
+    status: CapabilityRouteStepStatus = CapabilityRouteStepStatus.PLANNED,
+) -> CapabilityRouteStep:
+    label, capability_type, executor_kind, output_target = CAPABILITY_STEP_METADATA.get(
+        capability_id,
+        (capability_id.replace("_", " ").title(), "skill", "deterministic_python", "Review output"),
+    )
+    return CapabilityRouteStep(
+        capability_id=capability_id,
+        label=label,
+        capability_type=capability_type,
+        executor_kind=executor_kind,
+        output_target=output_target,
+        status=status,
+    )
+
+
+def _capability_progress_for_route(
+    route_card: CapabilityRouteCard,
+) -> CapabilityRouteProgress:
+    steps = tuple(
+        _capability_route_step(
+            step.capability_id,
+            status=CapabilityRouteStepStatus.SUCCEEDED,
+        )
+        for step in route_card.steps
+    )
+    return CapabilityRouteProgress(percent_complete=100, steps=steps)

@@ -163,6 +163,25 @@ button {
   padding: 14px;
 }
 
+.capability-chain {
+  border-top: 1px solid #26313c;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.capability-step {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 28px;
+}
+
+.capability-step span:last-child {
+  color: #98a6b3;
+}
+
 .chip {
   border: 1px solid rgba(216, 138, 54, 0.45);
   border-radius: 999px;
@@ -243,4 +262,18 @@ button {
 .provenance-panel dd {
   margin: 3px 0 0;
   overflow-wrap: anywhere;
+}
+
+.progress-bar {
+  background: rgba(38, 49, 60, 0.78);
+  border-radius: 999px;
+  height: 8px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.progress-bar span {
+  background: #4dd8cf;
+  display: block;
+  height: 100%;
 }

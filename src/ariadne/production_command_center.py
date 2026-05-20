@@ -716,6 +716,7 @@ def create_standard_opportunity_scaffold(
     request: ProductionOpportunityIntakeRequest,
     store: OpportunityScaffoldStore,
     activation_store: OpportunityActivationRunStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> ProductionOpportunityScaffold:
     opportunity_name = request.name.strip()
     if not opportunity_name:
@@ -759,6 +760,7 @@ def create_standard_opportunity_scaffold(
         trigger=OpportunityActivationRunTrigger.INITIAL_SCAFFOLD,
         store=activation_store,
         current_milestone_gate=opportunity.current_milestone_gate,
+        vault_root=vault_root,
         initial_coverage=(
             f"Created {len(opportunity.workstreams)} standard capture workstreams.",
             f"Created {len(packet_states)} Living Packet sections.",
@@ -825,6 +827,7 @@ def update_production_opportunity_portfolio_state(
     store: OpportunityScaffoldStore,
     activation_store: OpportunityActivationRunStore,
     answer_store: PacketFieldAnswerStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> ProductionOpportunityPortfolioUpdateResponse:
     if opportunity_id == DEMO_OPPORTUNITY_ID or not store.has_scaffold(opportunity_id):
         raise ValueError(f"Opportunity context not found: {opportunity_id}")
@@ -879,6 +882,7 @@ def update_production_opportunity_portfolio_state(
         activation_store=activation_store,
         answer_store=answer_store,
         trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+        vault_root=vault_root,
     )
     return ProductionOpportunityPortfolioUpdateResponse(
         scaffold=stored_scaffold,
@@ -893,6 +897,7 @@ def run_production_opportunity_activation(
     activation_store: OpportunityActivationRunStore,
     answer_store: PacketFieldAnswerStore | None = None,
     trigger: OpportunityActivationRunTrigger = OpportunityActivationRunTrigger.USER_REQUEST,
+    vault_root: Path | str | None = None,
 ) -> OpportunityActivationRun:
     current_milestone_gate = MilestoneGate.MILESTONE_3
     if opportunity_id != DEMO_OPPORTUNITY_ID and not opportunity_store.has_scaffold(
@@ -915,6 +920,7 @@ def run_production_opportunity_activation(
         trigger=trigger,
         store=activation_store,
         current_milestone_gate=current_milestone_gate,
+        vault_root=vault_root,
     )
 
 
@@ -925,6 +931,7 @@ def build_production_command_center_workspace(
     opportunity_id: str | None = None,
     opportunity_store: OpportunityScaffoldStore | None = None,
     answer_store: PacketFieldAnswerStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> ProductionCommandCenterWorkspace:
     if opportunity_id is not None and opportunity_id != DEMO_OPPORTUNITY_ID:
         store = opportunity_store or OpportunityScaffoldStore(
@@ -937,6 +944,7 @@ def build_production_command_center_workspace(
             settings=settings,
             workspace_root=workspace_root,
             answer_store=answer_store,
+            vault_root=vault_root,
         )
 
     demo = build_quick_capture_demo_thread(
@@ -1016,6 +1024,7 @@ def list_production_opportunity_portfolio(
     *,
     store: OpportunityScaffoldStore,
     answer_store: PacketFieldAnswerStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> ProductionOpportunityPortfolioResponse:
     return ProductionOpportunityPortfolioResponse(
         opportunities=(
@@ -1040,6 +1049,7 @@ def list_production_opportunity_portfolio(
                 _portfolio_item_from_scaffold(
                     scaffold,
                     answer_store=answer_store,
+                    vault_root=vault_root,
                 )
                 for scaffold in store.list_scaffolds()
             ),
@@ -1051,10 +1061,12 @@ def _portfolio_item_from_scaffold(
     scaffold: ProductionOpportunityScaffold,
     *,
     answer_store: PacketFieldAnswerStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> ProductionOpportunityPortfolioItem:
     activation_run = _activation_run_for_scaffold(
         scaffold,
         answer_store=answer_store,
+        vault_root=vault_root,
     )
     digest = activation_run.activation_digest
     matrix = activation_run.packet_field_action_matrix
@@ -1100,6 +1112,7 @@ def _activation_run_for_scaffold(
     scaffold: ProductionOpportunityScaffold,
     *,
     answer_store: PacketFieldAnswerStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> OpportunityActivationRun:
     return run_opportunity_activation(
         opportunity_id=scaffold.opportunity.id,
@@ -1113,6 +1126,7 @@ def _activation_run_for_scaffold(
         current_milestone_gate=_milestone_gate_from_scaffold_opportunity(
             scaffold.opportunity
         ),
+        vault_root=vault_root,
     )
 
 
@@ -1288,10 +1302,12 @@ def _workspace_from_scaffold(
     settings: RuntimeSettings,
     workspace_root: Path | None = None,
     answer_store: PacketFieldAnswerStore | None = None,
+    vault_root: Path | str | None = None,
 ) -> ProductionCommandCenterWorkspace:
     activation_run = _activation_run_for_scaffold(
         scaffold,
         answer_store=answer_store,
+        vault_root=vault_root or settings.ariadne_obsidian_vault_dir,
     )
     matrix = activation_run.packet_field_action_matrix
     packet = _packet_view_from_matrix(scaffold.packet.title, matrix)
@@ -1622,6 +1638,7 @@ def review_assisted_route_output(
     activation_store: OpportunityActivationRunStore | None = None,
     output_id: str,
     request: AssistedRouteOutputReviewRequest,
+    vault_root: Path | str | None = None,
 ) -> AssistedRouteOutputReviewResponse:
     output = store.read_output(output_id)
     review_state = (
@@ -1678,6 +1695,7 @@ def review_assisted_route_output(
                 activation_store=activation_store,
                 answer_store=answer_store,
                 trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+                vault_root=vault_root,
             )
     return AssistedRouteOutputReviewResponse(
         output=reviewed_output,

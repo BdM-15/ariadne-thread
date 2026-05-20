@@ -704,6 +704,7 @@ def create_app(
                 answer_store=PacketFieldAnswerStore(
                     runtime_settings.ariadne_packet_field_answers_dir
                 ),
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -724,6 +725,7 @@ def create_app(
             answer_store=PacketFieldAnswerStore(
                 runtime_settings.ariadne_packet_field_answers_dir
             ),
+            vault_root=runtime_settings.ariadne_obsidian_vault_dir,
         )
 
     @app.post("/api/production-command-center/opportunities")
@@ -737,6 +739,7 @@ def create_app(
                 activation_store=OpportunityActivationRunStore(
                     runtime_settings.ariadne_opportunity_activation_dir
                 ),
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
@@ -795,6 +798,7 @@ def create_app(
                     runtime_settings.ariadne_packet_field_answers_dir
                 ),
                 trigger=OpportunityActivationRunTrigger.USER_REQUEST,
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -890,6 +894,7 @@ def create_app(
                 ),
                 output_id=output_id,
                 request=request,
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Route output not found") from error

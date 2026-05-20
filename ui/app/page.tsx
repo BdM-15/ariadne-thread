@@ -2,6 +2,7 @@ import {
   Archive,
   Bot,
   BriefcaseBusiness,
+  CheckCircle2,
   ClipboardCheck,
   Download,
   FileStack,
@@ -71,6 +72,22 @@ type WorkspaceResponse = {
   workspace: Workspace;
 };
 
+type PortfolioOpportunity = {
+  id: string;
+  name: string;
+  lifecycle_state: string;
+  gate_status: string;
+  packet_readiness_label: string;
+  review_ready_count: number;
+  blocked_field_count: number;
+  source_limitation_count: number;
+  is_demo: boolean;
+};
+
+type PortfolioResponse = {
+  opportunities: PortfolioOpportunity[];
+};
+
 type RendererCapability = {
   id: string;
   label: string;
@@ -106,6 +123,15 @@ type RendererReadinessResponse = {
 
 type SignalTone = "cyan" | "copper" | "rose" | "signal";
 
+type CommandCenterSearchParams = {
+  opportunity_id?: string | string[];
+  created?: string | string[];
+};
+
+type CommandCenterPageProps = {
+  searchParams?: Promise<CommandCenterSearchParams>;
+};
+
 const modeIcons: Record<
   string,
   ComponentType<{ className?: string; size?: number }>
@@ -121,14 +147,15 @@ const modeIcons: Record<
 
 const apiBaseUrl = process.env.ARIADNE_API_BASE_URL ?? "http://127.0.0.1:9622";
 
-async function loadWorkspace(): Promise<Workspace | null> {
+async function loadWorkspace(opportunityId?: string): Promise<Workspace | null> {
   try {
-    const response = await fetch(
-      `${apiBaseUrl}/api/production-command-center/workspace`,
-      {
-        cache: "no-store",
-      },
-    );
+    const url = new URL(`${apiBaseUrl}/api/production-command-center/workspace`);
+    if (opportunityId !== undefined) {
+      url.searchParams.set("opportunity_id", opportunityId);
+    }
+    const response = await fetch(url, {
+      cache: "no-store",
+    });
     if (!response.ok) {
       return null;
     }
@@ -136,6 +163,24 @@ async function loadWorkspace(): Promise<Workspace | null> {
     return body.workspace;
   } catch {
     return null;
+  }
+}
+
+async function loadPortfolio(): Promise<PortfolioOpportunity[]> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/api/production-command-center/opportunities`,
+      {
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as PortfolioResponse;
+    return body.opportunities;
+  } catch {
+    return [];
   }
 }
 
@@ -157,10 +202,18 @@ async function loadRendererReadiness(): Promise<RendererReadiness | null> {
   }
 }
 
-export default async function CommandCenterPage() {
-  const [workspace, rendererReadiness] = await Promise.all([
-    loadWorkspace(),
+export default async function CommandCenterPage({
+  searchParams,
+}: CommandCenterPageProps) {
+  const resolvedSearchParams = searchParams === undefined ? {} : await searchParams;
+  const selectedOpportunityId = firstSearchParam(
+    resolvedSearchParams.opportunity_id,
+  );
+  const createdWorkspace = firstSearchParam(resolvedSearchParams.created) === "1";
+  const [workspace, rendererReadiness, portfolio] = await Promise.all([
+    loadWorkspace(selectedOpportunityId),
     loadRendererReadiness(),
+    loadPortfolio(),
   ]);
 
   if (workspace === null) {
@@ -253,6 +306,11 @@ export default async function CommandCenterPage() {
             />
           </dl>
 
+          <OpportunityPortfolioList
+            opportunities={portfolio}
+            selectedOpportunityId={workspace.opportunity.id}
+          />
+
           <nav
             className="mt-7 space-y-2"
             aria-label="Command Center work modes"
@@ -292,6 +350,24 @@ export default async function CommandCenterPage() {
               <OpportunityIntakePanel />
             </div>
           </div>
+
+          {createdWorkspace ? (
+            <section className="workspace-created-banner" aria-live="polite">
+              <CheckCircle2 size={20} aria-hidden />
+              <div>
+                <p>Workspace created</p>
+                <strong>{workspace.opportunity.name}</strong>
+                <span>
+                  Ariadne opened the new Opportunity and created the standard
+                  workstreams, Living Packet structure, field slots, and first
+                  activation digest.
+                </span>
+              </div>
+              <a href={`/?opportunity_id=${encodeURIComponent(workspace.opportunity.id)}`}>
+                Dismiss
+              </a>
+            </section>
+          ) : null}
 
           <section
             className="workspace-section"
@@ -365,6 +441,7 @@ export default async function CommandCenterPage() {
 
           <AssistedCapturePanel
             goals={workspace.assisted_capture_goals}
+            key={workspace.opportunity.id}
             opportunityId={workspace.opportunity.id}
           />
 
@@ -374,6 +451,56 @@ export default async function CommandCenterPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function OpportunityPortfolioList({
+  opportunities,
+  selectedOpportunityId,
+}: {
+  opportunities: PortfolioOpportunity[];
+  selectedOpportunityId: string;
+}) {
+  return (
+    <section className="portfolio-panel" aria-labelledby="portfolio-title">
+      <div className="portfolio-heading">
+        <p>Portfolio</p>
+        <span>{opportunities.length}</span>
+      </div>
+      <h2 id="portfolio-title">Managed Opportunities</h2>
+      <div className="portfolio-list">
+        {opportunities.map((opportunity) => {
+          const isSelected = opportunity.id === selectedOpportunityId;
+          const href = opportunity.is_demo
+            ? "/"
+            : `/?opportunity_id=${encodeURIComponent(opportunity.id)}`;
+          return (
+            <a
+              aria-current={isSelected ? "page" : undefined}
+              className={`portfolio-opportunity${isSelected ? " active" : ""}`}
+              href={href}
+              key={opportunity.id}
+            >
+              <span className="portfolio-opportunity-name">
+                {opportunity.name}
+              </span>
+              <span className="portfolio-opportunity-meta">
+                {formatLabel(opportunity.lifecycle_state)} / {formatLabel(opportunity.packet_readiness_label)}
+              </span>
+              <span className="portfolio-opportunity-status">
+                {opportunity.is_demo ? <span>Demo</span> : null}
+                {opportunity.blocked_field_count > 0 ? (
+                  <span>{opportunity.blocked_field_count} fields</span>
+                ) : null}
+                {opportunity.review_ready_count > 0 ? (
+                  <span>{opportunity.review_ready_count} reviews</span>
+                ) : null}
+              </span>
+            </a>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -498,4 +625,11 @@ function formatLabel(value: string): string {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function firstSearchParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
 }

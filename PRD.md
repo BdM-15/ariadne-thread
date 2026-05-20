@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.34**
+**Product Requirements Document (PRD) v1.35**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 19, 2026
-**Status:** Artifact Assembly Foundation complete; production Command Center UI/UX plan incorporated; MVP-1 production Command Center tracer is on review branch; next MVP work is bounded opportunity activation, packet-field action routing, multi-opportunity portfolio management, Ariadne Knowledge Vault, and real capability/skill/MCP execution behind product workflows
+**Status:** Artifact Assembly Foundation complete; production Command Center UI/UX plan incorporated; MVP-1 production Command Center tracer is on review branch with the first Opportunity Intake and Portfolio Foundation loop; next MVP work is bounded opportunity activation, packet-field action routing, full portfolio lifecycle management, Ariadne Knowledge Vault, and real capability/skill/MCP execution behind product workflows
 
 ---
 
@@ -60,11 +60,11 @@
 - Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface was reviewed by the maintainer and accepted as good enough for this stage.
 - The production Command Center UI review branch (`11-build/production-command-center-ui`) implements the first route-first tracer: a Next.js Opportunity workspace, Living Packet center surface, assisted capture goal selector, deterministic route recommendations, local route execution, explicit human review gate, provenance view, capability route cards, before/after work-product projections, renderer readiness surface, and local HTTP/browser smoke validation. This proves the interaction loop, but it is not the full capture platform.
 - Product direction clarified: once an Opportunity is identified, Ariadne should run a bounded Opportunity Activation Run that gathers as many packet-field answers, source-backed candidates, recommendations, source limitations, and skill/capability route matches as current permissions allow. The UX must present that work as compact coverage, deltas, review queues, and next-best actions rather than as a clunky pile of tools.
-- The same review branch now includes the first Opportunity Intake path: a production Command Center API and simple Next.js modal can create a user-identified Opportunity from only a name, then persist a Standard Opportunity Scaffold with core workstreams, Living Packet sections, packet-field action slots, and an initial Autonomy Digest.
+- The same review branch now includes the first Opportunity Intake and Portfolio Foundation path: a production Command Center API and simple Next.js modal can create a user-identified Opportunity from only a name, persist a Standard Opportunity Scaffold with core workstreams, Living Packet sections, packet-field action slots, and an initial Autonomy Digest, open the newly created workspace immediately, and let the operator revisit managed Opportunities from the Command Center left rail.
 
 **Still Deferred**
 
-- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, final huashu-design/artifact rendering adapters, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, full autonomous Opportunity Activation Runs, full packet-field action routing, multi-opportunity portfolio management, and the full Ariadne Knowledge Vault UI are not implemented yet. MVP-1 now has a production-shaped Next.js route tracer, but broad UI migration, full portfolio workflows, field-level automation, and real capability execution remain governed by the MVP roadmap.
+- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, final huashu-design/artifact rendering adapters, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, full autonomous Opportunity Activation Runs, full packet-field action routing, full multi-opportunity lifecycle management, and the full Ariadne Knowledge Vault UI are not implemented yet. MVP-1 now has a production-shaped Next.js route tracer and first portfolio selector, but broad UI migration, full portfolio workflows, field-level automation, and real capability execution remain governed by the MVP roadmap.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 - Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, RAGAnything runtime, and broad persistent storage are still not part of the local-development stack unless a later ADR or PRD update explicitly selects them.
 

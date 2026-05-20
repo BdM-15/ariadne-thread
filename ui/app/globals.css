@@ -40,6 +40,7 @@ button {
 .command-button:focus-visible,
 .goal-button:focus-visible,
 .new-opportunity-button:focus-visible,
+.portfolio-opportunity:focus-visible,
 .modal-close-button:focus-visible {
   outline: 2px solid #4dd8cf;
   outline-offset: 2px;
@@ -49,6 +50,7 @@ button {
 .command-button:hover,
 .goal-button:hover,
 .new-opportunity-button:hover,
+.portfolio-opportunity:hover,
 .modal-close-button:hover {
   border-color: #4dd8cf;
   color: #ffffff;
@@ -108,6 +110,101 @@ button {
 
 .metric-signal dd {
   color: #f2c94c;
+}
+
+.portfolio-panel {
+  border-top: 1px solid #26313c;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.portfolio-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.portfolio-heading p {
+  color: #4dd8cf;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  line-height: 1.4;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.portfolio-heading span {
+  align-items: center;
+  background: rgba(77, 216, 207, 0.1);
+  border: 1px solid rgba(77, 216, 207, 0.32);
+  border-radius: 999px;
+  color: #9ae7e2;
+  display: inline-flex;
+  font-size: 12px;
+  height: 24px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 7px;
+}
+
+.portfolio-panel h2 {
+  color: #f8fafc;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 6px 0 0;
+}
+
+.portfolio-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.portfolio-opportunity {
+  background: rgba(16, 21, 27, 0.82);
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #d8e0e8;
+  display: grid;
+  gap: 6px;
+  min-height: 74px;
+  padding: 10px 11px;
+  text-decoration: none;
+}
+
+.portfolio-opportunity.active,
+.portfolio-opportunity[aria-current="page"] {
+  background: #173038;
+  border-color: rgba(77, 216, 207, 0.55);
+}
+
+.portfolio-opportunity-name {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.portfolio-opportunity-meta {
+  color: #98a6b3;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.portfolio-opportunity-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.portfolio-opportunity-status span {
+  border: 1px solid rgba(216, 138, 54, 0.38);
+  border-radius: 999px;
+  color: #f0b573;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 7px;
 }
 
 .main-workspace {
@@ -207,6 +304,62 @@ button {
   border-radius: 6px;
   margin-top: 28px;
   padding: 18px;
+}
+
+.workspace-created-banner {
+  align-items: flex-start;
+  background: rgba(77, 216, 207, 0.08);
+  border: 1px solid rgba(77, 216, 207, 0.32);
+  border-radius: 6px;
+  color: #d8e0e8;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-top: 20px;
+  padding: 14px;
+}
+
+.workspace-created-banner svg {
+  color: #4dd8cf;
+  margin-top: 2px;
+}
+
+.workspace-created-banner p {
+  color: #4dd8cf;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  line-height: 1.4;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.workspace-created-banner strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.workspace-created-banner span {
+  color: #98a6b3;
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.workspace-created-banner a {
+  color: #9ae7e2;
+  font-size: 13px;
+  min-height: 32px;
+  text-decoration: none;
+}
+
+.workspace-created-banner a:hover,
+.workspace-created-banner a:focus-visible {
+  color: #ffffff;
+  outline-color: #4dd8cf;
 }
 
 .new-opportunity-button {

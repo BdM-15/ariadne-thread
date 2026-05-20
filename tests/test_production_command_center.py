@@ -45,9 +45,9 @@ def test_production_command_center_workspace_api_exposes_opportunity_context(
     assert workspace["context_summary"]["reviewable_count"] >= 1
     assert workspace["context_summary"]["gap_count"] >= 1
     assert [region["id"] for region in workspace["layout_regions"]] == [
-        "left_rail",
+        "opportunity_portfolio",
         "packet_workspace",
-        "command_review_rail",
+        "embedded_action_paths",
         "provenance_drawer",
     ]
     assert [mode["id"] for mode in workspace["work_modes"]] == [
@@ -138,6 +138,73 @@ def test_created_opportunity_can_receive_route_recommendations(tmp_path) -> None
     assert recommendation["opportunity_id"] == opportunity_id
     assert recommendation["id"].startswith(f"route_{opportunity_id}_close_packet_gap")
 
+
+def test_production_command_center_lists_created_opportunities(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    first_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA cloud sustainment watch"},
+    )
+    second_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Navy training modernization watch"},
+    )
+
+    response = client.get("/api/production-command-center/opportunities")
+
+    assert response.status_code == 200
+    opportunities = response.json()["opportunities"]
+    opportunity_ids = {opportunity["id"] for opportunity in opportunities}
+    assert "opp-aflcmc-recompete" in opportunity_ids
+    assert first_response.json()["scaffold"]["opportunity"]["id"] in opportunity_ids
+    assert second_response.json()["scaffold"]["opportunity"]["id"] in opportunity_ids
+    created = next(
+        opportunity
+        for opportunity in opportunities
+        if opportunity["id"] == first_response.json()["scaffold"]["opportunity"]["id"]
+    )
+    assert created["name"] == "DISA cloud sustainment watch"
+    assert created["packet_readiness_label"] == "not_ready"
+    assert created["blocked_field_count"] >= 8
+    assert created["is_demo"] is False
+
+
+def test_workspace_api_loads_selected_created_opportunity(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "Space Force cyber sustainment watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    response = client.get(
+        f"/api/production-command-center/workspace?opportunity_id={opportunity_id}"
+    )
+
+    assert response.status_code == 200
+    workspace = response.json()["workspace"]
+    assert workspace["scaffold_role"] == "standard_opportunity_scaffold"
+    assert workspace["opportunity"]["id"] == opportunity_id
+    assert workspace["opportunity"]["name"] == "Space Force cyber sustainment watch"
+    assert workspace["context_summary"]["gap_count"] == len(
+        create_response.json()["scaffold"]["packet_fields"]
+    )
+
+
+def test_workspace_api_rejects_unknown_selected_opportunity(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+
+    response = client.get(
+        "/api/production-command-center/workspace?opportunity_id=opp-missing"
+    )
+
+    assert response.status_code == 404
 
 def test_assisted_capture_goal_selection_returns_reviewable_routes(tmp_path) -> None:
     from fastapi.testclient import TestClient

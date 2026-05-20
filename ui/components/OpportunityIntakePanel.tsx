@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, Loader2, PlusCircle, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 type OpportunityScaffold = {
@@ -39,9 +40,11 @@ type OpportunityCreateResponse = {
 };
 
 export function OpportunityIntakePanel() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOpeningWorkspace, setIsOpeningWorkspace] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scaffold, setScaffold] = useState<OpportunityScaffold | null>(null);
 
@@ -80,6 +83,12 @@ export function OpportunityIntakePanel() {
       const body = (await response.json()) as OpportunityCreateResponse;
       setScaffold(body.scaffold);
       setName("");
+      setIsOpeningWorkspace(true);
+      setIsOpen(false);
+      router.push(
+        `/?opportunity_id=${encodeURIComponent(body.scaffold.opportunity.id)}&created=1`,
+      );
+      router.refresh();
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -88,6 +97,7 @@ export function OpportunityIntakePanel() {
       );
     } finally {
       setIsSubmitting(false);
+      setIsOpeningWorkspace(false);
     }
   }
 
@@ -95,7 +105,11 @@ export function OpportunityIntakePanel() {
     <>
       <button
         className="new-opportunity-button"
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setError(null);
+          setScaffold(null);
+          setIsOpen(true);
+        }}
         type="button"
       >
         <PlusCircle size={18} aria-hidden />
@@ -153,15 +167,17 @@ export function OpportunityIntakePanel() {
 
               <button
                 className="command-button primary flex items-center justify-center gap-2"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isOpeningWorkspace}
                 type="submit"
               >
-                {isSubmitting ? (
+                {isSubmitting || isOpeningWorkspace ? (
                   <Loader2 className="animate-spin" size={17} aria-hidden />
                 ) : (
                   <PlusCircle size={17} aria-hidden />
                 )}
-                <span>Create workspace</span>
+                <span>
+                  {isOpeningWorkspace ? "Opening workspace" : "Create workspace"}
+                </span>
               </button>
             </form>
 
@@ -202,9 +218,11 @@ export function OpportunityIntakePanel() {
                       Activation Digest
                     </p>
                     <ul className="mt-2 space-y-2 text-sm leading-5 text-slate-300">
-                      {scaffold.activation_digest.coverage_gained.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
+                      {scaffold.activation_digest.coverage_gained.map(
+                        (item) => (
+                          <li key={item}>{item}</li>
+                        ),
+                      )}
                     </ul>
                     <p className="mt-3 text-sm text-ariadne-signal">
                       {scaffold.activation_digest.next_best_actions[0]}

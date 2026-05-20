@@ -26,6 +26,9 @@ from ariadne.packets import EvidenceStatus, create_living_briefing_packet
 from ariadne.quick_capture_demo import build_quick_capture_demo_thread
 
 
+DEMO_OPPORTUNITY_ID = "opp-aflcmc-recompete"
+
+
 class ProductionCommandCenterOpportunity(BaseModel):
     id: str
     name: str
@@ -382,6 +385,22 @@ class ProductionCommandCenterWorkspace(BaseModel):
     assisted_capture_goals: tuple[AssistedCaptureGoal, ...]
 
 
+class ProductionOpportunityPortfolioItem(BaseModel):
+    id: str
+    name: str
+    lifecycle_state: str
+    gate_status: str
+    packet_readiness_label: str
+    review_ready_count: int
+    blocked_field_count: int
+    source_limitation_count: int
+    is_demo: bool = False
+
+
+class ProductionOpportunityPortfolioResponse(BaseModel):
+    opportunities: tuple[ProductionOpportunityPortfolioItem, ...]
+
+
 class OpportunityScaffoldStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
@@ -710,7 +729,17 @@ def build_production_command_center_workspace(
     settings: RuntimeSettings,
     *,
     workspace_root: Path | None = None,
+    opportunity_id: str | None = None,
+    opportunity_store: OpportunityScaffoldStore | None = None,
 ) -> ProductionCommandCenterWorkspace:
+    if opportunity_id is not None and opportunity_id != DEMO_OPPORTUNITY_ID:
+        store = opportunity_store or OpportunityScaffoldStore(
+            settings.ariadne_opportunities_dir
+        )
+        if not store.has_scaffold(opportunity_id):
+            raise ValueError(f"Opportunity context not found: {opportunity_id}")
+        return _workspace_from_scaffold(store.read_scaffold(opportunity_id))
+
     demo = build_quick_capture_demo_thread(
         settings,
         workspace_root=workspace_root or Path.cwd(),
@@ -734,7 +763,7 @@ def build_production_command_center_workspace(
         production_ui_contract="nextjs_command_center_shell",
         scaffold_role="fallback_debug_only",
         opportunity=ProductionCommandCenterOpportunity(
-            id="opp-aflcmc-recompete",
+            id=DEMO_OPPORTUNITY_ID,
             name=demo.opportunity.name,
             lifecycle_state=demo.opportunity.lifecycle_state.value,
             gate_status="capture_working_session",
@@ -752,28 +781,7 @@ def build_production_command_center_workspace(
             gap_count=gap_count + partial_count,
             source_limitation_count=len(demo.unsupported_upload.warnings),
         ),
-        layout_regions=(
-            ProductionCommandCenterRegion(
-                id="left_rail",
-                label="Opportunity and work-mode navigation",
-                purpose="Switch Opportunity, inspect gate state, and move between work modes.",
-            ),
-            ProductionCommandCenterRegion(
-                id="packet_workspace",
-                label="Living Milestone Decision Briefing Packet workspace",
-                purpose="Show packet readiness, supported answers, gaps, assumptions, and source chips.",
-            ),
-            ProductionCommandCenterRegion(
-                id="command_review_rail",
-                label="Command and review rail",
-                purpose="Start assisted capture, inspect route recommendations, and review output.",
-            ),
-            ProductionCommandCenterRegion(
-                id="provenance_drawer",
-                label="Provenance and output inspection",
-                purpose="Inspect sources, route rationale, run details, and output trace.",
-            ),
-        ),
+        layout_regions=_production_layout_regions(),
         work_modes=(
             ProductionCommandCenterWorkMode(id="packet", label="Packet", pending_count=gap_count + partial_count),
             ProductionCommandCenterWorkMode(id="actions", label="Actions", pending_count=len(demo.action_plan.items)),
@@ -784,6 +792,111 @@ def build_production_command_center_workspace(
             ProductionCommandCenterWorkMode(id="capability_studio", label="Capability Studio"),
         ),
         assisted_capture_goals=ASSISTED_CAPTURE_GOALS,
+    )
+
+
+def list_production_opportunity_portfolio(
+    *,
+    store: OpportunityScaffoldStore,
+) -> ProductionOpportunityPortfolioResponse:
+    return ProductionOpportunityPortfolioResponse(
+        opportunities=(
+            ProductionOpportunityPortfolioItem(
+                id=DEMO_OPPORTUNITY_ID,
+                name="AFLCMC recompete support",
+                lifecycle_state="pursuing",
+                gate_status="capture_working_session",
+                packet_readiness_label="not_ready",
+                review_ready_count=0,
+                blocked_field_count=0,
+                source_limitation_count=0,
+                is_demo=True,
+            ),
+            *(_portfolio_item_from_scaffold(scaffold) for scaffold in store.list_scaffolds()),
+        )
+    )
+
+
+def _portfolio_item_from_scaffold(
+    scaffold: ProductionOpportunityScaffold,
+) -> ProductionOpportunityPortfolioItem:
+    return ProductionOpportunityPortfolioItem(
+        id=scaffold.opportunity.id,
+        name=scaffold.opportunity.name,
+        lifecycle_state=scaffold.opportunity.lifecycle_state,
+        gate_status=scaffold.opportunity.gate_status,
+        packet_readiness_label=scaffold.packet.readiness_label,
+        review_ready_count=scaffold.activation_digest.review_ready_count,
+        blocked_field_count=scaffold.activation_digest.blocked_field_count,
+        source_limitation_count=len(scaffold.activation_digest.source_limitations),
+    )
+
+
+def _workspace_from_scaffold(
+    scaffold: ProductionOpportunityScaffold,
+) -> ProductionCommandCenterWorkspace:
+    return ProductionCommandCenterWorkspace(
+        production_ui_contract="nextjs_command_center_shell",
+        scaffold_role="standard_opportunity_scaffold",
+        opportunity=scaffold.opportunity,
+        packet=scaffold.packet,
+        context_summary=ProductionCommandCenterContextSummary(
+            trusted_count=0,
+            reviewable_count=scaffold.activation_digest.review_ready_count,
+            gap_count=scaffold.activation_digest.blocked_field_count,
+            source_limitation_count=len(scaffold.activation_digest.source_limitations),
+        ),
+        layout_regions=_production_layout_regions(),
+        work_modes=(
+            ProductionCommandCenterWorkMode(
+                id="packet",
+                label="Packet",
+                pending_count=scaffold.activation_digest.blocked_field_count,
+            ),
+            ProductionCommandCenterWorkMode(
+                id="actions",
+                label="Actions",
+                pending_count=len(scaffold.backfill_needs),
+            ),
+            ProductionCommandCenterWorkMode(id="engagement", label="Engagement"),
+            ProductionCommandCenterWorkMode(
+                id="research",
+                label="Research",
+                pending_count=len(scaffold.activation_digest.approval_required_routes),
+            ),
+            ProductionCommandCenterWorkMode(id="documents", label="Documents"),
+            ProductionCommandCenterWorkMode(id="artifacts", label="Artifacts"),
+            ProductionCommandCenterWorkMode(
+                id="capability_studio",
+                label="Capability Studio",
+            ),
+        ),
+        assisted_capture_goals=ASSISTED_CAPTURE_GOALS,
+    )
+
+
+def _production_layout_regions() -> tuple[ProductionCommandCenterRegion, ...]:
+    return (
+        ProductionCommandCenterRegion(
+            id="opportunity_portfolio",
+            label="Opportunity portfolio and work-mode navigation",
+            purpose="Switch Opportunities, inspect gate state, and move between work modes.",
+        ),
+        ProductionCommandCenterRegion(
+            id="packet_workspace",
+            label="Living Milestone Decision Briefing Packet workspace",
+            purpose="Show packet readiness, supported answers, gaps, assumptions, and source chips.",
+        ),
+        ProductionCommandCenterRegion(
+            id="embedded_action_paths",
+            label="Embedded opportunity action paths",
+            purpose="Start assisted capture from the Opportunity need it will advance.",
+        ),
+        ProductionCommandCenterRegion(
+            id="provenance_drawer",
+            label="Provenance and output inspection",
+            purpose="Inspect sources, route rationale, run details, and output trace.",
+        ),
     )
 
 
@@ -887,7 +1000,7 @@ def production_opportunity_context_exists(
     *,
     store: OpportunityScaffoldStore,
 ) -> bool:
-    return opportunity_id == "opp-aflcmc-recompete" or store.has_scaffold(opportunity_id)
+    return opportunity_id == DEMO_OPPORTUNITY_ID or store.has_scaffold(opportunity_id)
 
 
 def execute_assisted_capture_route(

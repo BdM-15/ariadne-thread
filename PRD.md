@@ -1,12 +1,12 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.29**
+**Product Requirements Document (PRD) v1.31**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
 **Repo Name:** ariadne-thread  
 **Date:** May 19, 2026
-**Status:** Artifact Assembly Foundation complete; first UI shape accepted as good enough for this stage
+**Status:** Artifact Assembly Foundation complete; production Command Center UI/UX plan incorporated; MVP-1 selected as production-shaped Next.js shell plus first working route action
 
 ---
 
@@ -54,23 +54,23 @@
 - The Capture Research Command Surface now shows live source readiness, the Capture Research Brief, trigger context, source-profile refs, collection provenance, Source Findings, selected lenses, seller-baseline refs, Research Summary View, grouped review candidates, review actions, review decisions, and related Ariadne record links. The first UI shape was reviewed and approved during issue #59.
 - Issue #60 adds a standalone local-development single-startup path after the Capture Research Enrichment epic merged to `main`. `docker-compose.local.yml` starts only the selected local providers, SearXNG on `http://localhost:8080` with JSON results enabled and Crawl4AI on `http://localhost:11235`; `scripts/start-local-dev.ps1` starts those providers and Ariadne on port `9622`; `scripts/smoke-local-dev.ps1` validates direct provider health plus Ariadne's approved `crawl4ai_local` and `searxng_local` smoke endpoints. Ollama remains optional/external through existing `OLLAMA_HOST`, and Neo4j, Postgres, vector databases, graph databases, LightRAG, and broad persistent storage remain out of scope.
 - Current automated validation: `uv run ruff check src tests` and `uv run pytest -q` pass on the local-dev stack issue #60 progression branch, with 262 tests passing.
-- A `grill-with-docs` planning session selected **Artifact Assembly Foundation** as the next foundation epic. `CONTEXT.md` now defines Artifact Assembly Foundation, Artifact Assembly Capability, Artifact Assembly Store, Artifact Source Package, Artifact Draft, Artifact Section, Artifact Content Block, and Artifact Block Review. ADR 0008 records the architecture decision: Ariadne should build artifact capability through source packages, section/block drafts, block-level review, reviewed artifact content, and renderer-ready contracts before final DOCX, XLSX, presentation, visual, huashu-design, Bidder Comparison Chart, or customer-facing export workflows.
+- A `grill-with-docs` planning session selected **Artifact Assembly Foundation** as the next foundation epic. `CONTEXT.md` now defines Artifact Assembly Foundation, Artifact Assembly Capability, Artifact Assembly Store, Artifact Source Package, Artifact Draft, Artifact Section, Artifact Content Block, and Artifact Block Review. ADR 0008 records the architecture decision: Ariadne should build artifact capability through source packages, section/block drafts, block-level review, reviewed artifact content, and renderer-ready contracts before final DOCX, XLSX, huashu-design visual/PPTX, Bidder Comparison Chart, or customer-facing export workflows.
 - `docs/architecture/artifact-assembly-foundation-plan.md` records the selected Artifact Assembly Foundation epic plan: the first tracer is a reviewable Milestone Decision Briefing Packet draft assembled from Opportunity Knowledge Context through an explicit Artifact Source Package; AI/LLM assistance may coordinate, synthesize, prioritize, and draft prose, but every artifact output must land in deterministic, source-backed, reviewable schema; accepted artifact blocks do not automatically become trusted downstream records; autonomy hints are metadata only; the first surface remains in the existing FastAPI Command Center scaffold; and final rendering/export remains deferred.
-- Artifact Assembly Foundation implementation through issue #66 now includes the local Artifact Assembly Store, Artifact Source Packages from Opportunity Knowledge Context, deterministic Milestone Decision Briefing Packet drafts, typed source-backed Artifact Content Blocks, block review decisions and readiness calculation, FastAPI draft assembly/review routes, and the first Artifact Draft Command Surface. The validation loop proves preview/export readiness can be calculated without generating DOCX, XLSX, presentation, visual, huashu, or other final exported files and without automatically writing accepted blocks into trusted downstream records.
+- Artifact Assembly Foundation implementation through issue #66 now includes the local Artifact Assembly Store, Artifact Source Packages from Opportunity Knowledge Context, deterministic Milestone Decision Briefing Packet drafts, typed source-backed Artifact Content Blocks, block review decisions and readiness calculation, FastAPI draft assembly/review routes, and the first Artifact Draft Command Surface. The validation loop proves preview/export readiness can be calculated without generating DOCX, XLSX, huashu-design visual/PPTX, or other final exported files and without automatically writing accepted blocks into trusted downstream records.
 - Current automated validation after issue #66: `uv run ruff check src tests` passes and `uv run pytest -q` passes with 275 tests. The first Artifact Draft Command Surface was reviewed by the maintainer and accepted as good enough for this stage.
 
 **Still Deferred**
 
-- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet.
+- Hermes runtime, semantic retrieval or RAG engine, graph visualization, full MinerU integration, RAGAnything integration, LightRAG integration, Theseus solicitation parser integration, OCR/multimodal extraction, huashu-design/artifact rendering, external API integrations beyond completed SAM.gov and the selected Capture Research Enrichment source-provider lane, additional third-party skill installation beyond the vendored marketing skills, persisted indexing or graph/vector storage, persistent storage beyond local/demo or narrow workflow adapters, and full Next.js UI are not implemented yet. MVP-1 now starts a production-shaped Next.js Command Center shell plus one working route action, but broad UI migration and polish remain governed by the MVP roadmap.
 - Document Intake UI polish is still deferred beyond the accepted first shape; the existing FastAPI HTML surfaces are review/runtime scaffolds and demo threads, not the final frontend architecture.
 - Neo4j, Postgres, vector databases, graph databases, LightRAG runtime, RAGAnything runtime, and broad persistent storage are still not part of the local-development stack unless a later ADR or PRD update explicitly selects them.
 
 **Next Build Gate**
 
-- Select the next build epic through the project planning flow before starting unrelated deferred artifact, renderer, graph, RAG, Hermes, parser, external API, or Next.js migration work.
+- The next build epic is MVP-1: Assisted Capture Orchestration + Workflow Routing, including the production-shaped Next.js shell and first working route action. Do not start unrelated deferred artifact, renderer, graph, RAG, Hermes, parser, external API, or broad UI migration work outside that selected spine.
 - Treat the completed Knowledge Layer Foundation as the required baseline for future knowledge, recommendation, retrieval, graph, artifact, parser, or Hermes work: exact structured context and human-gated review come first.
 - Artifact Source Packages should begin from Opportunity Knowledge Context as the primary aggregator, then Artifact Drafts should move through block-level review and readiness calculation before any future renderer consumes them.
-- Provider-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Use free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional API-backed providers, and Firecrawl only as an optional later paid provider. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering, Hermes runtime, Agent Framework, skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and Next.js migration deferred unless a later `grill-with-docs` session explicitly selects one.
+- Provider-backed Web Source Collection is selected only inside Capture Research Enrichment, with explicit approval or future approved autonomy policy, source limits, provenance, and fake adapters for tests. Use free/local Crawl4AI and SearXNG first, SerpApi and Olostep as optional API-backed providers, and Firecrawl only as an optional later paid provider. Keep BLS/GSA pricing product workflows, full subaward/competitor/customer profile products, Bidder Comparison Chart artifact generation, Theseus solicitation parsing, artifact rendering beyond MVP renderer paths, Hermes runtime, Agent Framework, broad skill chaining/LangGraph, graph visualization, additional third-party capability installation, automatic trusted downstream writes, persisted indexing, semantic retrieval/RAG, and broad Next.js migration beyond the selected MVP-1 shell deferred unless a later `grill-with-docs` session explicitly selects one.
 - Preserve completed boundaries: upstream federal-data MCPs stay behind Federal Data Capabilities, downloaded source material enters Document Intake, Capability Run Outputs land in review, Knowledge Mirror/Obsidian-style material remains non-authoritative, the Structured Knowledge Index remains an on-demand projection, and trusted downstream writes remain human-gated.
 
 ---
@@ -176,8 +176,8 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 | Knowledge Engine Candidate                    | Opportunity-centric retrieval and graph context with settings + integrated chat; LightRAG is a candidate, not a committed runtime shape                    | https://github.com/HKUDS/LightRAG                       |
 | LangGraph (selective)                         | Clean skill/MCP chaining only where it adds clear value                                                                                                    | https://github.com/langchain-ai/langgraph               |
 | CLI-Anything Harness Methodology              | Agent-native CLI surfaces for repeatable Ariadne workflows and external software/tool access                                                               | https://github.com/HKUDS/CLI-Anything                   |
-| huashu-design                                 | Visual artifact renderer (platform skill)                                                                                                                  | Internal (guided by ui-ux-pro-max)                      |
-| Custom Renderer Skill                         | DOCX + XLSX generation for capture artifacts                                                                                                               | Internal (guided by ui-ux-pro-max)                      |
+| huashu-design                                 | Visual artifact renderer and PPTX-capable artifact path                                                                                                    | Internal (guided by ui-ux-pro-max)                      |
+| Custom Renderer Skill                         | DOCX generation through the Pandoc/John MacFarlane path plus separate XLSX generation for capture artifacts                                                | Internal (guided by ui-ux-pro-max)                      |
 | Custom HITL Chat Interface                    | Back-and-forth interaction for skills requiring human decision input                                                                                       | Internal (guided by ui-ux-pro-max)                      |
 | Obsidian Integration                          | Living PKM and capture plans                                                                                                                               | https://github.com/kepano/obsidian-skills               |
 | 1102tools/federal-contracting-mcps            | Hardened public federal data MCPs for USAspending, SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov                       | https://github.com/1102tools/federal-contracting-mcps   |
@@ -206,7 +206,7 @@ Use the CLI-Anything builder skill when a capability is repeatable, batchable, t
 - **Extraction Boundary**: Use Extraction Bundles as the shared parser output contract for generic source material, visual source material, and solicitation-family documents. Parser, OCR, multimodal, retrieval, MinerU, RAGAnything, LightRAG, and Theseus-style tools must act as adapters that produce reviewable output; Ariadne keeps trusted entities, relationships, provenance, and review gates in the domain model.
 - **Agents**: Hermes Agent (persistent memory) + Grok 4.3 for complex work + local models for speed
 - **Knowledge Layer**: Opportunity-centric retrieval and graph context with a custom Command Center UI. LightRAG is a candidate component, but exact integration details should be decided during architecture work.
-- **Artifact Generation**: Custom renderer skill (DOCX, XLSX, presentations, visuals)
+- **Artifact Generation**: Custom renderer capabilities for DOCX, XLSX, and huashu-design visual/PPTX outputs
 - **Storage**: Local-first structured Evidence Store, narrow workflow stores such as the Document Intake Store, and file system with optional encrypted sync; Obsidian or Markdown-style projections can be optional human-readable Knowledge Mirrors rather than the primary source of truth.
 - **Development Discipline**: Every change reviewed by `improve-codebase-architecture` before merge
 
@@ -314,7 +314,85 @@ Model provider keys, model defaults, local model settings, public-data API setti
   - Artifact preview & export
 - All major workflows remain inside the single interface
 
-## 6.1 First Flagship Workflow: Milestone Decision Briefing Packet
+## 6.1 Production Command Center UI/UX Plan
+
+The production Command Center should be a capture operating cockpit, not a reporting dashboard, generic chat surface, or tool launcher. It should let the user open one Opportunity, understand readiness, choose a capture goal, approve or run an assisted route, review output with evidence and provenance, route accepted results into real work products, and see the Living Milestone Decision Briefing Packet, action plan, call/engagement prep, risk signals, and artifacts improve in one coherent workspace.
+
+The UI is ready for production planning and an MVP-1 production-shaped skeleton, but not final visual polish detached from workflow proof. MVP-1 must include the first working route action inside the Next.js shell: selected goal -> route recommendation -> run/review -> accepted output routed into packet, action, or call-plan work. Deterministic or demo data is acceptable only as a temporary backend stand-in. MVP-4 then hardens the production UI after route-first orchestration, AI/skills integration, and work-product routing prove the interaction model.
+
+Project Theseus is useful inspiration, but not a copy target. Ariadne should adapt Theseus patterns such as Capture Chat, Intel Panels, document/source drawers, Studio artifact provenance, run reasoning, and artifact-to-source traceability into an Ariadne-native command workspace. Theseus is centered on final solicitation ingestion and proposal intelligence; Ariadne is centered on active capture management before, during, and after opportunity pursuit.
+
+External UX research reinforces the same direction: dashboard quality comes from information architecture, not chart volume; command centers need structured decision loops; enterprise SaaS must reduce cognitive load through stable grouping and clear conflict indicators; AI-native UX must expose uncertainty, provenance, review state, and feedback loops; and human-in-the-loop workflows need tiered review, interrupt/resume behavior, and durable routing history.
+
+The default screen should answer six questions quickly:
+
+1. What is the state of this Opportunity?
+2. What matters next?
+3. What can Ariadne do now?
+4. What needs my review?
+5. What work product changed?
+6. What evidence supports it?
+
+The production desktop layout should use four stable regions:
+
+- **Left rail: Opportunity and work-mode navigation** with opportunity switcher, lifecycle/gate state, work modes, and badges for review needs or blockers.
+- **Center: Living Milestone Decision Briefing Packet workspace** with packet readiness, section navigation, compact answer/gap/risk/recommendation blocks, source chips, evidence status, assumptions, confidence, and inline actions such as "improve this".
+- **Right rail: Command and review rail** with assisted capture goal selector, route recommendations, active runs, queued work, grouped review queue, and approval controls for external calls, broad research, rendering, final export, and sensitive actions.
+- **Drawer layer: Provenance and output inspection** with source previews, Capability Run reasoning, output/artifact preview, and "why this output?" trace.
+
+Mobile and small screens are secondary but must not break. They should use a top Opportunity header, segmented work modes, bottom action bar, and drawers for review/provenance instead of trying to recreate dense desktop parity.
+
+Core interaction loops:
+
+- **Assisted Capture Start**: user chooses a goal such as preparing a milestone review, improving the packet, preparing a call, resolving evidence gaps, researching customer/competitor/teaming/pricing questions, processing documents, or preparing export.
+- **Route Recommendation**: Ariadne shows the need, route, input refs, output destination, autonomy/risk tier, approval requirement, expected cost/time if known, and actions to run, inspect, edit, defer, or discard.
+- **Capability Run and Skill Chain**: the UI shows staged progress: prepare inputs, run capability or skill, summarize output, review output, route accepted result.
+- **Review and Routing**: review cards are destination-first: Evidence candidate, Packet update, Action item, Call/Engagement prep, Risk signal, Artifact block, or Follow-up route. Each card shows summary, source support, assumptions, gaps, confidence, model/capability provenance, destination, and accept/edit/route/defer/discard/needs-evidence actions.
+- **Work Product Update**: after review, the UI shows what changed: packet field updated, readiness improved or still blocked, action created, call-plan prep improved, artifact draft refreshed, or export readiness changed. Important updates should show visible before -> after state.
+
+Production information architecture should include these top-level areas while keeping day-to-day flow centered on the Command Center:
+
+1. **Command Center**: day-to-day workspace and assisted capture loop.
+2. **Opportunity Workspace**: one Opportunity, centered on the Living Milestone Decision Briefing Packet.
+3. **Action Plan**: outcome tasks, urgency, timelines, ownership, and AI support.
+4. **Engagement**: call plans, customer meetings, stakeholder prep, and follow-up commitments.
+5. **Research**: capture research briefs, findings, source collection, selected lenses, and review candidates.
+6. **Documents**: intake queue, extraction bundles, source spans, and parser-required items.
+7. **Artifacts**: drafts, renderer readiness, DOCX, XLSX, and huashu-design outputs.
+8. **Capability Studio**: advanced inventory, runs, artifacts, provenance, and validation.
+
+Design system direction:
+
+- Keep the dark, calm, cyberpunk-leaning command aesthetic: deep black/blue surfaces, cyan/magenta accents, restrained glow, and dense but scannable surfaces.
+- Use semantic status color for blocked, needs review, trusted, running, ready, and risk states; never rely on color alone for meaning.
+- Use icons for repeated actions with tooltips, stable dimensions for packet sections, route cards, review cards, run states, and output previews.
+- Preserve accessibility: readable contrast, visible focus states, keyboard navigation, labels for icon-only controls, and clear error/recovery states.
+- Avoid nested cards, hero sections, passive metric walls, decorative bloat, and text walls where an action surface is needed.
+
+Anti-convolution rules:
+
+- One primary next action per panel.
+- Product workflows first, tools second.
+- Show actionable status by default; keep details in drawers.
+- Every surfaced item must answer "so what?" or "what can I do?"
+- Do not create separate pages for every store unless the user workflow requires it.
+- Do not make chat the only way to act.
+- Do not let graph, RAG, artifact, or studio views compete with the Living Milestone Decision Briefing Packet as the center of gravity.
+- Do not build a new UI surface unless it changes a user decision or work product.
+
+MVP UI sequencing:
+
+1. **MVP-1 UI Skeleton + First Route Action**: build the production-shaped Next.js Opportunity workspace, packet center panel, route/review rail, active-run drawer, provenance drawer, and one working route action. FastAPI remains fallback/debug only.
+2. **MVP-2 AI/Skills UI**: add capability route cards, skill-chain stage view, model-role display, approval prompts, run progress, output summary, and provenance.
+3. **MVP-3 Work Product UI**: add packet update review, call/engagement prep, action-plan update flow, risk/follow-up routing, and work-product before/after state.
+4. **MVP-4 Production UI Hardening**: complete responsive polish, accessibility pass, keyboard navigation, empty/loading/error states, component cleanup, and explicit user review of the first real UI shape.
+5. **MVP-5 Renderer UI**: add reviewed draft preview, DOCX export status, XLSX export status, huashu-design visual/PPTX-capable action/status, and private Artifact Export Profile selection.
+
+The production UI is good enough for MVP only when the user can open one Opportunity, understand readiness in roughly 30 seconds, start assisted capture in one click, approve or run a route without hunting through tools, review output with evidence/provenance visible, route the result into packet/action/call/artifact work, see the work product change, export DOCX/XLSX/first huashu-design output from reviewed content, and recover from errors without losing context.
+
+The supporting planning note is `docs/architecture/production-command-center-ui-plan.md`, but this PRD remains the product source of truth.
+
+## 6.2 First Flagship Workflow: Milestone Decision Briefing Packet
 
 The first flagship product workflow is the Milestone Decision Briefing Packet because it becomes the strategic foundation for the rest of Ariadne. It forces the platform to gather multi-source capture data, connect opportunity-specific knowledge to reusable insight, surface gaps across core capture workstreams, recommend next actions, manage dates and owners, and produce a professional decision-support artifact.
 
@@ -360,9 +438,9 @@ The Knowledge Layer should include a Knowledge Graph View that visualizes Ariadn
 
 If Obsidian or another Knowledge Mirror is edited directly, those edits should return to Ariadne as Mirror Update Proposals rather than directly overwriting structured knowledge. Ariadne should classify, validate, and route those proposals through the same Knowledge Processing Workflow used by Quick Capture so traceability and source-of-truth discipline are preserved.
 
-The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for future artifacts; huashu-design, DOCX, XLSX, presentation exports, 1102 deliverable skills, skill chaining, LangGraph, and Hermes runtime behavior remain later slices. Provider-backed source collection is now selected only inside the later Capture Research Enrichment workflow.
+The completed Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic registers all eight upstream 1102tools federal data MCPs as manifest-only Federal Data Capabilities while deeply integrating USAspending first through a structured PIID Contract Intelligence Profile. The profile starts from one contract number and produces award baseline, burn posture, vehicle context, deterministic pivots, gaps, recommended enrichments, Hermes-observable events, and review-gated candidates. It remains structured source data for artifacts, skills, renderer capabilities, and future agent behavior; DOCX, XLSX, and huashu-design output now belong in the MVP renderer path, while 1102 deliverable skills, LangGraph, and Hermes runtime behavior remain later unless needed to unlock the MVP loop. Provider-backed source collection is now selected only inside the later Capture Research Enrichment workflow.
 
-## 6.2 Completed Epic PRD: SAM.gov Enrichment Profile
+## 6.3 Completed Epic PRD: SAM.gov Enrichment Profile
 
 ### Problem Statement
 
@@ -446,24 +524,31 @@ The SAM.gov profile is a structured, reviewable source profile. It may create ca
 - Live SAM.gov behavior can have separate local validation, but normal CI/unit tests must not depend on live SAM.gov availability.
 - Prior test patterns include PIID Contract Intelligence Profile tests for structured profile creation, Federal Data Capability tests for MCP registry and secret-safe behavior, Document Intake tests for queueing/classification/extraction boundaries, and runtime tests for FastAPI route behavior.
 
-### Out of Scope
+### Out of Scope For This Epic Slice
+
+This list means these capabilities were not built inside the SAM.gov Enrichment Profile slice. It does not remove them from Ariadne's production platform scope. Deferred production capabilities must re-enter through the MVP Roadmap or a future documented integration slice; the enduring constraints are review gates, source provenance, and no unsafe access bypass.
+
+**Deferred platform capabilities**
 
 - Firecrawl or broad web enrichment.
 - Direct non-SAM web crawling or guessing hidden attachment URLs.
 - Solicitation parsing with Project Theseus or another parser.
 - MinerU, RAGAnything, LightRAG, OCR, or multimodal extraction.
-- Artifact Renderer, DOCX, XLSX, presentation, or huashu-design export.
+- Artifact Renderer, DOCX, XLSX, or huashu-design export.
 - Hermes runtime, autonomous tool choice, operational learning, or workflow mutation.
 - Skill chaining or LangGraph orchestration.
 - Product workflows for BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov.
 - Full Next.js UI migration.
+
+**Trust and safety boundaries**
+
 - Automatic trusted downstream promotion from SAM.gov results or downloaded documents.
 
 ### Further Notes
 
 This epic extends ADR 0007 and ADR 0006 rather than requiring a new ADR. ADR 0007 keeps federal data access behind upstream 1102tools Federal Data Capabilities. ADR 0006 keeps parser and retrieval outputs behind Document Intake's Extraction Bundle and review boundaries. The SAM.gov plan and implementation trail are recorded in `docs/architecture/sam-gov-enrichment-plan.md`.
 
-## 6.3 Selected Epic PRD: Capture Research Enrichment
+## 6.4 Selected Epic PRD: Capture Research Enrichment
 
 ### Problem Statement
 
@@ -524,21 +609,28 @@ The first slice should prove the fixed product sequence before adding LangGraph,
 - Tests should assert Capture Research Enrichment references PIID/SAM.gov profiles instead of duplicating deterministic source-profile fields.
 - Optional local validation can run live provider smoke checks when the relevant local service or private API key is configured, but that is outside the normal unit-test path.
 
-### Out of Scope
+### Out of Scope For This Epic Slice
+
+This list means these capabilities were not built inside the first Capture Research Enrichment slice. It does not mean they are outside the production Ariadne platform. Many are core production features and are now mapped into the MVP Roadmap: route-first orchestration, AI and skills integration, production Command Center UI/UX, artifact rendering/export, document/solicitation intake integration, Hermes, graph/RAG, and broader external-data workflows. The only durable exclusions are unsafe source-access behavior and unreviewed trusted promotion.
+
+**Deferred platform capabilities**
 
 - LangGraph, general skill-chain orchestration, or Hermes runtime.
 - Autonomous live research beyond explicit user-triggered or future approved-policy runs.
-- Browser-mediated logged-in source access for LinkedIn, X, or other restricted platforms.
-- Paywall, login, or anti-bot bypass.
 - BLS, GSA CALC, or GSA Per Diem product integrations, except as future recommended routes or manually provided context.
 - Full subaward, customer, vehicle, or competitor profile products beyond first-slice research outputs.
 - Bidder Comparison Chart artifact generation or Milestone Briefing Packet slide rendering.
 - A new seller-profile editor or dedicated KBR/business-unit profile store.
 - Semantic retrieval/RAG, persisted indexes, graph database, Knowledge Graph View, or cross-opportunity inferred matching.
 - Project Theseus solicitation parsing, MinerU, OCR, or multimodal extraction.
-- Artifact Renderer, DOCX, XLSX, presentation, or huashu-design export.
-- Automatic trusted downstream promotion from research findings or insight candidates.
+- Artifact Renderer, DOCX, XLSX, or huashu-design export.
 - Full Next.js UI migration.
+
+**Trust and safety boundaries**
+
+- Browser-mediated logged-in source access for LinkedIn, X, or other restricted platforms remains deferred unless a future User-Mediated Source Access workflow preserves explicit user authorization, provenance, and access limits.
+- Paywall, login, or anti-bot bypass is not allowed.
+- Automatic trusted downstream promotion from research findings or insight candidates is not allowed without an explicit future Graduated Autonomy decision and human-approved safety rules.
 
 ### Further Notes
 
@@ -546,9 +638,9 @@ This epic extends existing ADRs and architecture notes rather than requiring a n
 
 The selected plan and implementation trail live in `docs/architecture/capture-research-enrichment-plan.md`.
 
-## 6.4 Future Capability Integration Strategy
+## 6.5 Future Capability Integration Strategy
 
-The first build slice is intentionally narrow, but it must create stable attachment points for the later systems named in the North Star. Hermes, graph visualization, MinerU, huashu-design, RAG, external APIs, and advanced skills should not be forgotten or bolted on as unrelated tools. They should plug into Ariadne's core product concepts: Opportunity, Evidence Item, Living Briefing Packet, Capture Action Plan, Capability Module, Artifact Renderer, and Knowledge Layer.
+The early build slices were intentionally narrow, but they must create stable attachment points for the systems named in the North Star. Hermes, graph visualization, MinerU, RAG, external APIs, advanced skills, and renderer capabilities should not be forgotten or bolted on as unrelated tools. They should plug into Ariadne's core product concepts: Opportunity, Evidence Item, Living Briefing Packet, Capture Action Plan, Capability Module, Artifact Renderer, and Knowledge Layer. DOCX, XLSX, and huashu-design are now MVP renderer requirements rather than distant someday features.
 
 Use `docs/architecture/future-integration-strategy.md` as the working architecture note for these future integrations.
 
@@ -568,131 +660,206 @@ Each future slice should leave a short documentation trail before code: what is 
 
 ---
 
-## 7. Phased Development Roadmap
+## 7. MVP Roadmap: Assisted Capture Platform
 
-**Phase 0 – Developer Skills + Architecture Foundation (Week 0–1)** ← **COMPLETE**
+This roadmap supersedes the old broad phase list. Historical implementation trail lives in the Current State Snapshot and `docs/architecture/`; future work should be selected against the MVP spine below, not against whichever foundation was built most recently.
 
-**Completed**
+The end-state remains the same: one Capture Command Center that turns an Opportunity into actionable capture intelligence, managed work, engagement preparation, and useful artifacts. The correction is that every near-term epic must now connect the operating loop rather than adding another isolated middle layer.
 
-- Installed/vendored developer skills in `.github/skills/`, including Matt Pocock skills, first-principles thinking, skill-creator, ui-ux-pro-max, and CLI-Anything builder skill. CLI-Hub meta-skill is vendored only as an optional discovery aid.
-- Established Python 3.14.5 / `>=3.14` with `uv` as the default development stack, including `pyproject.toml`, `.python-version`, `.venv/`, and `uv.lock`.
-- Established secret-safe environment handling with descriptive `.env.example` and private ignored `.env` files.
-- Ran architecture foundation review and recorded ADRs before application code.
-- Established `CONTEXT.md`, `AGENTS.md`, `docs/agents/`, `docs/architecture/`, and `docs/adr/`.
-- Organized Shipley global knowledge references under `docs/reference/shipley/`.
+### 7.1 MVP Outcome
 
-**First Slice Epic – Domain/Storage Foundation** ← **COMPLETE**
+Ariadne reaches MVP when one capture professional can open one real Opportunity and leave a focused working session with materially better capture work done.
 
-- Built the local runtime and first Command Center shell.
-- Built Opportunity, Entry Context, Lifecycle State, Core Capture Workstream, and Backfill Need domain scaffolding.
-- Built Quick Capture raw-item intake and review routing without trusted knowledge writes.
-- Built Pydantic-validated Evidence Items and a local Evidence Store adapter.
-- Built Living Briefing Packet readiness, Briefing View, Coverage View, deck-shaped review UI, and packet evidence/gap status.
-- Built Capture Action Plan outcome tasks with lower-level execution details kept out of the primary view.
-- Built read-only Capability Catalog discovery from local `.github/skills/` metadata.
-- Built Packet Field Definitions, Packet Field Answers, Answer Paths, Shared Knowledge Entities, and Packet Field Review connections so briefing data elements become reusable strategic slots without reusing another Opportunity's answers as truth.
-- Closed issues #1 through #8 and merged the completed epic to `main` after validation.
+The MVP must let the user:
 
-**Quick Capture Knowledge Processing Epic** ← **COMPLETE**
+- assemble opportunity context from Quick Capture, Document Intake, Source Profiles, Capture Research, accepted Evidence, Action Plan items, packet fields, capability outputs, and user prompts.
+- accumulate that context into the **Living Milestone Decision Briefing Packet** as the primary working artifact for gate readiness and capture judgment.
+- see the most important gaps, risks, source limitations, recommended actions, and relevant capability routes for the opportunity.
+- run or request AI/LLM assistance, installed skills, short skill chains, source collection, federal-data tools, document-intake actions, renderers, and capture/marketing capabilities from inside product workflows through Capability Modules.
+- review outputs with provenance, evidence strength, assumptions, model/capability trace, and source limitations visible.
+- route reviewed outputs into Evidence, Packet Field Answers, Capture Action Plan items, Risk Register candidates, Call Plan or engagement prep, Capture Research follow-up, and Artifact Draft blocks.
+- improve the Living Milestone Decision Briefing Packet, a practical call/engagement prep surface, updated capture actions, and reviewed DOCX, XLSX, and huashu-design artifact output paths.
 
-- Imported Project Ariadne public-source knowledge as commit-safe Capture Reference Context and added lightweight Reference Wiki influence retrieval.
-- Built Capture Intelligence Drafts from rushed notes and uploaded source material, including inferred claims, risks, discriminator candidates, packet implications, action candidates, gaps, follow-up questions, assumptions, confidence notes, Reference Wiki influence provenance, and optional Local Admin Model assist.
-- Kept Local Admin Model config centralized through `OLLAMA_HOST` and `LOCAL_DAILY_MODEL`; local admin assist has only workflow-specific enablement and timeout controls.
-- Added per-piece draft review controls, recommended routes, skill-chain suggestions, discard handling, and documented future bulk selection.
-- Added review-gated promotions from draft parts into Evidence Items, Action Plan Items, Packet Field Answers, and packet gap updates while preserving raw item ID, draft ID, draft part ID, review rationale, evidence links, and edit history.
-- Changed trusted evidence behavior so accepted evidence saves polished Capture Intelligence Draft output, while truly raw notes remain trace/admin context only. Low-signal notes route to clarification instead of evidence.
-- Routed pasted text and text/Markdown uploads through the same Quick Capture path; unsupported uploads become parser-required Document Intake Candidates.
-- Added public Call Plan and Risk Register data dictionaries while keeping private templates/workbooks/log examples ignored.
-- Added an end-to-end Command Center demo thread showing messy input, Reference Wiki influences, draft inferences, review controls, accepted evidence/action/packet outputs, discarded output, traceability, and parser-required future Document Intake.
-- Closed issues #9 through #15 on the epic branch after validation.
+The MVP is not complete because another store, schema, panel, or adapter exists. It is complete when the Command Center can perform the assisted capture loop on a real opportunity with reviewable outputs that help the user's capture job.
 
-**Document Intake Command Surface Epic** ← **COMPLETE**
+### 7.2 MVP Operating Spine
 
-- Built functionality foundation first: domain models, Document Intake Store, Extraction Bundle creation, review-ready Capture Intelligence Draft inputs, and Command Center demo behavior.
-- Completed the tracer bullet: upload or register generic source material, classify it, persist intake state, create an Extraction Bundle, convert useful findings into Capture Intelligence Draft Parts, surface recommendations and skill-chain options, accept source spans into Evidence Items, create review-gated Action Plan/Packet/Risk Register/Call Plan/Knowledge Note Projection candidates, and show the workflow in the Command Center.
-- Kept Ariadne's Capture Knowledge Foundation authoritative across capture and solicitation workflows. Parser, retrieval, OCR, multimodal, MinerU, RAGAnything, LightRAG, and Theseus-style tools remain adapters that produce reviewable Extraction Bundles.
-- Classified source material as Generic Source Material, Visual Source Material, Solicitation Document, or Unsupported Document. Visual and solicitation-family material are recorded while OCR/multimodal and Solicitation Parser Capability work remains deferred.
-- Persisted a narrow local Document Intake Store for intake records, Extraction Bundles, review decisions, accepted evidence links, and Knowledge Note Projections without redesigning the full storage architecture.
-- Generated Knowledge Note Projections as one-way Markdown-style notes over accepted Ariadne knowledge; they support lightweight sensemaking and future retrieval without becoming source of truth.
-- Deferred full MinerU, RAGAnything, LightRAG, Theseus, OCR, frontier multimodal extraction, Knowledge Graph storage, bidirectional Obsidian sync, complex skill-chain execution, and broad storage-platform work.
+All near-term implementation should strengthen this spine:
 
-**Federal Data MCP Foundation + USAspending Recompete Intelligence Intake Epic** ← **COMPLETE**
+1. **Opportunity context**: the user selects or creates an Opportunity; Ariadne gathers existing trusted and reviewable context through Opportunity Knowledge Context.
+2. **Capture need selection**: Ariadne identifies the next useful capture needs: packet gaps, research needs, customer-engagement needs, document/parser needs, source limitations, evidence gaps, risk signals, action-plan gaps, or artifact-readiness blockers.
+3. **Assistance recommendation**: Ariadne recommends a Product Workflow, Capability Module, model workflow, installed skill, short skill chain, source-provider run, document-intake action, or user action for each need.
+4. **Approved execution**: the user approves or starts the chosen assistance; low-risk local/admin tasks can use existing autonomy rules, while external calls, broad research, rendering, and customer-facing outputs require approval.
+5. **Capability output capture**: results land as Capability Run Outputs, Source Findings, Capture Intelligence Draft Parts, Next Action Recommendations, Artifact Content Blocks, or workflow-specific candidates with provenance.
+6. **Workflow routing**: the user accepts, edits, discards, routes, or marks outputs as needing evidence; accepted or routed outputs improve the appropriate product workflow.
+7. **Work product improvement**: the Living Milestone Decision Briefing Packet is the main accumulating artifact, while the Capture Action Plan, call/engagement prep, Evidence Store, Risk Register, Capture Research run, and Artifact Draft visibly improve around it.
+8. **Learning hooks**: repeated routes, accepted outputs, discarded suggestions, and friction become future Operational Learning inputs, but broad Hermes autonomy waits until the loop is reliable.
 
-- Registered all eight upstream `1102tools/federal-contracting-mcps` servers as manifest-only Federal Data Capabilities rather than creating unique Ariadne MCP servers or vendoring upstream MCP source.
-- Recorded pinned upstream versions, command shapes, provenance, license metadata, env-var names, richer operational descriptions, and product integration status labels so Ariadne can keep up with upstream updates through manifest bumps.
-- Deeply integrated USAspending first because recompete-heavy capture work depends on award history, incumbents, customer buying behavior, vehicles, obligations, spending patterns, and timing signals.
-- Built a PIID Contract Intelligence Profile workflow that starts from one contract number and produces structured award baseline, burn posture, vehicle context, deterministic pivots, PRIME gaps, recommended next enrichments, review-gated candidates, and Hermes-observable events.
-- Treated user-provided PIID intelligence templates as strategy input, not product specs; Ariadne behavior is built around the upstream USAspending MCP and Ariadne's evidence/review model.
-- Kept artifact rendering downstream: huashu-design, DOCX, XLSX, presentation, and report generation should consume accepted structured profile content in a later Artifact Renderer slice.
-- Deferred product workflows for SAM.gov, BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, Regulations.gov, provider-backed web enrichment, 1102 deliverable skills, skill chaining/LangGraph, Hermes runtime, and full Next.js UI at that stage. SAM.gov is now complete, and provider-backed source collection is now selected only inside Capture Research Enrichment.
+### 7.3 Core Component Map
 
-**SAM.gov Enrichment Profile Epic** ← **COMPLETE**
+- **Capture Command Center** is the operating surface for the MVP loop; it should show context, recommended routes, running/finished assistance, review needs, and improved work products together.
+- **Opportunity Knowledge Context** is the context spine; it gathers accepted and reviewable Ariadne records for one opportunity before AI, skills, artifacts, or routes act.
+- **Evidence Store, Document Intake, PIID Profiles, SAM.gov Profiles, Capture Research, Quick Capture, and Reference Wiki** are data and research inputs; they should feed the loop instead of remaining separate destinations.
+- **AI Usage Layer** should route work to the correct Model Role: local/admin models for low-risk tagging, summarization, extraction, formatting, and draft prep; frontier reasoning models for strategy, synthesis, customer engagement, tradeoffs, and executive-ready recommendations.
+- **Capability Module Integration** connects installed skills, marketing skills, federal-data capabilities, CLI harnesses, MCP tools, source providers, model workflows, parsers, and renderers to Product Workflows so AI/LLM assistance can take approved action without bypassing review.
+- **Skill chaining** should start as explicit, inspectable, short chains with named stages, approved inputs, output contracts, and review destinations. It should not begin as an opaque autonomous planner.
+- **Capability Run Store and Capability Reasoning View** record what ran, why it ran, what it used, what it produced, and how the user reviewed it.
+- **Workflow Routing** is the product glue that sends outputs into Evidence, Packet, Action Plan, Risk Register, Call Plan, Capture Research, Document Intake, Artifact Assembly, or follow-up work.
+- **Living Milestone Decision Briefing Packet** is the primary accumulating artifact for MVP; it should continuously gather reviewed answers, assumptions, gaps, risks, recommendations, source support, and readiness signals from the assisted capture loop.
+- **Call Plan or Engagement Prep, Capture Action Plan, Risk Register, and Artifact Drafts** are the other first work products the loop must improve around the packet.
+- **Artifact Renderer** should enter as a consumer of reviewed Artifact Drafts and call/packet content, not as a source of truth or a freeform document generator. DOCX, XLSX, and huashu-design output paths are MVP-critical renderer capabilities.
+- **Production Command Center UI/UX** is required before the product is considered usable beyond internal validation; the current FastAPI shell remains a scaffold for proving behavior. The product requirements live in Section 6, with `docs/architecture/production-command-center-ui-plan.md` as the supporting planning note.
+- **Hermes, graph/RAG engines, Knowledge Graph View, full solicitation parsers, and broad third-party installation** are post-spine accelerators unless a narrow slice directly unlocks the MVP loop.
 
-- Selected through a fresh `grill-with-docs` session after the Federal Data MCP Foundation merge, then completed and reviewed.
-- Plan and implementation trail recorded in `docs/architecture/sam-gov-enrichment-plan.md`; no new ADR was needed because the slice extends ADR 0007's upstream Federal Data Capability boundary and ADR 0006's Document Intake extraction boundary.
-- Epic branch: `05-build/sam-gov-enrichment-profile`.
-- Built one SAM.gov Enrichment Profile with four lanes: Entity Record, Known Opportunity, Opportunity Discovery, and Opportunity Attachment Intake.
-- Uses live SAM.gov by default for user-triggered workflows when `SAM_GOV_API_KEY` is configured; automated tests stay deterministic with fake adapters that are clearly labeled and never presented as live source success.
-- Routes approved official SAM.gov attachment downloads into Document Intake; documents are classified before choosing generic extraction versus future Solicitation Parser Capability routing.
-- Keeps all downstream Evidence, Packet, Action Plan, Risk Register, Call Plan, Opportunity Knowledge, and follow-up route outputs review-gated.
-- Deferred provider-backed web enrichment, Theseus solicitation parsing, BLS/GSA pricing, subaward/competitor/customer profile workflows, artifact rendering, Hermes runtime, skill chaining/LangGraph, and Next.js migration at that stage. Provider-backed source collection is now selected only inside Capture Research Enrichment.
+### 7.4 MVP Build Sequence
 
-**Capability Run Foundation + Assisted Execution Command Surface Epic** ← **COMPLETE**
+**MVP-1: Assisted Capture Orchestration + Workflow Routing** ← **NEXT**
 
-- Selected through `grill-with-docs` after SAM.gov Enrichment Profile, then completed and reviewed.
-- Plan and implementation trail recorded in `docs/architecture/capability-run-foundation-plan.md`; no new ADR was needed because the slice follows existing local-first, Capability Module, and review-gated-promotion decisions.
-- Epic branch: `06-build/capability-run-foundation`.
-- Built the local Capability Run Store, deterministic Capability Catalog validation runs, reviewable Capability Run Outputs, review decisions without trusted downstream writes, Capability Reasoning View, Capability Studio run history/detail pages, optional Local Admin Model readiness probe, and Command Center launch/review entry points.
-- Closed issues #40 through #44 as completed after validation and required UI review.
-- Keeps Microsoft Agent Framework, Hermes runtime, LangGraph orchestration, third-party capability installation, external API product workflows, artifact rendering, automatic trusted downstream writes, and full Next.js UI migration deferred until selected through a future documented slice.
+Goal: connect the existing foundations into one route-first operating loop.
 
-**Knowledge Layer Foundation Epic** ← **COMPLETE**
+Deliverables:
 
-- Selected through `grill-with-docs` after Capability Run Foundation, then completed and reviewed.
-- Plan and implementation trail recorded in `docs/architecture/knowledge-layer-foundation-plan.md`; no new ADR was needed because the slice keeps the Structured Knowledge Index an on-demand non-authoritative projection.
-- Epic branch: `07-build/knowledge-layer-foundation`.
-- Built deterministic Structured Knowledge Index projection, Opportunity Knowledge Context View, persisted Next Action Recommendations, recommendation review into Action Plan work with provenance, stale/refresh and duplicate-suggestion safeguards, and a compact Command Center Knowledge Context Panel.
-- Validated with `uv run ruff check src tests` and `uv run pytest -q` passing with 227 tests.
-- Keeps semantic retrieval/RAG, graph visualization, Hermes runtime, parser integrations, artifact rendering, automatic action handling, broad databases, and persistent indexing deferred.
+- Add a Command Center entry point such as “Start assisted capture” for one Opportunity.
+- Start the production-shaped Next.js Command Center shell in parallel with the route-first loop: Opportunity workspace, Living MS Briefing Packet center panel, route/review rail, active-run drawer, and source/provenance drawer.
+- Implement one working route action inside that Next.js shell: selected goal -> route recommendation -> run/review -> route accepted output into packet/action or call-plan destination. Deterministic/demo data is acceptable only as a temporary backend stand-in.
+- Stop adding new primary user workflow screens to the FastAPI scaffold except as fallback/debug surfaces.
+- Use Opportunity Knowledge Context plus the user's selected goal to identify capture needs and route options.
+- Match needs to existing Product Workflows and Capability Modules, including Capture Research, Capability Runs, Quick Capture, Document Intake, packet gaps, action-plan work, artifact assembly, and call/engagement preparation.
+- Persist route decisions and review state in the narrowest suitable existing store, or add a small Workflow Routing store only if existing stores cannot own the state cleanly.
+- Let users run, route, accept, discard, or defer recommendations without leaving the Command Center.
+- Preserve provenance from source context, recommendation, model/capability run, review decision, and routed destination.
 
-**Capture Research Enrichment Epic** ← **SELECTED NEXT**
+Acceptance demo:
 
-- Selected through `grill-with-docs` after Knowledge Layer Foundation.
-- Plan recorded in `docs/architecture/capture-research-enrichment-plan.md`; no new ADR is needed unless implementation adopts a workflow engine, autonomous live-research policy, new storage engine, or automatic trusted-write model.
-- Suggested epic branch: `08-build/capture-research-enrichment`.
-- Build a bounded product workflow that turns source-profile gaps, opportunity context, packet/action needs, and user-prompted research requests into Capture Research Briefs, live or fake source collection, Source Findings, selected capture-lens interpretations, and reviewable downstream candidates.
-- Use live source-provider collection when a local provider or private API key is configured and the user approves or a future approved autonomy policy covers the run. Automated tests use fake source-collection adapters.
-- Keep PIID and SAM.gov profiles source-specific; Capture Research Enrichment references them and stores only trigger context snapshots, not duplicated deterministic profile data.
-- Use the Reference Wiki and accepted Ariadne knowledge as the first Seller Capability Baseline so research can support requirements fit, competitive gap analysis, teaming needs, differentiators, price-to-win, workload, and call-plan recommendations.
-- Feed Bidder Comparison Chart and Milestone Briefing Packet add-on work later without making BCC artifact generation the first-slice deliverable.
-- Keep LangGraph, Hermes runtime, full skill chaining, browser-mediated logged-in source access, BLS/GSA product integration, full profile products, artifact rendering, automatic trusted writes, and Next.js migration deferred.
+- One Opportunity shows trusted context, reviewable context, gaps, limitations, and route recommendations.
+- The production-shaped Command Center shell can display and execute at least one working assisted route, even if some supporting actions still use deterministic/demo data.
+- The user starts one assisted route, receives a reviewable output, and routes it into at least two real work products, such as a Packet Field Answer and an Action Plan Item or Call Plan candidate.
+- The loop does not create trusted downstream records, external calls, or final artifacts without explicit review/approval.
 
-**Next Implementation Gate**
+**MVP-2: AI Usage Layer + Skills Integration**
 
-- Build the selected Capture Research Enrichment vertical epic next, using `docs/architecture/capture-research-enrichment-plan.md` as the implementation guide.
-- Use `PRD.md`, `CONTEXT.md`, ADR 0006, ADR 0007, `docs/architecture/document-intake-command-surface-plan.md`, `docs/architecture/federal-data-mcp-foundation-plan.md`, `docs/architecture/sam-gov-enrichment-plan.md`, `docs/architecture/capability-run-foundation-plan.md`, `docs/architecture/knowledge-layer-foundation-plan.md`, `docs/architecture/future-integration-strategy.md`, and `docs/architecture/capture-research-enrichment-plan.md` as planning inputs.
-- Run `improve-codebase-architecture` before substantive application code or refactors in the next selected epic.
-- Keep the Command Center command-first: evidence, recommendations, review candidates, source limitations, launches, decisions, routes, and follow-up actions should stay connected rather than becoming passive API or capability output.
+Goal: make AI/LLM assistance and installed skills take as much approved capture action as possible rather than remaining decorative inventory.
 
-**Phase 1 – Core Infrastructure**
+Deliverables:
 
-- Hermes Agent skeleton + persistent memory
-- Select and wire the first knowledge layer candidate behind an Ariadne adapter
-- Basic Command Center shell with cyberpunk theme
-- Keep Phase 1 increments small and shippable, favoring visible working slices over long-running infrastructure efforts.
+- Add explicit model-use contracts for capture need analysis, packet synthesis support, call/engagement prep, value proposition/messaging, research brief creation, output review summaries, and artifact-block drafting.
+- Use fake model runners in automated tests and real configured providers only in user-approved local runs.
+- Expose local workspace skills and vendored marketing skills as Capability Modules with typed input expectations, output summaries, review destinations, and route metadata.
+- Let AI/LLM assistance prepare inputs, recommend Capability Modules, run approved low-risk capability routes, summarize outputs, propose next routes, and draft reviewed work-product updates.
+- Support short skill chains such as research brief -> customer insight -> call-plan prep, requirements fit -> packet implication -> action recommendation, or value proposition -> engagement messaging -> artifact block.
+- Keep chain stages visible, bounded, interruptible, and review-gated.
 
-**Phase 2 – Domain Intelligence & Strategy**
+Acceptance demo:
 
-- Integrate government contracting skills + marketing skills
-- Add brainstorming skill with custom HITL wrapper
-- First-principles reviews integrated into workflows
+- A user can choose a capture goal and see which AI/model role, skill, or skill chain Ariadne recommends.
+- At least one installed skill or skill-backed capability can run through the Capability Run Store and route a reviewable output into packet/call/action/artifact work.
+- The same workflow works without a live model by using deterministic or fake runners in tests.
 
-**Phase 3 – Full Command Center**
+**MVP-3: Capture Work Product Loop**
 
-- Living Capture Plans (Obsidian sync)
-- Full artifact generation pipeline
-- Decision-gate discipline workflows
-- Self-improvement loops
+Goal: prove that routed AI/skill/research outputs improve the capture work the user cares about.
+
+Deliverables:
+
+- Update the Living Milestone Decision Briefing Packet as the main accumulating artifact from reviewed routed outputs, including packet answers, assumptions, gaps, risks, recommendations, source support, and readiness signals.
+- Build the first practical Call Plan or engagement-prep loop from Opportunity Knowledge Context, customer/research findings, marketing/value-proposition skills, and action commitments.
+- Connect routed outputs to the Capture Action Plan as outcome-level tasks with evidence and rationale.
+- Route risk/discriminator/teaming/price/workload findings into Risk Register or follow-up candidates where appropriate.
+- Reassemble Artifact Drafts from improved context so the user can see the packet or engagement work product improve after routing.
+
+Acceptance demo:
+
+- Starting from one opportunity, Ariadne improves a Milestone Decision Briefing Packet working draft, creates or updates action-plan items, and prepares a call/engagement artifact candidate from reviewed AI/skill/research output.
+- The user can inspect source refs, model/capability provenance, assumptions, gaps, and review decisions for each improvement.
+
+**MVP-4: Production Command Center UI/UX Hardening**
+
+Goal: harden the production-shaped Command Center into a genuinely usable product surface instead of continuing to rely on the FastAPI scaffold.
+
+Deliverables:
+
+- Build the production Command Center experience around the MVP loop: opportunity context, assisted routes, running/finished capability work, review decisions, packet readiness, action plan, call/engagement prep, and artifact status in one coherent workspace.
+- Treat the Living Milestone Decision Briefing Packet as the central accumulation surface, with compact readiness, evidence, assumptions, gaps, risks, recommendations, and source trace visible without overwhelming the user.
+- Provide production-quality interaction flows for starting assisted capture, approving/running capability routes, reviewing outputs, routing results, and seeing work products update.
+- Keep advanced Capability Studio, raw toolchain details, and verbose provenance secondary to the user's active capture work.
+- Use the project-standard production UI stack when this slice begins; the existing shell remains available only as a runtime scaffold and fallback demo surface.
+
+Acceptance demo:
+
+- A user can complete the MVP assisted capture loop in the production Command Center UI without needing the internal scaffold pages.
+- The UI makes the Living Milestone Decision Briefing Packet, next actions, call/engagement prep, review queue, and artifact readiness feel like one connected workspace.
+- The first production UI shape receives explicit user review before the slice is considered complete.
+
+**MVP-5: Practical Artifact Rendering And Export**
+
+Goal: provide usable DOCX, XLSX, and huashu-design output paths without letting rendering drive the product model.
+
+Deliverables:
+
+- Add renderer adapters that consume reviewed Artifact Draft content and produce practical local DOCX and XLSX exports.
+- Add a first huashu-design renderer path for reviewed packet or engagement content that needs visual or PPTX-capable artifact support.
+- Use Markdown or HTML only as internal preview/debug support, not as the MVP substitute for DOCX, XLSX, or huashu-design output.
+- Support Milestone Decision Briefing Packet and call/engagement prep content before broad template or presentation work.
+- Preserve source appendix, assumptions, gaps, and provenance in the rendered output.
+- Keep private Artifact Export Profiles local/ignored and out of the public repo.
+
+Acceptance demo:
+
+- An export-ready reviewed draft can produce usable local DOCX and XLSX files without inventing new claims, bypassing review, or writing back to trusted stores.
+- A reviewed packet or engagement artifact can produce a first huashu-design visual/PPTX-capable output from reviewed content.
+- Renderer outputs are traceable to reviewed Artifact Content Blocks and source refs.
+
+**MVP-6: Document And Solicitation Intake Integration Into The Loop**
+
+Goal: make document intake a living source of capture work rather than a side queue.
+
+Deliverables:
+
+- Surface document-derived needs and parser-required items inside Assisted Capture routes.
+- Let a document source span or extraction warning trigger research, evidence review, packet updates, call-plan questions, or action-plan items.
+- Choose a first solicitation-parser adapter only when it directly improves the MVP loop for RFIs, Sources Soughts, RFPs, amendments, or requirements attachments.
+- Keep MinerU, RAGAnything, LightRAG, OCR, multimodal extraction, and Theseus behind the Extraction Bundle contract.
+
+Acceptance demo:
+
+- A document-derived signal can move from Document Intake through assisted routing into packet/call/action/evidence work with traceability.
+
+**MVP-7: Post-MVP Acceleration**
+
+Goal: add power after the route-first loop is useful.
+
+Candidates:
+
+- Hermes runtime for observing the loop, proposing improvements, and eventually coordinating low-risk repeated work.
+- Knowledge Graph View and semantic/RAG retrieval for richer sensemaking after structured context and routes are reliable.
+- Continued Next.js/production UI refinement after the first production Command Center slice proves the workflow shape.
+- Advanced huashu-design/PPTX polish, richer private template profiles, and renderer polish after DOCX, XLSX, and first huashu-design MVP paths are reliable.
+- Third-party skill installation and broader catalog management after local skills and explicit chains prove useful.
+- Additional federal-data product workflows such as BLS, GSA CALC, GSA Per Diem, eCFR, Federal Register, and Regulations.gov when they feed named capture routes.
+
+### 7.5 MVP Definition Of Done
+
+MVP is done when the acceptance demo can show all of the following in one local Command Center run:
+
+- create or open one Opportunity.
+- gather context from at least three real input families, such as accepted evidence, source profiles, capture research, document intake, quick capture, packet fields, action items, or capability outputs.
+- generate route-first capture recommendations tied to packet, call/engagement, action, evidence, research, risk, or artifact needs.
+- run at least one AI/model-assisted step and at least one skill/capability-backed step with provenance.
+- review the outputs and route them into at least three work products, including the Milestone Decision Briefing Packet, Capture Action Plan, and call/engagement preparation.
+- produce a reviewed Artifact Draft plus traceable DOCX, XLSX, and first huashu-design outputs from reviewed content.
+- complete the assisted capture loop through the production Command Center UI, not only the internal FastAPI scaffold.
+- show source support, assumptions, gaps, source limitations, model/capability provenance, route decisions, and created/updated work-product links.
+- pass automated tests with fake model/capability runners and no required live credentials.
+
+### 7.6 Build Gates From Here Forward
+
+- Every new epic must state which step of the MVP Operating Spine it advances.
+- Every new epic must improve at least one capture work product, not only create a new schema, store, adapter, or panel.
+- Every new integration must identify the Product Workflow it serves and the review/routing destination for its outputs.
+- Every new AI or skill-chain feature must preserve model/capability provenance and must work in tests without live credentials.
+- Every artifact-rendering slice must consume reviewed Artifact Draft content and must not become the source of truth.
+- Every external call, broad research run, paid/credit-spending provider, final export, customer-facing output, sensitive label change, deletion, or gate decision remains approval-gated.
+- A future `grill-with-docs` session should ask first, “How does this make the assisted capture loop more useful?” before adding new foundations.
 
 ---
 
@@ -750,9 +917,9 @@ When in doubt, ask:
 
 ---
 
-**End of PRD v1.18**
+**End of PRD v1.31**
 
-**Phase 0, first-slice domain/storage epic, Quick Capture Knowledge Processing epic, Document Intake Command Surface epic, Federal Data MCP Foundation + USAspending Recompete Intelligence Intake epic, SAM.gov Enrichment Profile, Capability Run Foundation, and Knowledge Layer Foundation are complete. Capture Research Enrichment is the selected next vertical slice.**
+**The next build direction is MVP-1: Assisted Capture Orchestration + Workflow Routing, which must connect existing foundations into a usable route-first capture loop.**
 
 ---
 

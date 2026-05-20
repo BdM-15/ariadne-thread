@@ -3,10 +3,13 @@ import {
   Bot,
   BriefcaseBusiness,
   ClipboardCheck,
+  Download,
   FileStack,
+  FileSpreadsheet,
   FileText,
   Layers3,
   MessageSquareText,
+  Presentation,
   SearchCheck,
   ShieldCheck,
 } from "lucide-react";
@@ -64,6 +67,39 @@ type WorkspaceResponse = {
   workspace: Workspace;
 };
 
+type RendererCapability = {
+  id: string;
+  label: string;
+  engine: string;
+  output_formats: string[];
+  readiness_state: string;
+  mvp_required: boolean;
+  role: string;
+};
+
+type RendererExportAction = {
+  id: string;
+  label: string;
+  renderer_id: string;
+  output_format: string;
+  review_required: boolean;
+  enabled: boolean;
+  disabled_reason: string;
+};
+
+type RendererReadiness = {
+  target_artifact: string;
+  target_label: string;
+  target_rationale: string;
+  renderers: RendererCapability[];
+  export_actions: RendererExportAction[];
+  backend_blockers: string[];
+};
+
+type RendererReadinessResponse = {
+  readiness: RendererReadiness;
+};
+
 const modeIcons: Record<string, ComponentType<{ className?: string; size?: number }>> = {
   packet: FileText,
   actions: ClipboardCheck,
@@ -91,8 +127,26 @@ async function loadWorkspace(): Promise<Workspace | null> {
   }
 }
 
+async function loadRendererReadiness(): Promise<RendererReadiness | null> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/production-command-center/renderer-readiness`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const body = (await response.json()) as RendererReadinessResponse;
+    return body.readiness;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CommandCenterPage() {
-  const workspace = await loadWorkspace();
+  const [workspace, rendererReadiness] = await Promise.all([
+    loadWorkspace(),
+    loadRendererReadiness(),
+  ]);
 
   if (workspace === null) {
     return <OfflineShell />;
@@ -162,6 +216,10 @@ export default async function CommandCenterPage() {
               </article>
             ))}
           </div>
+
+          {rendererReadiness !== null ? (
+            <RendererReadinessPanel readiness={rendererReadiness} />
+          ) : null}
         </section>
 
         <aside className="border-t border-ariadne-line bg-ariadne-panel p-5 xl:border-l xl:border-t-0">
@@ -187,6 +245,46 @@ export default async function CommandCenterPage() {
         </aside>
       </div>
     </main>
+  );
+}
+
+function RendererReadinessPanel({ readiness }: { readiness: RendererReadiness }) {
+  const formatIcons: Record<string, typeof Presentation> = {
+    pptx: Presentation,
+    docx: FileText,
+    xlsx: FileSpreadsheet,
+  };
+
+  return (
+    <section className="renderer-readiness">
+      <div className="flex flex-col gap-3 border-b border-ariadne-line pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-ariadne-cyan">Export readiness</p>
+          <h3 className="mt-1 text-xl font-semibold">{readiness.target_label}</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{readiness.target_rationale}</p>
+        </div>
+        <Download className="text-ariadne-copper" size={24} aria-hidden />
+      </div>
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+        {readiness.export_actions.map((action) => {
+          const FormatIcon = formatIcons[action.output_format] ?? FileText;
+          return (
+            <article className="export-action" key={action.id}>
+              <div className="flex items-center justify-between gap-3">
+                <FormatIcon size={20} className="text-ariadne-cyan" aria-hidden />
+                <span>{action.output_format.toUpperCase()}</span>
+              </div>
+              <h4 className="mt-3 text-sm font-semibold">{action.label}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{action.disabled_reason}</p>
+              <button className="command-button route-run-button" disabled type="button">
+                Export disabled
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

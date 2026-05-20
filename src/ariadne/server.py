@@ -192,7 +192,9 @@ from ariadne.production_command_center import (
     ProductionCommandCenterHealthResponse,
     WorkflowRoutingStore,
     WorkProductUpdateListResponse,
+    RendererReadinessResponse,
     build_production_command_center_workspace,
+    build_renderer_readiness,
     execute_assisted_capture_route,
     get_assisted_route_provenance,
     list_work_product_update_projections,
@@ -582,6 +584,10 @@ def create_app(
     @app.get("/api/production-command-center/health")
     def production_command_center_health_status() -> ProductionCommandCenterHealthResponse:
         return production_command_center_health()
+
+    @app.get("/api/production-command-center/renderer-readiness")
+    def production_command_center_renderer_readiness() -> RendererReadinessResponse:
+        return build_renderer_readiness()
 
     @app.post(
         "/api/production-command-center/opportunities/{opportunity_id}/"

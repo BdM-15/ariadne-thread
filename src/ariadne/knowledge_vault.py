@@ -5,6 +5,9 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from ariadne.opportunities import MilestoneGate
+from ariadne.packet_knowledge import PacketFieldDefinition
+
 
 REQUIRED_VAULT_DIRECTORIES: tuple[str, ...] = (
     "inbox",
@@ -51,6 +54,24 @@ class KnowledgeVaultValidationIssue(BaseModel):
 class KnowledgeVaultValidationReport(BaseModel):
     valid: bool
     issues: tuple[KnowledgeVaultValidationIssue, ...]
+
+
+class PacketDataElementPageStatus(BaseModel):
+    field_key: str
+    label: str
+    path: str
+    exists: bool
+    connected: bool
+    required_milestone_gates: tuple[str, ...]
+
+
+class PacketDataElementPageReport(BaseModel):
+    vault_root: str
+    current_milestone_gate: str | None
+    pages: tuple[PacketDataElementPageStatus, ...]
+    created_count: int
+    missing_count: int
+    unconnected_count: int
 
 
 class KnowledgeVaultReadiness(BaseModel):
@@ -187,6 +208,53 @@ def get_knowledge_vault_schema() -> KnowledgeVaultSchema:
     )
 
 
+def ensure_packet_data_element_pages(
+    vault_root: Path | str,
+    definitions: tuple[PacketFieldDefinition, ...],
+    *,
+    current_milestone_gate: MilestoneGate | None = None,
+) -> PacketDataElementPageReport:
+    root = Path(vault_root)
+    ensure_knowledge_vault_scaffold(root)
+    created_count = 0
+
+    for definition in _packet_definitions_for_gate(definitions, current_milestone_gate):
+        path = root / _packet_data_element_relative_path(definition)
+        if not path.exists():
+            _write_if_missing(path, _packet_data_element_page_template(definition))
+            created_count += 1
+
+    status_report = list_packet_data_element_page_status(
+        root,
+        definitions,
+        current_milestone_gate=current_milestone_gate,
+    )
+    return status_report.model_copy(update={"created_count": created_count})
+
+
+def list_packet_data_element_page_status(
+    vault_root: Path | str,
+    definitions: tuple[PacketFieldDefinition, ...],
+    *,
+    current_milestone_gate: MilestoneGate | None = None,
+) -> PacketDataElementPageReport:
+    root = Path(vault_root)
+    pages = tuple(
+        _packet_data_element_status(root, definition)
+        for definition in _packet_definitions_for_gate(definitions, current_milestone_gate)
+    )
+    return PacketDataElementPageReport(
+        vault_root=str(root),
+        current_milestone_gate=(
+            current_milestone_gate.value if current_milestone_gate is not None else None
+        ),
+        pages=pages,
+        created_count=0,
+        missing_count=sum(1 for page in pages if not page.exists),
+        unconnected_count=sum(1 for page in pages if page.exists and not page.connected),
+    )
+
+
 def validate_knowledge_vault_pages(vault_root: Path | str) -> KnowledgeVaultValidationReport:
     root = Path(vault_root)
     issues: list[KnowledgeVaultValidationIssue] = []
@@ -254,6 +322,146 @@ def validate_knowledge_vault_pages(vault_root: Path | str) -> KnowledgeVaultVali
                 )
 
     return KnowledgeVaultValidationReport(valid=not issues, issues=tuple(issues))
+
+
+def _packet_definitions_for_gate(
+    definitions: tuple[PacketFieldDefinition, ...],
+    current_milestone_gate: MilestoneGate | None,
+) -> tuple[PacketFieldDefinition, ...]:
+    if current_milestone_gate is None:
+        return definitions
+    return tuple(
+        definition
+        for definition in definitions
+        if current_milestone_gate in definition.required_milestone_gates
+    )
+
+
+def _packet_data_element_status(
+    root: Path,
+    definition: PacketFieldDefinition,
+) -> PacketDataElementPageStatus:
+    relative_path = _packet_data_element_relative_path(definition)
+    path = root / relative_path
+    frontmatter = _read_frontmatter(path) if path.exists() else None
+    source_refs = _frontmatter_list(frontmatter.get("source_refs") if frontmatter else None)
+    relationships = _frontmatter_list(
+        frontmatter.get("relationships") if frontmatter else None
+    )
+    connected = bool(
+        path.exists()
+        and frontmatter
+        and frontmatter.get("page_type") == "global_data_element"
+        and source_refs
+        and relationships
+    )
+    return PacketDataElementPageStatus(
+        field_key=definition.key,
+        label=definition.label,
+        path=relative_path,
+        exists=path.exists(),
+        connected=connected,
+        required_milestone_gates=tuple(
+            gate.value for gate in definition.required_milestone_gates
+        ),
+    )
+
+
+def _packet_data_element_relative_path(definition: PacketFieldDefinition) -> str:
+    return f"data-elements/{definition.key}.md"
+
+
+def _packet_data_element_page_template(definition: PacketFieldDefinition) -> str:
+    relationships = _packet_data_element_relationships(definition)
+    answer_paths = "\n".join(
+        f"- {answer_path.label} (`{answer_path.kind.value}`)"
+        for answer_path in definition.answer_paths
+    )
+    related_entities = "\n".join(
+        f"- `{entity_kind.value}`" for entity_kind in definition.related_entity_kinds
+    )
+    gates = ", ".join(gate.value for gate in definition.required_milestone_gates)
+    return f"""---
+page_type: global_data_element
+title: {definition.label}
+source_refs: [packet-field-definition:{definition.key}]
+relationships: [{", ".join(relationships)}]
+---
+
+# {definition.label}
+
+## Strategic Question
+
+{definition.question}
+
+## Packet Context
+
+- Field key: `{definition.key}`
+- Packet section: `{definition.section.value}`
+- Value kind: `{definition.value_kind.value}`
+- Required milestone gates: {gates}
+
+## Evidence Standards
+
+- Prefer accepted Evidence Items, Document Intake Source Spans, Source Profiles,
+  Capture Research Source Findings, or explicit user review notes.
+- Show assumptions, confidence, source limitations, and gaps before any field is
+  treated as answered.
+- Another Opportunity's answer can inform context, but it is never valid for the
+  current Opportunity without review.
+
+## Common Source Types
+
+- Customer call notes or stakeholder meeting notes
+- Solicitation, notice, SOW, PWS, RFI, Sources Sought, or amendment text
+- SAM.gov, USAspending, PIID, or other Source Profile records
+- Capture Research findings and accepted public-source summaries
+- Existing packet support and reviewer rationale
+
+## Likely Workflows
+
+- [[workflows/opportunity-activation|Opportunity Activation]]
+- [[workflows/packet-field-action-matrix|Packet Field Action Matrix]]
+- [[workflows/document-intake|Document Intake]]
+- [[workflows/capture-research|Capture Research]]
+- [[workflows/customer-engagement|Customer Engagement]]
+
+## Likely Answer Paths
+
+{answer_paths or "- Needs route definition."}
+
+## Related Entity Kinds
+
+{related_entities or "- No related entity kind declared yet."}
+
+## Structured Store Boundary
+
+Packet Field Answers live in Ariadne structured stores and must be created,
+edited, or accepted only through review-gated Ariadne workflows. This page
+describes reusable global context for the data element; it does not answer any
+specific Opportunity.
+
+## Reusable Insight Candidates
+
+- Candidate reusable insight: patterns that repeatedly affect `{definition.key}`
+  evidence quality, route choice, or gate readiness.
+"""
+
+
+def _packet_data_element_relationships(
+    definition: PacketFieldDefinition,
+) -> tuple[str, ...]:
+    gate_relationships = tuple(
+        f"applies_to_gate:{gate.value}" for gate in definition.required_milestone_gates
+    )
+    route_relationships = (
+        "suggests_route:workflow/opportunity-activation",
+        "suggests_route:workflow/packet-field-action-matrix",
+        "suggests_route:workflow/capture-research",
+        "uses_capability:capability/document-intake",
+        f"candidate_reusable_insight:reusable-insights/{definition.key}",
+    )
+    return gate_relationships + route_relationships
 
 
 def _required_paths() -> tuple[str, ...]:

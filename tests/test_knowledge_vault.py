@@ -1,7 +1,10 @@
 from ariadne.knowledge_vault import (
     ensure_knowledge_vault_scaffold,
+    ensure_packet_data_element_pages,
     validate_knowledge_vault_pages,
 )
+from ariadne.opportunities import MilestoneGate
+from ariadne.packet_knowledge import build_default_packet_field_definitions
 
 
 def test_knowledge_vault_scaffold_creates_required_wiki_shape(tmp_path) -> None:
@@ -184,3 +187,78 @@ relationships: [teleports_to:somewhere]
         "unknown_relationship_type",
     }
     assert all("customer-insight.md" not in issue.path for issue in report.issues)
+
+
+def test_packet_data_element_page_tracer_creates_current_gate_page_from_definition(
+    tmp_path,
+) -> None:
+    vault_root = tmp_path / "vault"
+    definitions = build_default_packet_field_definitions()
+
+    report = ensure_packet_data_element_pages(
+        vault_root,
+        definitions,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+    )
+
+    customer_page = vault_root / "data-elements" / "customer.md"
+    customer_text = customer_page.read_text(encoding="utf-8")
+    customer_status = next(
+        page for page in report.pages if page.field_key == "customer"
+    )
+
+    assert customer_status.exists is True
+    assert customer_status.connected is True
+    assert customer_status.path == "data-elements/customer.md"
+    assert "page_type: global_data_element" in customer_text
+    assert "title: Customer" in customer_text
+    assert "source_refs: [packet-field-definition:customer]" in customer_text
+    assert "applies_to_gate:milestone_1" in customer_text
+    assert "suggests_route:workflow/opportunity-activation" in customer_text
+    assert "suggests_route:workflow/packet-field-action-matrix" in customer_text
+    assert "Which customer or buying command owns the need?" in customer_text
+    assert "notice or call-note extraction" in customer_text
+    assert "Evidence Standards" in customer_text
+    assert "Common Source Types" in customer_text
+    assert "Packet Field Answers live in Ariadne structured stores" in customer_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
+def test_packet_data_element_api_reports_missing_and_connected_pages(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from ariadne.config import RuntimeSettings
+    from ariadne.server import create_app
+
+    vault_root = tmp_path / "vault"
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_OBSIDIAN_VAULT_DIR": str(vault_root)}
+    )
+    client = TestClient(create_app(settings))
+
+    missing_response = client.get(
+        "/api/knowledge-vault/packet-data-elements",
+        params={"current_milestone_gate": "milestone_1"},
+    )
+
+    assert missing_response.status_code == 200
+    missing_body = missing_response.json()
+    assert missing_body["current_milestone_gate"] == "milestone_1"
+    assert missing_body["missing_count"] > 0
+    assert any(page["field_key"] == "customer" for page in missing_body["pages"])
+
+    scaffold_response = client.post(
+        "/api/knowledge-vault/packet-data-elements/scaffold",
+        params={"current_milestone_gate": "milestone_1"},
+    )
+
+    assert scaffold_response.status_code == 200
+    scaffold_body = scaffold_response.json()
+    assert scaffold_body["created_count"] > 0
+    assert scaffold_body["missing_count"] == 0
+    assert scaffold_body["unconnected_count"] == 0
+    assert all(page["connected"] for page in scaffold_body["pages"])

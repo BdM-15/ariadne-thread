@@ -114,9 +114,12 @@ from ariadne.federal_data import (
 from ariadne.knowledge_vault import (
     KnowledgeVaultReadiness,
     KnowledgeVaultSchema,
+    PacketDataElementPageReport,
     ensure_knowledge_vault_scaffold,
+    ensure_packet_data_element_pages,
     get_knowledge_vault_schema,
     inspect_knowledge_vault_readiness,
+    list_packet_data_element_page_status,
 )
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
 from ariadne.next_action_recommendations import (
@@ -124,10 +127,12 @@ from ariadne.next_action_recommendations import (
     accept_next_action_recommendation,
     recommend_next_capture_actions,
 )
+from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
     PacketFieldAnswerStore,
     PacketFieldReview,
+    build_default_packet_field_definitions,
     build_demo_packet_field_review,
 )
 from ariadne.packet_review import (
@@ -616,6 +621,26 @@ def create_app(
     @app.get("/api/knowledge-vault/schema")
     def knowledge_vault_schema() -> KnowledgeVaultSchema:
         return get_knowledge_vault_schema()
+
+    @app.get("/api/knowledge-vault/packet-data-elements")
+    def knowledge_vault_packet_data_element_status(
+        current_milestone_gate: MilestoneGate | None = None,
+    ) -> PacketDataElementPageReport:
+        return list_packet_data_element_page_status(
+            runtime_settings.ariadne_obsidian_vault_dir,
+            build_default_packet_field_definitions(),
+            current_milestone_gate=current_milestone_gate,
+        )
+
+    @app.post("/api/knowledge-vault/packet-data-elements/scaffold")
+    def knowledge_vault_packet_data_element_scaffold(
+        current_milestone_gate: MilestoneGate | None = None,
+    ) -> PacketDataElementPageReport:
+        return ensure_packet_data_element_pages(
+            runtime_settings.ariadne_obsidian_vault_dir,
+            build_default_packet_field_definitions(),
+            current_milestone_gate=current_milestone_gate,
+        )
 
     @app.get("/api/production-command-center/workspace")
     def production_command_center_workspace(

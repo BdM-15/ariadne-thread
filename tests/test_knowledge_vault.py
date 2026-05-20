@@ -1,4 +1,7 @@
-from ariadne.knowledge_vault import ensure_knowledge_vault_scaffold
+from ariadne.knowledge_vault import (
+    ensure_knowledge_vault_scaffold,
+    validate_knowledge_vault_pages,
+)
 
 
 def test_knowledge_vault_scaffold_creates_required_wiki_shape(tmp_path) -> None:
@@ -24,6 +27,8 @@ def test_knowledge_vault_scaffold_creates_required_wiki_shape(tmp_path) -> None:
     )
     assert "Project Theseus" in schema_text
     assert "complementary capability context" in schema_text
+    assert "page_type: global_data_element" in schema_text
+    assert "relationships: [suggests_route:workflow/capture-research]" in schema_text
 
     for folder in (
         "inbox",
@@ -95,3 +100,87 @@ def test_knowledge_vault_api_reports_readiness_and_can_create_scaffold(
 
     ready_response = client.get("/api/knowledge-vault/readiness")
     assert ready_response.json()["ready"] is True
+
+
+def test_knowledge_vault_api_exposes_page_types_and_relationship_vocabulary(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from ariadne.config import RuntimeSettings
+    from ariadne.server import create_app
+
+    settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_OBSIDIAN_VAULT_DIR": str(tmp_path / "vault")}
+    )
+    response = TestClient(create_app(settings)).get("/api/knowledge-vault/schema")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {page_type["id"] for page_type in body["page_types"]} == {
+        "global_data_element",
+        "capture_concept",
+        "source_summary",
+        "entity",
+        "relationship",
+        "workflow_capability",
+        "reusable_insight_candidate",
+        "opportunity_projection",
+        "mirror_update_proposal",
+        "hermes_learning_proposal",
+    }
+    assert {relationship_type["id"] for relationship_type in body["relationship_types"]} == {
+        "supports",
+        "answers",
+        "informs",
+        "blocks",
+        "contradicts",
+        "derived_from",
+        "evidence_for",
+        "fills_gap_in",
+        "suggests_route",
+        "uses_capability",
+        "applies_to_gate",
+        "produces_artifact_block",
+        "candidate_reusable_insight",
+    }
+
+
+def test_knowledge_vault_validation_reports_page_and_relationship_errors(
+    tmp_path,
+) -> None:
+    vault_root = tmp_path / "vault"
+    ensure_knowledge_vault_scaffold(vault_root)
+    (vault_root / "data-elements" / "customer-insight.md").write_text(
+        """---
+page_type: global_data_element
+title: Customer Insight
+source_refs: [packet-field:customer_insight]
+relationships: [applies_to_gate:milestone-1, suggests_route:workflow/capture-research]
+---
+
+# Customer Insight
+""",
+        encoding="utf-8",
+    )
+    (vault_root / "relationships" / "bad-link.md").write_text(
+        """---
+page_type: mystery_page
+title: Bad Link
+relationships: [teleports_to:somewhere]
+---
+
+# Bad Link
+""",
+        encoding="utf-8",
+    )
+
+    report = validate_knowledge_vault_pages(vault_root)
+
+    assert report.valid is False
+    assert {issue.code for issue in report.issues} == {
+        "unknown_page_type",
+        "missing_source_refs",
+        "unknown_relationship_type",
+    }
+    assert all("customer-insight.md" not in issue.path for issue in report.issues)

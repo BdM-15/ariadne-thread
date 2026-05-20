@@ -113,7 +113,9 @@ from ariadne.federal_data import (
 )
 from ariadne.knowledge_vault import (
     KnowledgeVaultReadiness,
+    KnowledgeVaultSchema,
     ensure_knowledge_vault_scaffold,
+    get_knowledge_vault_schema,
     inspect_knowledge_vault_readiness,
 )
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
@@ -610,6 +612,10 @@ def create_app(
         return ensure_knowledge_vault_scaffold(
             runtime_settings.ariadne_obsidian_vault_dir
         )
+
+    @app.get("/api/knowledge-vault/schema")
+    def knowledge_vault_schema() -> KnowledgeVaultSchema:
+        return get_knowledge_vault_schema()
 
     @app.get("/api/production-command-center/workspace")
     def production_command_center_workspace(

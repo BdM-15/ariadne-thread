@@ -220,6 +220,12 @@ def test_production_command_center_updates_portfolio_state_and_gate(tmp_path) ->
     )
     assert portfolio_item["portfolio_status"] == "archived"
     assert portfolio_item["lifecycle_state"] == "archived"
+    assert portfolio_item["next_action_urgency"] == "steady"
+    assert portfolio_item["attention_reason"] == (
+        "Archived Opportunity. Open roadmap for trace and lessons."
+    )
+    assert portfolio_item["attention_route_mode"] == "packet"
+    assert portfolio_item["attention_field_key"] is None
 
 
 def test_portfolio_lists_representative_lifecycle_statuses(tmp_path) -> None:
@@ -385,6 +391,8 @@ def test_production_command_center_promotes_activation_field_answer(tmp_path) ->
         if opportunity["id"] == opportunity_id
     )
     assert portfolio_item["packet_readiness_label"] == "draft_ready"
+    assert portfolio_item["next_action_urgency"] == "needs_action"
+    assert portfolio_item["source_freshness_label"] == "no_accepted_sources"
     current_gate_field_count = sum(
         1
         for field in create_response.json()["scaffold"]["packet_fields"]
@@ -443,6 +451,14 @@ def test_activation_field_acceptance_with_evidence_ids_is_source_backed(
     )
     assert accepted_field["action_state"] == "answered"
     assert accepted_field["source_refs"] == ["evidence.notice.customer"]
+
+    portfolio_response = client.get("/api/production-command-center/opportunities")
+    portfolio_item = next(
+        opportunity
+        for opportunity in portfolio_response.json()["opportunities"]
+        if opportunity["id"] == opportunity_id
+    )
+    assert portfolio_item["source_freshness_label"] == "source_limited"
 
 
 def test_production_command_center_routes_activation_field_without_answer(tmp_path) -> None:
@@ -616,6 +632,8 @@ def test_production_command_center_lists_created_opportunities(tmp_path) -> None
     assert created["name"] == "DISA cloud sustainment watch"
     assert created["packet_readiness_label"] == "not_ready"
     assert created["blocked_field_count"] >= 6
+    assert created["next_action_urgency"] == "needs_action"
+    assert created["source_freshness_label"] == "no_accepted_sources"
     assert created["attention_reason"]
     assert created["attention_route_label"].startswith("Open roadmap:")
     assert created["attention_route_mode"] in {

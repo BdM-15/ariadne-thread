@@ -305,6 +305,16 @@ button {
   color: #9ae7e2;
 }
 
+.portfolio-opportunity-status .portfolio-urgency-chip {
+  border-color: rgba(232, 93, 117, 0.38);
+  color: #ffd7df;
+}
+
+.portfolio-opportunity-status .portfolio-source-chip {
+  border-color: rgba(152, 166, 179, 0.36);
+  color: #c5d0dc;
+}
+
 .portfolio-empty {
   color: #98a6b3;
   font-size: 13px;

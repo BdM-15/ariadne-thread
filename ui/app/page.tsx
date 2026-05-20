@@ -92,6 +92,8 @@ type PortfolioOpportunity = {
   review_ready_count: number;
   blocked_field_count: number;
   source_limitation_count: number;
+  next_action_urgency: string;
+  source_freshness_label: string;
   attention_reason?: string;
   attention_route_label?: string;
   attention_route_mode?: string;
@@ -1147,6 +1149,12 @@ function OpportunityPortfolioSwitcher({
                           <span className="portfolio-status-chip">
                             {formatLabel(opportunity.portfolio_status)}
                           </span>
+                          <span className="portfolio-urgency-chip">
+                            {formatLabel(opportunity.next_action_urgency)}
+                          </span>
+                          <span className="portfolio-source-chip">
+                            {formatLabel(opportunity.source_freshness_label)}
+                          </span>
                           {opportunity.is_demo ? <span>Demo</span> : null}
                           {opportunity.blocked_field_count > 0 ? (
                             <span>
@@ -1289,6 +1297,8 @@ function CommandCenterHome({
                     <span>
                       {formatLabel(opportunity.packet_readiness_label)}
                     </span>
+                    <span>{formatLabel(opportunity.next_action_urgency)}</span>
+                    <span>{formatLabel(opportunity.source_freshness_label)}</span>
                     <span>{routeLabel} route</span>
                     {opportunity.blocked_field_count > 0 ? (
                       <span>{opportunity.blocked_field_count} gaps</span>
@@ -3198,6 +3208,16 @@ function portfolioGroupId(opportunity: PortfolioOpportunity): string {
 }
 
 function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
+  const urgencyScore: Record<string, number> = {
+    needs_action: 8,
+    review_ready: 6,
+    source_limited: 4,
+    watch: 2,
+    steady: 0,
+  };
+  if (opportunity.next_action_urgency === "steady") {
+    return opportunity.portfolio_status === "active" ? 1 : 0;
+  }
   const readinessScore =
     opportunity.packet_readiness_label === "not_ready"
       ? 4
@@ -3214,6 +3234,7 @@ function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
           ? 1
           : 0;
   return (
+    (urgencyScore[opportunity.next_action_urgency] ?? 0) +
     opportunity.blocked_field_count * 5 +
     opportunity.review_ready_count * 3 +
     opportunity.source_limitation_count * 2 +
@@ -3223,11 +3244,11 @@ function opportunityPulseScore(opportunity: PortfolioOpportunity): number {
 }
 
 function opportunityPulseReason(opportunity: PortfolioOpportunity): string {
-  if (opportunity.attention_reason) {
-    return opportunity.attention_reason;
-  }
   if (["archived", "won", "lost"].includes(opportunity.portfolio_status)) {
     return `${formatLabel(opportunity.portfolio_status)} Opportunity. Open roadmap for trace and lessons.`;
+  }
+  if (opportunity.attention_reason) {
+    return opportunity.attention_reason;
   }
   if (opportunity.blocked_field_count > 0) {
     return `${opportunity.blocked_field_count} packet fields still block this roadmap.`;
@@ -3248,6 +3269,21 @@ function opportunityPulseUrgency(
   opportunity: PortfolioOpportunity,
   score: number,
 ): GlobalOpportunityPulseUrgency {
+  if (opportunity.next_action_urgency === "needs_action") {
+    return "critical";
+  }
+  if (opportunity.next_action_urgency === "review_ready") {
+    return "review";
+  }
+  if (
+    opportunity.next_action_urgency === "source_limited" ||
+    opportunity.next_action_urgency === "watch"
+  ) {
+    return "watch";
+  }
+  if (opportunity.next_action_urgency === "steady") {
+    return "steady";
+  }
   if (opportunity.blocked_field_count > 0 || score >= 8) {
     return "critical";
   }
@@ -3267,6 +3303,9 @@ function opportunityPulseUrgencyLabel(
   opportunity: PortfolioOpportunity,
   score: number,
 ): string {
+  if (opportunity.next_action_urgency) {
+    return formatLabel(opportunity.next_action_urgency);
+  }
   const urgency = opportunityPulseUrgency(opportunity, score);
   if (urgency === "critical") {
     return "Needs action";

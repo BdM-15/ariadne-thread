@@ -63,6 +63,21 @@ class OpportunityPortfolioStatus(StrEnum):
     LOST = "lost"
 
 
+class OpportunityPortfolioUrgency(StrEnum):
+    NEEDS_ACTION = "needs_action"
+    REVIEW_READY = "review_ready"
+    SOURCE_LIMITED = "source_limited"
+    WATCH = "watch"
+    STEADY = "steady"
+
+
+class OpportunitySourceFreshness(StrEnum):
+    NO_ACCEPTED_SOURCES = "no_accepted_sources"
+    SOURCE_LIMITED = "source_limited"
+    PARTIAL_SOURCES = "partial_sources"
+    SOURCE_BACKED = "source_backed"
+
+
 class ProductionCommandCenterOpportunity(BaseModel):
     id: str
     name: str
@@ -447,6 +462,8 @@ class ProductionOpportunityPortfolioItem(BaseModel):
     review_ready_count: int
     blocked_field_count: int
     source_limitation_count: int
+    next_action_urgency: str
+    source_freshness_label: str
     attention_reason: str
     attention_route_label: str
     attention_route_mode: str
@@ -1012,6 +1029,8 @@ def list_production_opportunity_portfolio(
                 review_ready_count=0,
                 blocked_field_count=0,
                 source_limitation_count=0,
+                next_action_urgency=OpportunityPortfolioUrgency.WATCH.value,
+                source_freshness_label=OpportunitySourceFreshness.PARTIAL_SOURCES.value,
                 attention_reason="Demo workspace sample packet is available.",
                 attention_route_label="Open demo roadmap",
                 attention_route_mode="packet",
@@ -1039,22 +1058,35 @@ def _portfolio_item_from_scaffold(
     )
     digest = activation_run.activation_digest
     matrix = activation_run.packet_field_action_matrix
-    attention_item = _attention_item_from_matrix(
-        matrix
+    attention_item = (
+        None
+        if _is_terminal_portfolio_status(scaffold.opportunity.portfolio_status)
+        else _attention_item_from_matrix(matrix)
     )
+    packet_readiness_label = _packet_readiness_label(matrix)
+    source_limitation_count = len(digest.source_limitations)
     return ProductionOpportunityPortfolioItem(
         id=scaffold.opportunity.id,
         name=scaffold.opportunity.name,
         lifecycle_state=scaffold.opportunity.lifecycle_state,
         gate_status=scaffold.opportunity.gate_status,
         portfolio_status=scaffold.opportunity.portfolio_status,
-        packet_readiness_label=_packet_readiness_label(
-            matrix
-        ),
+        packet_readiness_label=packet_readiness_label,
         review_ready_count=matrix.current_gate_review_ready_count,
         blocked_field_count=matrix.current_gate_blocked_count,
-        source_limitation_count=len(digest.source_limitations),
-        attention_reason=_attention_reason(
+        source_limitation_count=source_limitation_count,
+        next_action_urgency=_portfolio_next_action_urgency(
+            portfolio_status=scaffold.opportunity.portfolio_status,
+            matrix=matrix,
+            source_limitation_count=source_limitation_count,
+            packet_readiness_label=packet_readiness_label,
+        ).value,
+        source_freshness_label=_portfolio_source_freshness(
+            matrix=matrix,
+            source_limitation_count=source_limitation_count,
+        ).value,
+        attention_reason=_portfolio_attention_reason(
+            portfolio_status=scaffold.opportunity.portfolio_status,
             digest=digest,
             attention_item=attention_item,
         ),
@@ -1116,6 +1148,20 @@ def _attention_reason(
     return "Roadmap has no urgent gaps in current pulse data."
 
 
+def _portfolio_attention_reason(
+    *,
+    portfolio_status: str,
+    digest: OpportunityActivationDigest,
+    attention_item: PacketFieldActionItem | None,
+) -> str:
+    if _is_terminal_portfolio_status(portfolio_status):
+        return (
+            f"{portfolio_status.replace('_', ' ').title()} Opportunity. "
+            "Open roadmap for trace and lessons."
+        )
+    return _attention_reason(digest=digest, attention_item=attention_item)
+
+
 def _attention_route_label(attention_item: PacketFieldActionItem | None) -> str:
     if attention_item is None:
         return "Open roadmap"
@@ -1147,6 +1193,14 @@ def _attention_route_mode(attention_item: PacketFieldActionItem | None) -> str:
     ):
         return "artifacts"
     return "activation"
+
+
+def _is_terminal_portfolio_status(portfolio_status: str) -> bool:
+    return portfolio_status in {
+        OpportunityPortfolioStatus.ARCHIVED.value,
+        OpportunityPortfolioStatus.WON.value,
+        OpportunityPortfolioStatus.LOST.value,
+    }
 
 
 def _packet_view_from_matrix(
@@ -1188,6 +1242,44 @@ def _packet_readiness_label(matrix: PacketFieldActionMatrix) -> str:
     if matrix.current_gate_answered_count > 0:
         return "draft_ready"
     return "not_ready"
+
+
+def _portfolio_next_action_urgency(
+    *,
+    portfolio_status: str,
+    matrix: PacketFieldActionMatrix,
+    source_limitation_count: int,
+    packet_readiness_label: str,
+) -> OpportunityPortfolioUrgency:
+    if portfolio_status in {
+        OpportunityPortfolioStatus.ARCHIVED.value,
+        OpportunityPortfolioStatus.WON.value,
+        OpportunityPortfolioStatus.LOST.value,
+    }:
+        return OpportunityPortfolioUrgency.STEADY
+    if matrix.current_gate_blocked_count > 0:
+        return OpportunityPortfolioUrgency.NEEDS_ACTION
+    if matrix.current_gate_review_ready_count > 0:
+        return OpportunityPortfolioUrgency.REVIEW_READY
+    if source_limitation_count > 0:
+        return OpportunityPortfolioUrgency.SOURCE_LIMITED
+    if packet_readiness_label != "decision_ready":
+        return OpportunityPortfolioUrgency.WATCH
+    return OpportunityPortfolioUrgency.STEADY
+
+
+def _portfolio_source_freshness(
+    *,
+    matrix: PacketFieldActionMatrix,
+    source_limitation_count: int,
+) -> OpportunitySourceFreshness:
+    if matrix.source_ref_count == 0:
+        return OpportunitySourceFreshness.NO_ACCEPTED_SOURCES
+    if source_limitation_count > 0:
+        return OpportunitySourceFreshness.SOURCE_LIMITED
+    if matrix.current_gate_blocked_count > 0 or matrix.current_gate_review_ready_count > 0:
+        return OpportunitySourceFreshness.PARTIAL_SOURCES
+    return OpportunitySourceFreshness.SOURCE_BACKED
 
 
 def _workspace_from_scaffold(

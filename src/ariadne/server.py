@@ -124,6 +124,11 @@ from ariadne.knowledge_vault import (
     list_packet_data_element_page_status,
 )
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
+from ariadne.mirror_update_proposals import (
+    MirrorUpdateProposalReport,
+    list_pending_mirror_update_proposals,
+    scan_vault_for_mirror_update_proposals,
+)
 from ariadne.next_action_recommendations import (
     NextActionRecommendationStore,
     accept_next_action_recommendation,
@@ -647,6 +652,18 @@ def create_app(
     @app.post("/api/knowledge-vault/health-report")
     def knowledge_vault_health_report() -> KnowledgeVaultHealthReport:
         return generate_knowledge_vault_health_report(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.get("/api/knowledge-vault/mirror-update-proposals")
+    def knowledge_vault_mirror_update_proposals() -> MirrorUpdateProposalReport:
+        return list_pending_mirror_update_proposals(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.post("/api/knowledge-vault/mirror-update-proposals/scan")
+    def knowledge_vault_mirror_update_proposal_scan() -> MirrorUpdateProposalReport:
+        return scan_vault_for_mirror_update_proposals(
             runtime_settings.ariadne_obsidian_vault_dir
         )
 

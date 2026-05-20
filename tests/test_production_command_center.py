@@ -336,3 +336,23 @@ def test_work_product_updates_api_lists_before_after_projection_surfaces(
         "after_summary"
     ]
     assert updates_by_destination["living_packet"]["state"] == "ready_for_apply"
+
+
+def test_production_command_center_health_reports_hardened_contract(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    response = TestClient(create_app(_command_center_settings(tmp_path))).get(
+        "/api/production-command-center/health"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "status": "ready",
+        "ui_contract": "nextjs_command_center_shell",
+        "api_contract_version": "v1",
+        "route_execution": "deterministic_local",
+        "review_gate_required": True,
+        "external_network_required": False,
+        "external_model_required": False,
+    }

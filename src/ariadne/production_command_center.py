@@ -249,6 +249,16 @@ class WorkProductUpdateListResponse(BaseModel):
     summary: dict[str, int]
 
 
+class ProductionCommandCenterHealthResponse(BaseModel):
+    status: str = "ready"
+    ui_contract: str = "nextjs_command_center_shell"
+    api_contract_version: str = "v1"
+    route_execution: str = "deterministic_local"
+    review_gate_required: bool = True
+    external_network_required: bool = False
+    external_model_required: bool = False
+
+
 class ProductionCommandCenterWorkspace(BaseModel):
     production_ui_contract: str
     scaffold_role: str
@@ -538,6 +548,10 @@ def build_production_command_center_workspace(
         ),
         assisted_capture_goals=ASSISTED_CAPTURE_GOALS,
     )
+
+
+def production_command_center_health() -> ProductionCommandCenterHealthResponse:
+    return ProductionCommandCenterHealthResponse()
 
 
 def recommend_assisted_capture_routes(

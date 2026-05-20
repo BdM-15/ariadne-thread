@@ -125,6 +125,11 @@ button {
   color: #e9fffd;
 }
 
+.command-button.danger {
+  border-color: rgba(232, 93, 117, 0.48);
+  color: #ffdbe1;
+}
+
 .goal-button {
   align-items: center;
   background: #10151b;
@@ -175,6 +180,37 @@ button {
   border-left: 2px solid #4dd8cf;
   margin-top: 12px;
   padding: 2px 0 2px 12px;
+}
+
+.review-gate {
+  border-top: 1px solid #26313c;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.review-textarea {
+  background: rgba(8, 11, 15, 0.72);
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #d8e0e8;
+  margin-top: 8px;
+  min-height: 76px;
+  padding: 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.review-textarea:focus-visible {
+  border-color: #4dd8cf;
+  outline: 2px solid #4dd8cf;
+  outline-offset: 2px;
+}
+
+.review-action-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+  margin-top: 10px;
 }
 
 .update-projection {

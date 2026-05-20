@@ -251,6 +251,7 @@ def test_production_command_center_promotes_activation_field_answer(tmp_path) ->
     )
     assert customer["action_state"] == "answered"
     assert customer["current_value"] == "Space Force"
+    assert customer["gap_summary"] is None
 
     rerun_response = client.post(
         f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
@@ -262,6 +263,7 @@ def test_production_command_center_promotes_activation_field_answer(tmp_path) ->
     )
     assert rerun_customer["action_state"] == "answered"
     assert rerun_customer["current_value"] == "Space Force"
+    assert rerun_customer["gap_summary"] is None
 
     workspace_response = client.get(
         f"/api/production-command-center/workspace?opportunity_id={opportunity_id}"
@@ -652,6 +654,21 @@ def test_field_specific_route_acceptance_promotes_packet_field_answer(
     assert packet_field_answer["status"] == "answered"
     assert packet_field_answer["evidence_status"] == "assumption"
     assert packet_field_answer["source_draft_id"] == output_id
+    activation_run = body["activation_run"]
+    assert activation_run["trigger"] == "material_refresh"
+    response_customer = next(
+        field
+        for field in activation_run["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "customer"
+    )
+    assert response_customer["action_state"] == "answered"
+    assert response_customer["gap_summary"] is None
+
+    stored_runs_response = client.get(
+        f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
+    )
+    stored_runs = stored_runs_response.json()["runs"]
+    assert stored_runs[-1]["trigger"] == "material_refresh"
 
     rerun_response = client.post(
         f"/api/production-command-center/opportunities/{opportunity_id}/activation-runs"

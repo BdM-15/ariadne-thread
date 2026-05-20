@@ -761,6 +761,12 @@ def create_app(
                 answer_store=PacketFieldAnswerStore(
                     runtime_settings.ariadne_packet_field_answers_dir
                 ),
+                opportunity_store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
                 output_id=output_id,
                 request=request,
             )

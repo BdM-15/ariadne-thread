@@ -321,6 +321,7 @@ class AssistedRouteOutputReviewResponse(BaseModel):
     decision: AssistedRouteOutputReviewDecision
     accepted_updates: tuple[WorkProductUpdateProjection, ...]
     packet_field_answer: PacketFieldAnswer | None = None
+    activation_run: OpportunityActivationRun | None = None
 
 
 class AssistedRouteProvenanceView(BaseModel):
@@ -1304,6 +1305,8 @@ def review_assisted_route_output(
     *,
     store: WorkflowRoutingStore,
     answer_store: PacketFieldAnswerStore | None = None,
+    opportunity_store: OpportunityScaffoldStore | None = None,
+    activation_store: OpportunityActivationRunStore | None = None,
     output_id: str,
     request: AssistedRouteOutputReviewRequest,
 ) -> AssistedRouteOutputReviewResponse:
@@ -1339,6 +1342,7 @@ def review_assisted_route_output(
     for update in accepted_updates:
         store.write_work_product_update(update)
     packet_field_answer = None
+    activation_run = None
     if (
         request.decision is AssistedRouteReviewDecisionType.ACCEPT
         and answer_store is not None
@@ -1349,11 +1353,20 @@ def review_assisted_route_output(
             decision=decision,
         )
         answer_store.write(packet_field_answer)
+        if opportunity_store is not None and activation_store is not None:
+            activation_run = run_production_opportunity_activation(
+                opportunity_id=reviewed_output.opportunity_id,
+                opportunity_store=opportunity_store,
+                activation_store=activation_store,
+                answer_store=answer_store,
+                trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+            )
     return AssistedRouteOutputReviewResponse(
         output=reviewed_output,
         decision=decision,
         accepted_updates=accepted_updates,
         packet_field_answer=packet_field_answer,
+        activation_run=activation_run,
     )
 
 

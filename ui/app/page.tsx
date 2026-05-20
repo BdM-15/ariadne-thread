@@ -848,6 +848,7 @@ function PacketMode({
       : (matrix?.fields ?? [])),
   ].sort(compareRoadmapFields);
   const roadmapSections = buildRoadmapSections(roadmapFields);
+  const supportedFields = roadmapFields.filter(isRoadmapFieldAnswered);
   const needsActionFields = roadmapFields.filter((field) =>
     isRoadmapFieldActionable(field),
   );
@@ -954,6 +955,37 @@ function PacketMode({
             </div>
           </section>
 
+          {supportedFields.length > 0 ? (
+            <section
+              className="workspace-section"
+              aria-labelledby="packet-supported-answer-title"
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Supported Answers
+                  </p>
+                  <h3 id="packet-supported-answer-title">
+                    Packet fields already carrying trusted values
+                  </h3>
+                </div>
+                <CheckCircle2
+                  className="text-ariadne-cyan"
+                  size={22}
+                  aria-hidden
+                />
+              </div>
+              <div className="packet-field-grid">
+                {supportedFields.map((field) => (
+                  <SupportedPacketFieldCard
+                    field={field}
+                    key={field.field_key}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section
             className="workspace-section packet-content-lane"
             aria-labelledby="packet-content-title"
@@ -1044,6 +1076,33 @@ function PacketRoadmapFieldCard({
           Start route
         </a>
       </div>
+    </article>
+  );
+}
+
+function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
+  return (
+    <article className="packet-field-card packet-field-card-supported">
+      <div className="packet-field-card-heading">
+        <div>
+          <p>{formatLabel(field.section)}</p>
+          <h4>{field.label}</h4>
+        </div>
+        <span>{formatLabel(field.evidence_status)}</span>
+      </div>
+      <p className="packet-field-value">
+        {field.current_value ?? "Accepted packet answer"}
+      </p>
+      <div className="packet-field-status-row">
+        <span>{formatLabel(field.current_status)}</span>
+        {field.current_gate_required !== false ? (
+          <span>Required this gate</span>
+        ) : null}
+        {field.source_refs.length > 0 ? (
+          <span>{field.source_refs.length} sources</span>
+        ) : null}
+      </div>
+      <p className="packet-field-gap">Review source support before gate use.</p>
     </article>
   );
 }

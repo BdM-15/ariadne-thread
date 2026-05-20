@@ -443,6 +443,12 @@ def _action_item_for_definition(
         not definition.required_milestone_gates
         or current_milestone_gate in definition.required_milestone_gates
     )
+    gap_summary = None
+    if answer is None:
+        gap_summary = f"{definition.label} is not answered for this Opportunity."
+    elif answer.gap_summary:
+        gap_summary = answer.gap_summary
+
     return PacketFieldActionItem(
         field_key=definition.key,
         label=definition.label,
@@ -460,11 +466,7 @@ def _action_item_for_definition(
         requires_review=action_state is not PacketFieldActionState.ANSWERED,
         approval_required=_approval_required(definition),
         source_refs=answer.evidence_ids if answer is not None else (),
-        gap_summary=(
-            answer.gap_summary
-            if answer is not None and answer.gap_summary
-            else f"{definition.label} is not answered for this Opportunity."
-        ),
+        gap_summary=gap_summary,
         current_value=answer.value if answer is not None else None,
     )
 

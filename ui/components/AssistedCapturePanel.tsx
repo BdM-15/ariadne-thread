@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, Route, ShieldCheck, Target } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 export type AssistedCaptureGoal = {
@@ -92,6 +93,7 @@ type ReviewDecisionResponse = {
   accepted_updates: WorkProductUpdateProjection[];
   output: AssistedRouteRun["output"];
   packet_field_answer: PacketFieldAnswerView | null;
+  activation_run: { run_id: string } | null;
 };
 
 type ProvenanceView = {
@@ -121,6 +123,7 @@ export function AssistedCapturePanel({
   initialPacketFieldLabel?: string;
   opportunityId: string;
 }) {
+  const router = useRouter();
   const [selectedGoalId, setSelectedGoalId] = useState(
     initialGoalId ?? goals[0]?.id ?? "",
   );
@@ -263,6 +266,9 @@ export function AssistedCapturePanel({
         ...currentAnswers,
         [output.id]: body.packet_field_answer,
       }));
+      if (body.activation_run !== null) {
+        router.refresh();
+      }
     });
   }
 
@@ -541,6 +547,12 @@ export function AssistedCapturePanel({
                           ]?.source_draft_id ?? "route_output",
                         )}
                       </p>
+                      <a
+                        className="mt-2 inline-flex text-xs font-semibold text-ariadne-cyan hover:text-slate-100"
+                        href={`/?opportunity_id=${encodeURIComponent(opportunityId)}&mode=packet`}
+                      >
+                        Open updated packet roadmap
+                      </a>
                     </div>
                   </div>
                 ) : null}

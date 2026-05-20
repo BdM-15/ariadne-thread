@@ -37,13 +37,15 @@ button {
 }
 
 .mode-button:focus-visible,
-.command-button:focus-visible {
+.command-button:focus-visible,
+.goal-button:focus-visible {
   outline: 2px solid #4dd8cf;
   outline-offset: 2px;
 }
 
 .mode-button:hover,
-.command-button:hover {
+.command-button:hover,
+.goal-button:hover {
   border-color: #4dd8cf;
   color: #ffffff;
 }
@@ -121,4 +123,46 @@ button {
   background: #173038;
   border-color: rgba(77, 216, 207, 0.55);
   color: #e9fffd;
+}
+
+.goal-button {
+  align-items: center;
+  background: #10151b;
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  color: #d8e0e8;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.goal-button[aria-selected="true"] {
+  background: #173038;
+  border-color: rgba(77, 216, 207, 0.55);
+}
+
+.goal-button span:last-child {
+  color: #98a6b3;
+  font-size: 12px;
+  text-align: right;
+}
+
+.route-card {
+  background: rgba(8, 11, 15, 0.45);
+  border: 1px solid #26313c;
+  border-radius: 6px;
+  padding: 14px;
+}
+
+.chip {
+  border: 1px solid rgba(216, 138, 54, 0.45);
+  border-radius: 999px;
+  color: #f0b573;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 8px;
 }

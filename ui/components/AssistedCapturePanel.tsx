@@ -1,6 +1,6 @@
 "use client";
 
-import { Route, ShieldCheck, Target } from "lucide-react";
+import { CheckCircle2, Route, ShieldCheck, Target } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
 
 export type AssistedCaptureGoal = {
@@ -71,6 +71,14 @@ type WorkProductUpdateProjection = {
   after_summary: string;
 };
 
+type PacketFieldAnswerView = {
+  field_key: string;
+  value: string | null;
+  evidence_status: string;
+  confidence: number | null;
+  source_draft_id: string | null;
+};
+
 type RecommendationResponse = {
   goal: AssistedCaptureGoal;
   recommendations: AssistedRouteRecommendation[];
@@ -83,6 +91,7 @@ type RouteRunResponse = {
 type ReviewDecisionResponse = {
   accepted_updates: WorkProductUpdateProjection[];
   output: AssistedRouteRun["output"];
+  packet_field_answer: PacketFieldAnswerView | null;
 };
 
 type ProvenanceView = {
@@ -125,6 +134,9 @@ export function AssistedCapturePanel({
   >({});
   const [updatesByOutputId, setUpdatesByOutputId] = useState<
     Record<string, WorkProductUpdateProjection[]>
+  >({});
+  const [packetAnswersByOutputId, setPacketAnswersByOutputId] = useState<
+    Record<string, PacketFieldAnswerView | null>
   >({});
   const [provenanceByRouteId, setProvenanceByRouteId] = useState<
     Record<string, ProvenanceView>
@@ -185,6 +197,7 @@ export function AssistedCapturePanel({
       setRoutes(body.recommendations);
       setRunsByRouteId({});
       setUpdatesByOutputId({});
+      setPacketAnswersByOutputId({});
       setProvenanceByRouteId({});
       setReviewNotesByOutputId({});
     });
@@ -213,23 +226,26 @@ export function AssistedCapturePanel({
     });
   }
 
-  function reviewOutput(outputId: string, decision: "accept" | "reject") {
+  function reviewOutput(
+    output: AssistedRouteRun["output"],
+    decision: "accept" | "reject",
+  ) {
     setError(null);
     startTransition(async () => {
       const reviewerRationale =
-        reviewNotesByOutputId[outputId]?.trim() ||
+        reviewNotesByOutputId[output.id]?.trim() ||
         (decision === "accept"
           ? "Accepted from Command Center review gate."
           : "Rejected from Command Center review gate.");
       const response = await fetch(
-        `/api/production-command-center/route-outputs/${outputId}/review-decisions`,
+        `/api/production-command-center/route-outputs/${output.id}/review-decisions`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             decision,
             accepted_destination:
-              decision === "accept" ? "call_plan" : undefined,
+              decision === "accept" ? output.recommended_destination : undefined,
             reviewer_rationale: reviewerRationale,
           }),
         },
@@ -241,7 +257,11 @@ export function AssistedCapturePanel({
       const body = (await response.json()) as ReviewDecisionResponse;
       setUpdatesByOutputId((currentUpdates) => ({
         ...currentUpdates,
-        [outputId]: body.accepted_updates,
+        [output.id]: body.accepted_updates,
+      }));
+      setPacketAnswersByOutputId((currentAnswers) => ({
+        ...currentAnswers,
+        [output.id]: body.packet_field_answer,
       }));
     });
   }
@@ -448,7 +468,7 @@ export function AssistedCapturePanel({
                       disabled={isPending}
                       onClick={() =>
                         reviewOutput(
-                          runsByRouteId[routeRecommendation.id].output.id,
+                          runsByRouteId[routeRecommendation.id].output,
                           "accept",
                         )
                       }
@@ -461,7 +481,7 @@ export function AssistedCapturePanel({
                       disabled={isPending}
                       onClick={() =>
                         reviewOutput(
-                          runsByRouteId[routeRecommendation.id].output.id,
+                          runsByRouteId[routeRecommendation.id].output,
                           "reject",
                         )
                       }
@@ -487,6 +507,41 @@ export function AssistedCapturePanel({
                         <span>{formatLabel(update.state)}</span>
                       </div>
                     ))}
+                  </div>
+                ) : null}
+                {packetAnswersByOutputId[
+                  runsByRouteId[routeRecommendation.id].output.id
+                ] !== undefined &&
+                packetAnswersByOutputId[
+                  runsByRouteId[routeRecommendation.id].output.id
+                ] !== null ? (
+                  <div className="mt-3 flex items-start gap-2 rounded-md border border-ariadne-cyan/30 bg-ariadne-cyan/10 p-3 text-sm text-slate-200">
+                    <CheckCircle2
+                      className="mt-0.5 text-ariadne-cyan"
+                      size={15}
+                      aria-hidden
+                    />
+                    <div>
+                      <p className="font-semibold text-slate-100">
+                        Packet answer created: {formatLabel(
+                          packetAnswersByOutputId[
+                            runsByRouteId[routeRecommendation.id].output.id
+                          ]?.field_key ?? "packet_field",
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-300">
+                        {formatLabel(
+                          packetAnswersByOutputId[
+                            runsByRouteId[routeRecommendation.id].output.id
+                          ]?.evidence_status ?? "assumption",
+                        )}{" "}
+                        evidence / source {formatReferenceLabel(
+                          packetAnswersByOutputId[
+                            runsByRouteId[routeRecommendation.id].output.id
+                          ]?.source_draft_id ?? "route_output",
+                        )}
+                      </p>
+                    </div>
                   </div>
                 ) : null}
               </div>

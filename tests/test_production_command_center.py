@@ -142,3 +142,48 @@ def test_assisted_capture_route_execution_creates_reviewable_output(tmp_path) ->
     assert run["output"]["recommended_destination"] == "call_plan"
     assert "Customer call plan" in run["output"]["title"]
     assert "knowledge_context_review" in run["output"]["capability_chain"]
+
+
+def test_assisted_capture_route_output_acceptance_projects_work_updates(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    recommendation_response = client.post(
+        "/api/production-command-center/opportunities/"
+        "opp-aflcmc-recompete/route-recommendations",
+        json={"goal_id": "prepare_customer_call"},
+    )
+    recommendation_id = recommendation_response.json()["recommendations"][0]["id"]
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation_id}/runs",
+        json={"approved": True},
+    )
+    output_id = run_response.json()["run"]["output"]["id"]
+
+    response = client.post(
+        f"/api/production-command-center/route-outputs/{output_id}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Accepted for call prep after source review.",
+            "accepted_destination": "call_plan",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"]["decision"] == "accept"
+    assert body["decision"]["review_gate"] == "human_accepted"
+    assert body["output"]["review_state"] == "accepted"
+    assert [update["destination"] for update in body["accepted_updates"]] == [
+        "call_plan",
+        "living_packet",
+        "action_plan",
+    ]
+    assert all(
+        update["state"] == "ready_for_apply"
+        for update in body["accepted_updates"]
+    )
+    assert body["accepted_updates"][0]["source_output_id"] == output_id
+    assert "Accepted for call prep" in body["decision"]["reviewer_rationale"]

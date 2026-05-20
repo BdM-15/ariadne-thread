@@ -102,6 +102,17 @@ class AssistedRouteOutputReviewState(StrEnum):
     REJECTED = "rejected"
 
 
+class AssistedRouteReviewDecisionType(StrEnum):
+    ACCEPT = "accept"
+    REJECT = "reject"
+    REQUEST_CHANGES = "request_changes"
+
+
+class WorkProductUpdateState(StrEnum):
+    READY_FOR_APPLY = "ready_for_apply"
+    HELD_FOR_REWORK = "held_for_rework"
+
+
 class AssistedRouteRunStage(BaseModel):
     id: str
     label: str
@@ -138,6 +149,26 @@ class AssistedRouteRun(BaseModel):
     output: AssistedRouteOutput
 
 
+class AssistedRouteOutputReviewDecision(BaseModel):
+    id: str
+    output_id: str
+    decision: AssistedRouteReviewDecisionType
+    reviewer_rationale: str
+    accepted_destination: AssistedCaptureWorkProduct | None = None
+    review_gate: str
+
+
+class WorkProductUpdateProjection(BaseModel):
+    id: str
+    source_output_id: str
+    review_decision_id: str
+    destination: AssistedCaptureWorkProduct
+    state: WorkProductUpdateState
+    before_summary: str
+    after_summary: str
+    source_refs: tuple[str, ...]
+
+
 class AssistedRouteRecommendationRequest(BaseModel):
     goal_id: str
     operator_intent: str | None = None
@@ -145,6 +176,12 @@ class AssistedRouteRecommendationRequest(BaseModel):
 
 class AssistedRouteRunRequest(BaseModel):
     approved: bool = False
+
+
+class AssistedRouteOutputReviewRequest(BaseModel):
+    decision: AssistedRouteReviewDecisionType
+    reviewer_rationale: str
+    accepted_destination: AssistedCaptureWorkProduct | None = None
 
 
 class AssistedRouteRecommendationResponse(BaseModel):
@@ -155,6 +192,12 @@ class AssistedRouteRecommendationResponse(BaseModel):
 
 class AssistedRouteRunResponse(BaseModel):
     run: AssistedRouteRun
+
+
+class AssistedRouteOutputReviewResponse(BaseModel):
+    output: AssistedRouteOutput
+    decision: AssistedRouteOutputReviewDecision
+    accepted_updates: tuple[WorkProductUpdateProjection, ...]
 
 
 class ProductionCommandCenterWorkspace(BaseModel):
@@ -210,6 +253,26 @@ class WorkflowRoutingStore:
             self._output_path(output_id).read_text(encoding="utf-8")
         )
 
+    def write_review_decision(
+        self,
+        decision: AssistedRouteOutputReviewDecision,
+    ) -> AssistedRouteOutputReviewDecision:
+        self._decision_path(decision.id).write_text(
+            decision.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return decision
+
+    def write_work_product_update(
+        self,
+        update: WorkProductUpdateProjection,
+    ) -> WorkProductUpdateProjection:
+        self._work_product_update_path(update.id).write_text(
+            update.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return update
+
     def _recommendation_path(self, recommendation_id: str) -> Path:
         if not recommendation_id or recommendation_id != Path(recommendation_id).name:
             raise ValueError("recommendation_id must be a file-safe identifier")
@@ -224,6 +287,16 @@ class WorkflowRoutingStore:
         if not output_id or output_id != Path(output_id).name:
             raise ValueError("output_id must be a file-safe identifier")
         return self._child_path("outputs", output_id)
+
+    def _decision_path(self, decision_id: str) -> Path:
+        if not decision_id or decision_id != Path(decision_id).name:
+            raise ValueError("decision_id must be a file-safe identifier")
+        return self._child_path("review-decisions", decision_id)
+
+    def _work_product_update_path(self, update_id: str) -> Path:
+        if not update_id or update_id != Path(update_id).name:
+            raise ValueError("update_id must be a file-safe identifier")
+        return self._child_path("work-product-updates", update_id)
 
     def _child_path(self, child_dir: str, record_id: str) -> Path:
         directory = self.root / child_dir
@@ -421,6 +494,47 @@ def execute_assisted_capture_route(
     return store.write_run(run)
 
 
+def review_assisted_route_output(
+    *,
+    store: WorkflowRoutingStore,
+    output_id: str,
+    request: AssistedRouteOutputReviewRequest,
+) -> AssistedRouteOutputReviewResponse:
+    output = store.read_output(output_id)
+    review_state = (
+        AssistedRouteOutputReviewState.ACCEPTED
+        if request.decision is AssistedRouteReviewDecisionType.ACCEPT
+        else AssistedRouteOutputReviewState.REJECTED
+    )
+    reviewed_output = output.model_copy(update={"review_state": review_state})
+    store.write_output(reviewed_output)
+    decision = AssistedRouteOutputReviewDecision(
+        id=f"decision_{output_id}_{request.decision.value}",
+        output_id=output_id,
+        decision=request.decision,
+        reviewer_rationale=request.reviewer_rationale,
+        accepted_destination=request.accepted_destination,
+        review_gate=(
+            "human_accepted"
+            if request.decision is AssistedRouteReviewDecisionType.ACCEPT
+            else "human_rejected"
+        ),
+    )
+    store.write_review_decision(decision)
+    accepted_updates = (
+        _work_product_updates_for_acceptance(reviewed_output, decision)
+        if request.decision is AssistedRouteReviewDecisionType.ACCEPT
+        else ()
+    )
+    for update in accepted_updates:
+        store.write_work_product_update(update)
+    return AssistedRouteOutputReviewResponse(
+        output=reviewed_output,
+        decision=decision,
+        accepted_updates=accepted_updates,
+    )
+
+
 def _goal_by_id(goal_id: str) -> AssistedCaptureGoal:
     for goal in ASSISTED_CAPTURE_GOALS:
         if goal.id == goal_id:
@@ -556,3 +670,45 @@ def _output_summary_for_route(recommendation: AssistedRouteRecommendation) -> st
     if recommendation.route_label == "Action plan sequencing route":
         return "Draft sequenced capture actions from packet gaps and workstream backfill."
     return recommendation.route_summary
+
+
+def _work_product_updates_for_acceptance(
+    output: AssistedRouteOutput,
+    decision: AssistedRouteOutputReviewDecision,
+) -> tuple[WorkProductUpdateProjection, ...]:
+    return tuple(
+        WorkProductUpdateProjection(
+            id=f"update_{output.id}_{destination.value}",
+            source_output_id=output.id,
+            review_decision_id=decision.id,
+            destination=destination,
+            state=WorkProductUpdateState.READY_FOR_APPLY,
+            before_summary=_before_summary_for_destination(destination),
+            after_summary=_after_summary_for_destination(output, destination),
+            source_refs=output.source_refs,
+        )
+        for destination in output.work_product_targets
+    )
+
+
+def _before_summary_for_destination(destination: AssistedCaptureWorkProduct) -> str:
+    if destination is AssistedCaptureWorkProduct.CALL_PLAN:
+        return "No accepted call-plan draft from this assisted route."
+    if destination is AssistedCaptureWorkProduct.LIVING_PACKET:
+        return "Packet gap remains open until the accepted route output is applied."
+    if destination is AssistedCaptureWorkProduct.ACTION_PLAN:
+        return "Action Plan has no accepted follow-up from this route."
+    return "No accepted update from this assisted route."
+
+
+def _after_summary_for_destination(
+    output: AssistedRouteOutput,
+    destination: AssistedCaptureWorkProduct,
+) -> str:
+    if destination is AssistedCaptureWorkProduct.CALL_PLAN:
+        return output.summary
+    if destination is AssistedCaptureWorkProduct.LIVING_PACKET:
+        return "Add a packet note that the customer call plan is ready for review-backed use."
+    if destination is AssistedCaptureWorkProduct.ACTION_PLAN:
+        return "Add follow-up actions for PM engagement and decision-maker validation."
+    return output.summary

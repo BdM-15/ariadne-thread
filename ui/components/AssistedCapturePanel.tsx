@@ -41,6 +41,14 @@ type AssistedRouteRun = {
   };
 };
 
+type WorkProductUpdateProjection = {
+  id: string;
+  destination: string;
+  state: string;
+  before_summary: string;
+  after_summary: string;
+};
+
 type RecommendationResponse = {
   goal: AssistedCaptureGoal;
   recommendations: AssistedRouteRecommendation[];
@@ -48,6 +56,11 @@ type RecommendationResponse = {
 
 type RouteRunResponse = {
   run: AssistedRouteRun;
+};
+
+type ReviewDecisionResponse = {
+  accepted_updates: WorkProductUpdateProjection[];
+  output: AssistedRouteRun["output"];
 };
 
 export function AssistedCapturePanel({
@@ -60,6 +73,7 @@ export function AssistedCapturePanel({
   const [selectedGoalId, setSelectedGoalId] = useState(goals[0]?.id ?? "");
   const [routes, setRoutes] = useState<AssistedRouteRecommendation[]>([]);
   const [runsByRouteId, setRunsByRouteId] = useState<Record<string, AssistedRouteRun>>({});
+  const [updatesByOutputId, setUpdatesByOutputId] = useState<Record<string, WorkProductUpdateProjection[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -83,6 +97,7 @@ export function AssistedCapturePanel({
       const body = (await response.json()) as RecommendationResponse;
       setRoutes(body.recommendations);
       setRunsByRouteId({});
+      setUpdatesByOutputId({});
     });
   }
 
@@ -105,6 +120,33 @@ export function AssistedCapturePanel({
       setRunsByRouteId((currentRuns) => ({
         ...currentRuns,
         [recommendationId]: body.run,
+      }));
+    });
+  }
+
+  function acceptOutput(outputId: string) {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch(
+        `/api/production-command-center/route-outputs/${outputId}/review-decisions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            decision: "accept",
+            accepted_destination: "call_plan",
+            reviewer_rationale: "Accepted from Command Center review gate.",
+          }),
+        },
+      );
+      if (!response.ok) {
+        setError("Route output review is unavailable.");
+        return;
+      }
+      const body = (await response.json()) as ReviewDecisionResponse;
+      setUpdatesByOutputId((currentUpdates) => ({
+        ...currentUpdates,
+        [outputId]: body.accepted_updates,
       }));
     });
   }
@@ -179,6 +221,23 @@ export function AssistedCapturePanel({
                 <p className="mt-2 text-sm leading-6 text-slate-300">
                   {runsByRouteId[routeRecommendation.id].output.summary}
                 </p>
+                <button
+                  className="command-button route-run-button"
+                  onClick={() => acceptOutput(runsByRouteId[routeRecommendation.id].output.id)}
+                  type="button"
+                >
+                  Accept into work products
+                </button>
+                {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id] !== undefined ? (
+                  <div className="mt-3 space-y-2">
+                    {updatesByOutputId[runsByRouteId[routeRecommendation.id].output.id].map((update) => (
+                      <div className="update-projection" key={update.id}>
+                        <span>{formatLabel(update.destination)}</span>
+                        <span>{formatLabel(update.state)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </article>

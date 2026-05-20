@@ -21,6 +21,19 @@ type AssistedRouteRecommendation = {
   requires_review: boolean;
   work_product_targets: string[];
   recommended_capability_chain: string[];
+  capability_route_card: {
+    id: string;
+    title: string;
+    capability_count: number;
+    steps: Array<{
+      capability_id: string;
+      label: string;
+      capability_type: string;
+      executor_kind: string;
+      output_target: string;
+      status: string;
+    }>;
+  };
   input_refs: string[];
   reasoning: string[];
   status: string;
@@ -32,6 +45,14 @@ type AssistedRouteRun = {
   executor_kind: string;
   network_required: boolean;
   model_required: boolean;
+  capability_progress: {
+    percent_complete: number;
+    steps: Array<{
+      capability_id: string;
+      label: string;
+      status: string;
+    }>;
+  };
   output: {
     id: string;
     title: string;
@@ -245,6 +266,17 @@ export function AssistedCapturePanel({
               <ShieldCheck size={14} aria-hidden />
               <span>{formatLabel(routeRecommendation.autonomy_tier)}</span>
             </div>
+            <div className="capability-chain">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+                {routeRecommendation.capability_route_card.capability_count} steps
+              </p>
+              {routeRecommendation.capability_route_card.steps.map((step) => (
+                <div className="capability-step" key={step.capability_id}>
+                  <span>{step.label}</span>
+                  <span>{formatLabel(step.status)}</span>
+                </div>
+              ))}
+            </div>
             <button
               className="command-button route-run-button"
               onClick={() => runRoute(routeRecommendation.id)}
@@ -270,6 +302,9 @@ export function AssistedCapturePanel({
                 <p className="mt-2 text-sm leading-6 text-slate-300">
                   {runsByRouteId[routeRecommendation.id].output.summary}
                 </p>
+                <div className="progress-bar" aria-label="Capability progress">
+                  <span style={{ width: `${runsByRouteId[routeRecommendation.id].capability_progress.percent_complete}%` }} />
+                </div>
                 <div className="review-gate">
                   <p className="text-xs uppercase tracking-[0.16em] text-ariadne-signal">
                     Human review required

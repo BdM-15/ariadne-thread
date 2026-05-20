@@ -104,6 +104,19 @@ def test_assisted_capture_goal_selection_returns_reviewable_routes(tmp_path) -> 
         "capture_research_enrichment",
         "call_plan_draft",
     ]
+    route_card = primary_route["capability_route_card"]
+    assert route_card["id"] == f"card_{primary_route['id']}"
+    assert route_card["capability_count"] == 3
+    assert [step["capability_id"] for step in route_card["steps"]] == [
+        "knowledge_context_review",
+        "capture_research_enrichment",
+        "call_plan_draft",
+    ]
+    assert [step["status"] for step in route_card["steps"]] == [
+        "planned",
+        "planned",
+        "planned",
+    ]
     assert "Customer context gap" in primary_route["reasoning"][0]
 
 
@@ -132,6 +145,12 @@ def test_assisted_capture_route_execution_creates_reviewable_output(tmp_path) ->
     assert run["executor_kind"] == "deterministic_python"
     assert run["network_required"] is False
     assert run["model_required"] is False
+    assert run["capability_progress"]["percent_complete"] == 100
+    assert [step["status"] for step in run["capability_progress"]["steps"]] == [
+        "succeeded",
+        "succeeded",
+        "succeeded",
+    ]
     assert [stage["status"] for stage in run["stages"]] == [
         "succeeded",
         "succeeded",

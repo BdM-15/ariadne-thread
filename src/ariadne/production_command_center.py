@@ -200,6 +200,21 @@ class AssistedRouteOutputReviewResponse(BaseModel):
     accepted_updates: tuple[WorkProductUpdateProjection, ...]
 
 
+class AssistedRouteProvenanceView(BaseModel):
+    recommendation: AssistedRouteRecommendation
+    input_refs: tuple[str, ...]
+    capability_chain: tuple[str, ...]
+    reasoning: tuple[str, ...]
+    run: AssistedRouteRun | None = None
+    output: AssistedRouteOutput | None = None
+    review_decisions: tuple[AssistedRouteOutputReviewDecision, ...] = ()
+    work_product_updates: tuple[WorkProductUpdateProjection, ...] = ()
+
+
+class AssistedRouteProvenanceResponse(BaseModel):
+    provenance: AssistedRouteProvenanceView
+
+
 class ProductionCommandCenterWorkspace(BaseModel):
     production_ui_contract: str
     scaffold_role: str
@@ -241,6 +256,12 @@ class WorkflowRoutingStore:
             self._run_path(run_id).read_text(encoding="utf-8")
         )
 
+    def list_runs(self) -> tuple[AssistedRouteRun, ...]:
+        return tuple(
+            AssistedRouteRun.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in sorted(self._child_dir("runs").glob("*.json"))
+        )
+
     def write_output(self, output: AssistedRouteOutput) -> AssistedRouteOutput:
         self._output_path(output.id).write_text(
             output.model_dump_json(indent=2),
@@ -263,6 +284,14 @@ class WorkflowRoutingStore:
         )
         return decision
 
+    def list_review_decisions(self) -> tuple[AssistedRouteOutputReviewDecision, ...]:
+        return tuple(
+            AssistedRouteOutputReviewDecision.model_validate_json(
+                path.read_text(encoding="utf-8")
+            )
+            for path in sorted(self._child_dir("review-decisions").glob("*.json"))
+        )
+
     def write_work_product_update(
         self,
         update: WorkProductUpdateProjection,
@@ -272,6 +301,14 @@ class WorkflowRoutingStore:
             encoding="utf-8",
         )
         return update
+
+    def list_work_product_updates(self) -> tuple[WorkProductUpdateProjection, ...]:
+        return tuple(
+            WorkProductUpdateProjection.model_validate_json(
+                path.read_text(encoding="utf-8")
+            )
+            for path in sorted(self._child_dir("work-product-updates").glob("*.json"))
+        )
 
     def _recommendation_path(self, recommendation_id: str) -> Path:
         if not recommendation_id or recommendation_id != Path(recommendation_id).name:
@@ -299,9 +336,12 @@ class WorkflowRoutingStore:
         return self._child_path("work-product-updates", update_id)
 
     def _child_path(self, child_dir: str, record_id: str) -> Path:
-        directory = self.root / child_dir
+        directory = self._child_dir(child_dir)
         directory.mkdir(parents=True, exist_ok=True)
         return directory / f"{record_id}.json"
+
+    def _child_dir(self, child_dir: str) -> Path:
+        return self.root / child_dir
 
 
 ASSISTED_CAPTURE_GOALS: tuple[AssistedCaptureGoal, ...] = (
@@ -535,6 +575,45 @@ def review_assisted_route_output(
     )
 
 
+def get_assisted_route_provenance(
+    *,
+    store: WorkflowRoutingStore,
+    recommendation_id: str,
+) -> AssistedRouteProvenanceResponse:
+    recommendation = store.read_recommendation(recommendation_id)
+    matching_runs = tuple(
+        run for run in store.list_runs() if run.recommendation_id == recommendation_id
+    )
+    run = matching_runs[-1] if matching_runs else None
+    output = None
+    if run is not None:
+        output = store.read_output(run.output.id)
+    output_id = output.id if output is not None else None
+    review_decisions = tuple(
+        decision
+        for decision in store.list_review_decisions()
+        if decision.output_id == output_id
+    )
+    stored_updates = tuple(
+        update
+        for update in store.list_work_product_updates()
+        if update.source_output_id == output_id
+    )
+    work_product_updates = _ordered_updates_for_output(output, stored_updates)
+    return AssistedRouteProvenanceResponse(
+        provenance=AssistedRouteProvenanceView(
+            recommendation=recommendation,
+            input_refs=recommendation.input_refs,
+            capability_chain=recommendation.recommended_capability_chain,
+            reasoning=recommendation.reasoning,
+            run=run,
+            output=output,
+            review_decisions=review_decisions,
+            work_product_updates=work_product_updates,
+        )
+    )
+
+
 def _goal_by_id(goal_id: str) -> AssistedCaptureGoal:
     for goal in ASSISTED_CAPTURE_GOALS:
         if goal.id == goal_id:
@@ -712,3 +791,17 @@ def _after_summary_for_destination(
     if destination is AssistedCaptureWorkProduct.ACTION_PLAN:
         return "Add follow-up actions for PM engagement and decision-maker validation."
     return output.summary
+
+
+def _ordered_updates_for_output(
+    output: AssistedRouteOutput | None,
+    updates: tuple[WorkProductUpdateProjection, ...],
+) -> tuple[WorkProductUpdateProjection, ...]:
+    if output is None:
+        return updates
+    updates_by_destination = {update.destination: update for update in updates}
+    return tuple(
+        updates_by_destination[destination]
+        for destination in output.work_product_targets
+        if destination in updates_by_destination
+    )

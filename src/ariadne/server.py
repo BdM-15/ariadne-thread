@@ -185,12 +185,14 @@ from ariadne.production_command_center import (
     AssistedRouteRecommendationResponse,
     AssistedRouteOutputReviewRequest,
     AssistedRouteOutputReviewResponse,
+    AssistedRouteProvenanceResponse,
     AssistedRouteRunRequest,
     AssistedRouteRunResponse,
     ProductionCommandCenterWorkspace,
     WorkflowRoutingStore,
     build_production_command_center_workspace,
     execute_assisted_capture_route,
+    get_assisted_route_provenance,
     recommend_assisted_capture_routes,
     review_assisted_route_output,
 )
@@ -626,6 +628,20 @@ def create_app(
             )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Route output not found") from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/production-command-center/routes/{recommendation_id}/provenance")
+    def production_command_center_route_provenance(
+        recommendation_id: str,
+    ) -> AssistedRouteProvenanceResponse:
+        try:
+            return get_assisted_route_provenance(
+                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                recommendation_id=recommendation_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="Route recommendation not found") from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 

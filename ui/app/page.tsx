@@ -654,7 +654,8 @@ async function loadDocumentIntakeRecords(): Promise<DocumentIntakeRecord[]> {
     const body = (await response.json()) as DocumentIntakeQueueResponse;
     return [...body.records].sort(
       (firstRecord, secondRecord) =>
-        Date.parse(secondRecord.updated_at) - Date.parse(firstRecord.updated_at),
+        Date.parse(secondRecord.updated_at) -
+        Date.parse(firstRecord.updated_at),
     );
   } catch {
     return [];
@@ -783,18 +784,18 @@ export default async function CommandCenterPage({
     capabilityRuns,
     capabilityCatalog,
   ] = await Promise.all([
-      loadLatestActivationRun(workspace.opportunity.id),
-      loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
-      loadWorkProductUpdates(workspace.opportunity.id, "call_plan"),
-      loadCaptureResearchRuns(workspace.opportunity.id),
-      loadCaptureResearchSourceRegistry(),
-      loadDocumentIntakeRecords(),
-      loadDocumentIntakeDrafts(),
-      loadDocumentIntakeCandidates(),
-      loadDocumentIntakeCapabilities(),
-      loadCapabilityRuns(),
-      loadCapabilityCatalog(),
-    ]);
+    loadLatestActivationRun(workspace.opportunity.id),
+    loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
+    loadWorkProductUpdates(workspace.opportunity.id, "call_plan"),
+    loadCaptureResearchRuns(workspace.opportunity.id),
+    loadCaptureResearchSourceRegistry(),
+    loadDocumentIntakeRecords(),
+    loadDocumentIntakeDrafts(),
+    loadDocumentIntakeCandidates(),
+    loadDocumentIntakeCapabilities(),
+    loadCapabilityRuns(),
+    loadCapabilityCatalog(),
+  ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
       (field) => field.field_key === requestedPacketFieldKey,
@@ -1298,7 +1299,9 @@ function CommandCenterHome({
                       {formatLabel(opportunity.packet_readiness_label)}
                     </span>
                     <span>{formatLabel(opportunity.next_action_urgency)}</span>
-                    <span>{formatLabel(opportunity.source_freshness_label)}</span>
+                    <span>
+                      {formatLabel(opportunity.source_freshness_label)}
+                    </span>
                     <span>{routeLabel} route</span>
                     {opportunity.blocked_field_count > 0 ? (
                       <span>{opportunity.blocked_field_count} gaps</span>
@@ -2161,7 +2164,9 @@ function ResearchMode({
   const recommendedProviderIds = sourceRegistry?.recommended_provider_ids ?? [];
   const recommendedProviders =
     recommendedProviderIds.length > 0
-      ? recommendedProviderIds.map((providerId) => formatLabel(providerId)).join(", ")
+      ? recommendedProviderIds
+          .map((providerId) => formatLabel(providerId))
+          .join(", ")
       : "None ready";
 
   return (
@@ -2207,7 +2212,10 @@ function ResearchMode({
       </dl>
 
       <div className="action-plan-lanes">
-        <section className="action-plan-lane" aria-labelledby="research-runs-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="research-runs-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Opportunity research</p>
             <h4 id="research-runs-title">Capture research runs</h4>
@@ -2215,7 +2223,10 @@ function ResearchMode({
           {runs.length > 0 ? (
             <div className="action-plan-card-stack">
               {runs.slice(0, 4).map((run) => (
-                <article className="action-update-card" key={run.research_run_id}>
+                <article
+                  className="action-update-card"
+                  key={run.research_run_id}
+                >
                   <div className="action-update-card-head">
                     <span>{formatLabel(run.status)}</span>
                     <span>{run.source_findings.length} findings</span>
@@ -2253,14 +2264,16 @@ function ResearchMode({
                   ) : null}
                   {run.downstream_candidates.length > 0 ? (
                     <div className="research-candidate-list">
-                      {run.downstream_candidates.slice(0, 3).map((candidate) => (
-                        <span key={candidate.id}>
-                          {candidate.title ?? candidate.id} -{" "}
-                          {formatLabel(
-                            candidate.review_state ?? "pending_review",
-                          )}
-                        </span>
-                      ))}
+                      {run.downstream_candidates
+                        .slice(0, 3)
+                        .map((candidate) => (
+                          <span key={candidate.id}>
+                            {candidate.title ?? candidate.id} -{" "}
+                            {formatLabel(
+                              candidate.review_state ?? "pending_review",
+                            )}
+                          </span>
+                        ))}
                     </div>
                   ) : null}
                 </article>
@@ -2276,7 +2289,10 @@ function ResearchMode({
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="source-readiness-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="source-readiness-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Source readiness</p>
             <h4 id="source-readiness-title">Collection providers</h4>
@@ -2312,7 +2328,10 @@ function ResearchMode({
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="research-gaps-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="research-gaps-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Research inputs</p>
             <h4 id="research-gaps-title">Packet gaps needing research</h4>
@@ -2322,7 +2341,9 @@ function ResearchMode({
               {visibleResearchFields.map((field) => (
                 <article className="action-gap-card" key={field.field_key}>
                   <div>
-                    <span>{formatLabel(field.route_kind ?? field.section)}</span>
+                    <span>
+                      {formatLabel(field.route_kind ?? field.section)}
+                    </span>
                     <h5>{field.label}</h5>
                     <p>{field.gap_summary ?? field.route_rationale}</p>
                   </div>
@@ -2338,7 +2359,9 @@ function ResearchMode({
           ) : (
             <div className="action-plan-empty">
               <p>No research-routed packet gaps.</p>
-              <span>Current packet routes do not require research support.</span>
+              <span>
+                Current packet routes do not require research support.
+              </span>
             </div>
           )}
         </section>
@@ -2408,7 +2431,8 @@ function DocumentsMode({
           <h3 id="documents-title">Turn source material into review work.</h3>
           <span>
             Intake records, extraction drafts, parser gaps, and document-derived
-            candidates stay visible before any source span becomes trusted evidence.
+            candidates stay visible before any source span becomes trusted
+            evidence.
           </span>
         </div>
         <a
@@ -2445,7 +2469,10 @@ function DocumentsMode({
       </dl>
 
       <div className="action-plan-lanes">
-        <section className="action-plan-lane" aria-labelledby="document-queue-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="document-queue-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Source queue</p>
             <h4 id="document-queue-title">Intake records</h4>
@@ -2455,7 +2482,9 @@ function DocumentsMode({
               {records.slice(0, 5).map((record) => (
                 <article className="action-update-card" key={record.id}>
                   <div className="action-update-card-head">
-                    <span>{formatLabel(record.queue_state ?? record.status)}</span>
+                    <span>
+                      {formatLabel(record.queue_state ?? record.status)}
+                    </span>
                     <span>{formatLabel(record.material_type ?? "source")}</span>
                   </div>
                   <p>{record.filename ?? record.source_ref}</p>
@@ -2463,7 +2492,11 @@ function DocumentsMode({
                     <div>
                       <dt>Extraction</dt>
                       <dd>
-                        {formatLabel(record.extraction_status ?? "not_started")} / {formatLabel(record.extraction_review_status ?? "not_ready")}
+                        {formatLabel(record.extraction_status ?? "not_started")}{" "}
+                        /{" "}
+                        {formatLabel(
+                          record.extraction_review_status ?? "not_ready",
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -2488,12 +2521,17 @@ function DocumentsMode({
           ) : (
             <div className="action-plan-empty">
               <p>No intake records.</p>
-              <span>Upload or register source material to start Document Intake.</span>
+              <span>
+                Upload or register source material to start Document Intake.
+              </span>
             </div>
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="document-drafts-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="document-drafts-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Extraction review</p>
             <h4 id="document-drafts-title">Document-derived draft parts</h4>
@@ -2522,7 +2560,11 @@ function DocumentsMode({
                     </div>
                     <div>
                       <dt>Bundle</dt>
-                      <dd>{piece.source_extraction_bundle_id ?? draft.extraction_bundle_id ?? "None"}</dd>
+                      <dd>
+                        {piece.source_extraction_bundle_id ??
+                          draft.extraction_bundle_id ??
+                          "None"}
+                      </dd>
                     </div>
                   </dl>
                   {piece.recommendation ? (
@@ -2536,12 +2578,17 @@ function DocumentsMode({
           ) : (
             <div className="action-plan-empty">
               <p>No extraction drafts.</p>
-              <span>Readable text or Markdown intake creates reviewable draft parts.</span>
+              <span>
+                Readable text or Markdown intake creates reviewable draft parts.
+              </span>
             </div>
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="document-candidates-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="document-candidates-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Review-gated outputs</p>
             <h4 id="document-candidates-title">Capture candidates</h4>
@@ -2555,7 +2602,9 @@ function DocumentsMode({
                     <span>{formatLabel(candidate.review_state)}</span>
                   </div>
                   <p>{candidate.title}</p>
-                  <span className="action-update-note">{candidate.content}</span>
+                  <span className="action-update-note">
+                    {candidate.content}
+                  </span>
                   <dl>
                     <div>
                       <dt>Skill chain</dt>
@@ -2572,12 +2621,18 @@ function DocumentsMode({
           ) : (
             <div className="action-plan-empty">
               <p>No capture candidates.</p>
-              <span>Draft parts can queue Action Plan, Packet, Risk, or Call Plan candidates after review prep.</span>
+              <span>
+                Draft parts can queue Action Plan, Packet, Risk, or Call Plan
+                candidates after review prep.
+              </span>
             </div>
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="document-capabilities-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="document-capabilities-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Parser boundary</p>
             <h4 id="document-capabilities-title">Intake capabilities</h4>
@@ -2598,7 +2653,8 @@ function DocumentsMode({
                     <h5>{capability.name}</h5>
                     <p>{capability.capability_hint}</p>
                     <small>
-                      {formatLabel(capability.adapter_kind)} - {joinOrNone(capability.supported_material_types)}
+                      {formatLabel(capability.adapter_kind)} -{" "}
+                      {joinOrNone(capability.supported_material_types)}
                     </small>
                   </div>
                 </article>
@@ -2612,7 +2668,10 @@ function DocumentsMode({
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="document-gaps-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="document-gaps-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Packet inputs</p>
             <h4 id="document-gaps-title">Source-backed packet gaps</h4>
@@ -2622,7 +2681,9 @@ function DocumentsMode({
               {visibleSourceBackedFields.map((field) => (
                 <article className="action-gap-card" key={field.field_key}>
                   <div>
-                    <span>{formatLabel(field.route_kind ?? field.section)}</span>
+                    <span>
+                      {formatLabel(field.route_kind ?? field.section)}
+                    </span>
                     <h5>{field.label}</h5>
                     <p>{field.gap_summary ?? field.route_rationale}</p>
                   </div>
@@ -2638,7 +2699,9 @@ function DocumentsMode({
           ) : (
             <div className="action-plan-empty">
               <p>No source-backed packet gaps.</p>
-              <span>Current packet routes do not require document/source extraction.</span>
+              <span>
+                Current packet routes do not require document/source extraction.
+              </span>
             </div>
           )}
         </section>
@@ -2671,11 +2734,16 @@ function CapabilityStudioMode({
   const latestRun = runs[0];
 
   return (
-    <section className="action-plan-mode" aria-labelledby="capability-studio-title">
+    <section
+      className="action-plan-mode"
+      aria-labelledby="capability-studio-title"
+    >
       <div className="action-plan-hero">
         <div>
           <p>Capability Studio</p>
-          <h3 id="capability-studio-title">Inspect runs before automation grows.</h3>
+          <h3 id="capability-studio-title">
+            Inspect runs before automation grows.
+          </h3>
           <span>
             Capability runs stay behind product workflows: outputs, gaps,
             provenance, and autonomy recommendations remain review-gated.
@@ -2711,7 +2779,10 @@ function CapabilityStudioMode({
       </dl>
 
       <div className="action-plan-lanes">
-        <section className="action-plan-lane" aria-labelledby="capability-runs-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="capability-runs-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Run history</p>
             <h4 id="capability-runs-title">Capability runs</h4>
@@ -2752,12 +2823,18 @@ function CapabilityStudioMode({
           ) : (
             <div className="action-plan-empty">
               <p>No capability runs.</p>
-              <span>Run history appears after a capability validation or workflow execution.</span>
+              <span>
+                Run history appears after a capability validation or workflow
+                execution.
+              </span>
             </div>
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="capability-output-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="capability-output-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Review queue</p>
             <h4 id="capability-output-title">Run outputs</h4>
@@ -2765,7 +2842,10 @@ function CapabilityStudioMode({
           {pendingOutputs.length > 0 ? (
             <div className="action-plan-card-stack">
               {pendingOutputs.slice(0, 6).map(({ output, run }) => (
-                <article className="action-update-card" key={`${run.run_id}:${output.output_id}`}>
+                <article
+                  className="action-update-card"
+                  key={`${run.run_id}:${output.output_id}`}
+                >
                   <div className="action-update-card-head">
                     <span>{formatLabel(output.review_state)}</span>
                     <span>{formatLabel(output.autonomy_recommendation)}</span>
@@ -2775,7 +2855,9 @@ function CapabilityStudioMode({
                   <dl>
                     <div>
                       <dt>Destination</dt>
-                      <dd>{output.recommended_destination ?? "Review queue"}</dd>
+                      <dd>
+                        {output.recommended_destination ?? "Review queue"}
+                      </dd>
                     </div>
                     <div>
                       <dt>Capability</dt>
@@ -2787,7 +2869,12 @@ function CapabilityStudioMode({
                     </div>
                     <div>
                       <dt>Source</dt>
-                      <dd>{capabilityProvenanceValue(output.provenance, "source_path")}</dd>
+                      <dd>
+                        {capabilityProvenanceValue(
+                          output.provenance,
+                          "source_path",
+                        )}
+                      </dd>
                     </div>
                   </dl>
                 </article>
@@ -2801,7 +2888,10 @@ function CapabilityStudioMode({
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="capability-catalog-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="capability-catalog-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Local inventory</p>
             <h4 id="capability-catalog-title">Capability catalog</h4>
@@ -2818,18 +2908,21 @@ function CapabilityStudioMode({
                   Indexed from canonical workspace skill locations.
                 </span>
               </article>
-              {(unvalidatedCatalogEntries ?? catalog.entries).slice(0, 5).map((entry) => (
-                <article className="action-gap-card" key={entry.id}>
-                  <div>
-                    <span>{formatLabel(entry.validation_status)}</span>
-                    <h5>{entry.name}</h5>
-                    <p>{entry.description || entry.provenance_note}</p>
-                    <small>
-                      {formatLabel(entry.capability_type)} - {formatLabel(entry.maturity)} - {entry.source_path}
-                    </small>
-                  </div>
-                </article>
-              ))}
+              {(unvalidatedCatalogEntries ?? catalog.entries)
+                .slice(0, 5)
+                .map((entry) => (
+                  <article className="action-gap-card" key={entry.id}>
+                    <div>
+                      <span>{formatLabel(entry.validation_status)}</span>
+                      <h5>{entry.name}</h5>
+                      <p>{entry.description || entry.provenance_note}</p>
+                      <small>
+                        {formatLabel(entry.capability_type)} -{" "}
+                        {formatLabel(entry.maturity)} - {entry.source_path}
+                      </small>
+                    </div>
+                  </article>
+                ))}
             </div>
           ) : (
             <div className="action-plan-empty">
@@ -2839,7 +2932,10 @@ function CapabilityStudioMode({
           )}
         </section>
 
-        <section className="action-plan-lane" aria-labelledby="capability-provenance-title">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="capability-provenance-title"
+        >
           <div className="action-plan-lane-heading">
             <p>Reasoning view</p>
             <h4 id="capability-provenance-title">Latest provenance</h4>
@@ -2855,19 +2951,39 @@ function CapabilityStudioMode({
                 <dl>
                   <div>
                     <dt>Sources</dt>
-                    <dd>{capabilityProvenanceValue(latestRun.provenance, "sources")}</dd>
+                    <dd>
+                      {capabilityProvenanceValue(
+                        latestRun.provenance,
+                        "sources",
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt>Tools</dt>
-                    <dd>{capabilityProvenanceValue(latestRun.provenance, "tool_names")}</dd>
+                    <dd>
+                      {capabilityProvenanceValue(
+                        latestRun.provenance,
+                        "tool_names",
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt>Network</dt>
-                    <dd>{capabilityProvenanceValue(latestRun.provenance, "network_required")}</dd>
+                    <dd>
+                      {capabilityProvenanceValue(
+                        latestRun.provenance,
+                        "network_required",
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt>Model</dt>
-                    <dd>{capabilityProvenanceValue(latestRun.provenance, "model_required")}</dd>
+                    <dd>
+                      {capabilityProvenanceValue(
+                        latestRun.provenance,
+                        "model_required",
+                      )}
+                    </dd>
                   </div>
                 </dl>
                 <span className="action-update-note">

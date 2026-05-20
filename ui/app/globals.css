@@ -1880,9 +1880,20 @@ button {
 @media (min-width: 860px) {
   .route-context-grid {
     grid-template-columns:
-      minmax(0, 1.35fr) minmax(180px, 0.75fr)
+      minmax(0, 1.35fr) minmax(140px, 0.55fr) minmax(180px, 0.75fr)
       minmax(220px, 1fr);
   }
+}
+
+.route-kind-chip {
+  border: 1px solid rgba(216, 138, 54, 0.45);
+  border-radius: 999px;
+  color: #f0b573;
+  display: inline-flex;
+  font-size: 11px;
+  line-height: 1;
+  margin-top: 8px;
+  padding: 6px 8px;
 }
 
 .route-context-grid dt {

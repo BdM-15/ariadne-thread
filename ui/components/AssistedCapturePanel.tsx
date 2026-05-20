@@ -17,6 +17,7 @@ type AssistedRouteRecommendation = {
   opportunity_id: string;
   goal_id: string;
   packet_field_key?: string | null;
+  route_kind: string;
   route_label: string;
   route_summary: string;
   autonomy_tier: string;
@@ -58,6 +59,7 @@ type AssistedRouteRun = {
   output: {
     id: string;
     title: string;
+    route_kind: string;
     summary: string;
     recommended_destination: string;
     review_state: string;
@@ -248,7 +250,9 @@ export function AssistedCapturePanel({
           body: JSON.stringify({
             decision,
             accepted_destination:
-              decision === "accept" ? output.recommended_destination : undefined,
+              decision === "accept"
+                ? output.recommended_destination
+                : undefined,
             reviewer_rationale: reviewerRationale,
           }),
         },
@@ -365,6 +369,9 @@ export function AssistedCapturePanel({
                     {formatLabel(routeRecommendation.packet_field_key)} field
                   </p>
                 ) : null}
+                <span className="route-kind-chip">
+                  {formatLabel(routeRecommendation.route_kind)}
+                </span>
               </div>
               <Route size={18} className="text-ariadne-copper" aria-hidden />
             </div>
@@ -372,6 +379,14 @@ export function AssistedCapturePanel({
               <div>
                 <dt>Need it advances</dt>
                 <dd>{routeRecommendation.route_summary}</dd>
+              </div>
+              <div>
+                <dt>Route kind</dt>
+                <dd>
+                  <span className="chip">
+                    {formatLabel(routeRecommendation.route_kind)}
+                  </span>
+                </dd>
               </div>
               <div>
                 <dt>Output lands in</dt>
@@ -436,6 +451,11 @@ export function AssistedCapturePanel({
                 <h5 className="mt-1 text-sm font-semibold">
                   {runsByRouteId[routeRecommendation.id].output.title}
                 </h5>
+                <span className="route-kind-chip">
+                  {formatLabel(
+                    runsByRouteId[routeRecommendation.id].output.route_kind,
+                  )}
+                </span>
                 <p className="mt-2 text-sm leading-6 text-slate-300">
                   {runsByRouteId[routeRecommendation.id].output.summary}
                 </p>
@@ -529,7 +549,8 @@ export function AssistedCapturePanel({
                     />
                     <div>
                       <p className="font-semibold text-slate-100">
-                        Packet answer created: {formatLabel(
+                        Packet answer created:{" "}
+                        {formatLabel(
                           packetAnswersByOutputId[
                             runsByRouteId[routeRecommendation.id].output.id
                           ]?.field_key ?? "packet_field",
@@ -541,7 +562,8 @@ export function AssistedCapturePanel({
                             runsByRouteId[routeRecommendation.id].output.id
                           ]?.evidence_status ?? "assumption",
                         )}{" "}
-                        evidence / source {formatReferenceLabel(
+                        evidence / source{" "}
+                        {formatReferenceLabel(
                           packetAnswersByOutputId[
                             runsByRouteId[routeRecommendation.id].output.id
                           ]?.source_draft_id ?? "route_output",

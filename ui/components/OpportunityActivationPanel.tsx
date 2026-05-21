@@ -99,9 +99,11 @@ export type OpportunityActivationRun = {
 export function OpportunityActivationPanel({
   opportunityId,
   run,
+  showDetail = false,
 }: {
   opportunityId: string;
   run: OpportunityActivationRun | null;
+  showDetail?: boolean;
 }) {
   const router = useRouter();
   const [isRefreshing, startRefresh] = useTransition();
@@ -119,6 +121,18 @@ export function OpportunityActivationPanel({
   const matrix = run?.packet_field_action_matrix;
   const currentGateLabel = formatLabel(
     matrix?.current_milestone_gate ?? "milestone_1",
+  );
+  const activationFields = matrix?.fields ?? [];
+  const currentGateFields = activationFields.filter(
+    (field) => field.current_gate_required !== false,
+  );
+  const visibleGateFields =
+    currentGateFields.length > 0 ? currentGateFields : activationFields;
+  const supportedGateFields = visibleGateFields.filter(
+    isActivationFieldAnswered,
+  );
+  const reviewReadyGateFields = visibleGateFields.filter(
+    isActivationFieldReviewReady,
   );
   const outputByField = new Map(
     (run?.outputs ?? []).map((output) => [output.field_key, output]),
@@ -277,6 +291,16 @@ export function OpportunityActivationPanel({
           ) : null}
         </div>
 
+        <ActivationGateCommandPanel
+          currentGateLabel={currentGateLabel}
+          fields={visibleGateFields}
+          isBusy={isBusy}
+          onRunActivation={runActivation}
+          opportunityId={opportunityId}
+          runExists={run !== null}
+          showDetail={showDetail}
+        />
+
         {error !== null ? <p className="activation-error">{error}</p> : null}
         {statusMessage !== null ? (
           <p className="activation-success">{statusMessage}</p>
@@ -292,25 +316,19 @@ export function OpportunityActivationPanel({
             <div className="activation-summary-grid">
               <ActivationMetric
                 label="Current gate fields"
-                value={(
-                  matrix.current_gate_field_count ?? matrix.fields.length
-                ).toString()}
+                value={visibleGateFields.length.toString()}
                 description={`Living Packet fields required for ${currentGateLabel}.`}
               />
               <ActivationMetric
                 label="Current gate gaps"
                 value={(
-                  matrix.current_gate_blocked_count ??
-                  matrix.blocked_field_count
+                  visibleGateFields.length - supportedGateFields.length
                 ).toString()}
                 description="Fields still needing evidence, import, synthesis, or user input."
               />
               <ActivationMetric
                 label="Review ready"
-                value={(
-                  matrix.current_gate_review_ready_count ??
-                  matrix.review_ready_count
-                ).toString()}
+                value={reviewReadyGateFields.length.toString()}
                 description="Field candidates waiting for human review."
               />
               <ActivationMetric
@@ -320,76 +338,225 @@ export function OpportunityActivationPanel({
               />
             </div>
 
-            <div className="activation-detail-grid">
-              <ActivationListPanel
-                title="Coverage gained"
-                items={digest.coverage_gained}
-              />
-              <ActivationListPanel
-                title="Next best actions"
-                items={digest.next_best_actions}
-              />
-              <ActivationListPanel
-                title="Approvals needed"
-                items={digest.approval_required_routes}
-              />
-              <ActivationListPanel
-                title="Source limits"
-                items={digest.source_limitations}
-              />
-              <ActivationListPanel
-                title="Skill chains"
-                items={digest.recommended_skill_chains}
-              />
-            </div>
+            {showDetail ? (
+              <details className="activation-detail-disclosure" open>
+                <summary id="activation-detail-summary">
+                  <span>Activation digest and full field matrix</span>
+                  <strong>
+                    {matrix.current_gate_blocked_count ??
+                      matrix.blocked_field_count}{" "}
+                    blockers /{" "}
+                    {matrix.current_gate_review_ready_count ??
+                      matrix.review_ready_count}{" "}
+                    reviews
+                  </strong>
+                </summary>
 
-            <div
-              className="activation-matrix"
-              aria-labelledby="activation-matrix-title"
-            >
-              <div className="activation-matrix-heading">
-                <div>
-                  <p>Packet Field Action Matrix</p>
-                  <h4 id="activation-matrix-title">
-                    {matrix.fields.length} packet fields mapped for{" "}
-                    {currentGateLabel}
-                  </h4>
-                </div>
-                <Route size={20} aria-hidden />
-              </div>
-              <div className="activation-field-grid">
-                {matrix.fields.map((field) => (
-                  <ActivationFieldCard
-                    field={field}
-                    fieldNote={fieldNotes[field.field_key] ?? ""}
-                    fieldStatus={fieldStatus[field.field_key] ?? ""}
-                    fieldValue={
-                      fieldValues[field.field_key] ?? field.current_value ?? ""
-                    }
-                    isBusy={reviewingFieldKey !== null || isRefreshing}
-                    key={field.field_key}
-                    onFieldNoteChange={(nextValue) =>
-                      setFieldNotes((current) => ({
-                        ...current,
-                        [field.field_key]: nextValue,
-                      }))
-                    }
-                    onFieldValueChange={(nextValue) =>
-                      setFieldValues((current) => ({
-                        ...current,
-                        [field.field_key]: nextValue,
-                      }))
-                    }
-                    onReview={(decision) => reviewField(field, decision)}
-                    output={outputByField.get(field.field_key) ?? null}
-                    routeHref={fieldRouteHref(opportunityId, field.field_key)}
+                <div className="activation-detail-grid">
+                  <ActivationListPanel
+                    title="Coverage gained"
+                    items={digest.coverage_gained}
                   />
-                ))}
-              </div>
-            </div>
+                  <ActivationListPanel
+                    title="Next best actions"
+                    items={digest.next_best_actions}
+                  />
+                  <ActivationListPanel
+                    title="Approvals needed"
+                    items={digest.approval_required_routes}
+                  />
+                  <ActivationListPanel
+                    title="Source limits"
+                    items={digest.source_limitations}
+                  />
+                  <ActivationListPanel
+                    title="Skill chains"
+                    items={digest.recommended_skill_chains}
+                  />
+                </div>
+
+                <div
+                  className="activation-matrix"
+                  aria-labelledby="activation-matrix-title"
+                >
+                  <div className="activation-matrix-heading">
+                    <div>
+                      <p>Packet Field Action Matrix</p>
+                      <h4 id="activation-matrix-title">
+                        {matrix.fields.length} packet fields mapped for{" "}
+                        {currentGateLabel}
+                      </h4>
+                    </div>
+                    <Route size={20} aria-hidden />
+                  </div>
+                  <div className="activation-field-grid">
+                    {matrix.fields.map((field) => (
+                      <ActivationFieldCard
+                        field={field}
+                        fieldNote={fieldNotes[field.field_key] ?? ""}
+                        fieldStatus={fieldStatus[field.field_key] ?? ""}
+                        fieldValue={
+                          fieldValues[field.field_key] ??
+                          field.current_value ??
+                          ""
+                        }
+                        isBusy={reviewingFieldKey !== null || isRefreshing}
+                        key={field.field_key}
+                        onFieldNoteChange={(nextValue) =>
+                          setFieldNotes((current) => ({
+                            ...current,
+                            [field.field_key]: nextValue,
+                          }))
+                        }
+                        onFieldValueChange={(nextValue) =>
+                          setFieldValues((current) => ({
+                            ...current,
+                            [field.field_key]: nextValue,
+                          }))
+                        }
+                        onReview={(decision) => reviewField(field, decision)}
+                        output={outputByField.get(field.field_key) ?? null}
+                        routeHref={fieldRouteHref(
+                          opportunityId,
+                          field.field_key,
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </details>
+            ) : (
+              <section
+                className="activation-detail-link"
+                aria-labelledby="activation-detail-link-title"
+              >
+                <div>
+                  <p>Activation detail</p>
+                  <h4 id="activation-detail-link-title">
+                    Digest and matrix are available on demand
+                  </h4>
+                  <span>
+                    Load route detail for {matrix.fields.length} packet fields,
+                    approval needs, source limits, and skill chains.
+                  </span>
+                </div>
+                <a
+                  className="command-button"
+                  href={activationDetailHref(opportunityId)}
+                >
+                  <Route size={16} aria-hidden />
+                  <span>Open activation detail</span>
+                </a>
+              </section>
+            )}
           </>
         )}
       </div>
+    </section>
+  );
+}
+
+function ActivationGateCommandPanel({
+  currentGateLabel,
+  fields,
+  isBusy,
+  onRunActivation,
+  opportunityId,
+  runExists,
+  showDetail,
+}: {
+  currentGateLabel: string;
+  fields: PacketFieldActionItem[];
+  isBusy: boolean;
+  onRunActivation: () => void;
+  opportunityId: string;
+  runExists: boolean;
+  showDetail: boolean;
+}) {
+  const supportedFields = fields.filter(isActivationFieldAnswered);
+  const reviewReadyFields = fields.filter(isActivationFieldReviewReady);
+  const blockedFields = fields.filter(
+    (field) =>
+      !isActivationFieldAnswered(field) && !isActivationFieldReviewReady(field),
+  );
+  const priorityField = reviewReadyFields[0] ?? blockedFields[0] ?? null;
+  const commandSummary =
+    priorityField === null
+      ? runExists
+        ? "No current-gate packet field is blocking the latest activation run."
+        : "Activation has not built a current-gate route queue yet."
+      : `${priorityField.label}: ${priorityField.gap_summary ?? priorityField.route_rationale}`;
+
+  return (
+    <section
+      className="activation-gate-command"
+      aria-labelledby="activation-gate-command-title"
+    >
+      <div className="activation-gate-command-main">
+        <div>
+          <p>Gate Packet Path</p>
+          <h4 id="activation-gate-command-title">
+            Next move for {currentGateLabel}
+          </h4>
+          <span>{commandSummary}</span>
+        </div>
+        <div className="activation-gate-command-actions">
+          {priorityField === null ? (
+            <button
+              aria-label="Run Opportunity activation"
+              className="command-button primary"
+              disabled={isBusy}
+              onClick={onRunActivation}
+              type="button"
+            >
+              <RefreshCw size={16} aria-hidden />
+              <span>{runExists ? "Refresh activation" : "Run activation"}</span>
+            </button>
+          ) : (
+            <a
+              className="command-button primary"
+              href={fieldRouteHref(opportunityId, priorityField.field_key)}
+            >
+              <Route size={16} aria-hidden />
+              <span>
+                {isActivationFieldReviewReady(priorityField)
+                  ? `Review ${priorityField.label}`
+                  : `Start ${priorityField.label}`}
+              </span>
+            </a>
+          )}
+          <a
+            className="command-button"
+            href={
+              showDetail
+                ? "#activation-detail-summary"
+                : activationDetailHref(opportunityId)
+            }
+          >
+            <Activity size={16} aria-hidden />
+            <span>Field matrix</span>
+          </a>
+        </div>
+      </div>
+      <div
+        className="activation-gate-command-strip"
+        aria-label="Current gate state"
+      >
+        <span>{fields.length} gate fields</span>
+        <span>{supportedFields.length} supported</span>
+        <span>{reviewReadyFields.length} review-ready</span>
+        <span>{blockedFields.length} blockers</span>
+      </div>
+      {priorityField !== null ? (
+        <div className="activation-gate-priority">
+          <strong>{priorityField.recommended_route}</strong>
+          <span>
+            {formatLabel(
+              priorityField.route_kind ?? priorityField.action_state,
+            )}
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -572,6 +739,16 @@ function fieldRouteHref(opportunityId: string, fieldKey: string): string {
   return `/?${params.toString()}`;
 }
 
+function activationDetailHref(opportunityId: string): string {
+  const params = new URLSearchParams({
+    detail: "1",
+    mode: "activation",
+    opportunity_id: opportunityId,
+  });
+
+  return `/?${params.toString()}`;
+}
+
 function ActivationMetric({
   label,
   value,
@@ -624,6 +801,16 @@ function formatLabel(value: string): string {
 
 function actionStateClass(value: string): string {
   return `activation-field-${value.split("_").join("-")}`;
+}
+
+function isActivationFieldReviewReady(field: PacketFieldActionItem): boolean {
+  return field.requires_review || field.action_state === "review_ready";
+}
+
+function isActivationFieldAnswered(field: PacketFieldActionItem): boolean {
+  return (
+    field.action_state === "answered" || field.evidence_status === "answered"
+  );
 }
 
 function formatDateTime(value: string): string {

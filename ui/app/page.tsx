@@ -12,6 +12,7 @@ import {
   Layers3,
   MessageSquareText,
   Presentation,
+  Route,
   SearchCheck,
   ShieldCheck,
 } from "lucide-react";
@@ -462,6 +463,7 @@ type PulseSignalModel = {
 type CommandCenterSearchParams = {
   opportunity_id?: string | string[];
   created?: string | string[];
+  detail?: string | string[];
   mode?: string | string[];
   packet_field_key?: string | string[];
   route_goal?: string | string[];
@@ -780,15 +782,15 @@ export default async function CommandCenterPage({
     resolvedSearchParams.opportunity_id,
   );
   const requestedMode = firstSearchParam(resolvedSearchParams.mode);
+  const showDetail = firstSearchParam(resolvedSearchParams.detail) === "1";
   const requestedPacketFieldKey = firstSearchParam(
     resolvedSearchParams.packet_field_key,
   );
   const requestedRouteGoal = firstSearchParam(resolvedSearchParams.route_goal);
   const createdWorkspace =
     firstSearchParam(resolvedSearchParams.created) === "1";
-  const [workspace, rendererReadiness, portfolio] = await Promise.all([
+  const [workspace, portfolio] = await Promise.all([
     loadWorkspace(selectedOpportunityId),
-    loadRendererReadiness(),
     loadPortfolio(),
   ]);
 
@@ -796,8 +798,23 @@ export default async function CommandCenterPage({
     return <OfflineShell />;
   }
 
+  const commandModes = buildCommandModes(workspace.work_modes);
+  const selectedModeId = normalizeCommandMode(requestedMode, commandModes);
+  const selectedMode =
+    commandModes.find((mode) => mode.id === selectedModeId) ?? commandModes[0];
+  const needsActivationRun =
+    selectedModeId === "pulse" ||
+    selectedModeId === "packet" ||
+    selectedModeId === "activation" ||
+    selectedModeId === "actions" ||
+    selectedModeId === "engagement" ||
+    selectedModeId === "research" ||
+    selectedModeId === "documents" ||
+    (selectedModeId === "capture" && requestedPacketFieldKey !== undefined);
+
   const [
     latestActivationRun,
+    rendererReadiness,
     actionPlanUpdates,
     callPlanUpdates,
     researchRuns,
@@ -810,18 +827,45 @@ export default async function CommandCenterPage({
     capabilityCatalog,
     mvp2SkillsReviewSummary,
   ] = await Promise.all([
-    loadLatestActivationRun(workspace.opportunity.id),
-    loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
-    loadWorkProductUpdates(workspace.opportunity.id, "call_plan"),
-    loadCaptureResearchRuns(workspace.opportunity.id),
-    loadCaptureResearchSourceRegistry(),
-    loadDocumentIntakeRecords(),
-    loadDocumentIntakeDrafts(),
-    loadDocumentIntakeCandidates(),
-    loadDocumentIntakeCapabilities(),
-    loadCapabilityRuns(),
-    loadCapabilityCatalog(),
-    loadMvp2SkillsReviewSummary(),
+    needsActivationRun
+      ? loadLatestActivationRun(workspace.opportunity.id)
+      : Promise.resolve<OpportunityActivationRun | null>(null),
+    selectedModeId === "artifacts"
+      ? loadRendererReadiness()
+      : Promise.resolve<RendererReadiness | null>(null),
+    selectedModeId === "actions"
+      ? loadWorkProductUpdates(workspace.opportunity.id, "action_plan")
+      : Promise.resolve<WorkProductUpdateProjection[]>([]),
+    selectedModeId === "engagement"
+      ? loadWorkProductUpdates(workspace.opportunity.id, "call_plan")
+      : Promise.resolve<WorkProductUpdateProjection[]>([]),
+    selectedModeId === "research"
+      ? loadCaptureResearchRuns(workspace.opportunity.id)
+      : Promise.resolve<CaptureResearchRun[]>([]),
+    selectedModeId === "research"
+      ? loadCaptureResearchSourceRegistry()
+      : Promise.resolve<CaptureResearchSourceRegistry | null>(null),
+    selectedModeId === "documents"
+      ? loadDocumentIntakeRecords()
+      : Promise.resolve<DocumentIntakeRecord[]>([]),
+    selectedModeId === "documents"
+      ? loadDocumentIntakeDrafts()
+      : Promise.resolve<DocumentIntakeDraft[]>([]),
+    selectedModeId === "documents"
+      ? loadDocumentIntakeCandidates()
+      : Promise.resolve<DocumentIntakeCaptureCandidate[]>([]),
+    selectedModeId === "documents"
+      ? loadDocumentIntakeCapabilities()
+      : Promise.resolve<DocumentIntakeCapabilitiesResponse | null>(null),
+    selectedModeId === "capability_studio"
+      ? loadCapabilityRuns()
+      : Promise.resolve<CapabilityRun[]>([]),
+    selectedModeId === "capability_studio"
+      ? loadCapabilityCatalog()
+      : Promise.resolve<CapabilityCatalog | null>(null),
+    selectedModeId === "mvp2_skills_review"
+      ? loadMvp2SkillsReviewSummary()
+      : Promise.resolve<Mvp2SkillsReviewSummary | null>(null),
   ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
@@ -830,10 +874,6 @@ export default async function CommandCenterPage({
   const initialRouteGoal =
     requestedRouteGoal ??
     (requestedPacketFieldKey !== undefined ? "close_packet_gap" : undefined);
-  const commandModes = buildCommandModes(workspace.work_modes);
-  const selectedModeId = normalizeCommandMode(requestedMode, commandModes);
-  const selectedMode =
-    commandModes.find((mode) => mode.id === selectedModeId) ?? commandModes[0];
 
   const pulseSignals = [
     {
@@ -889,6 +929,12 @@ export default async function CommandCenterPage({
         "Sections that need evidence, research, customer input, or a capability route before they can carry decisions.",
     },
   ];
+  const activationRunForPanel =
+    selectedModeId === "activation" &&
+    latestActivationRun !== null &&
+    !showDetail
+      ? compactActivationRunForDefaultView(latestActivationRun)
+      : latestActivationRun;
 
   return (
     <main className="min-h-screen bg-ariadne-ink text-slate-100">
@@ -1021,13 +1067,15 @@ export default async function CommandCenterPage({
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
               selectedOpportunityId={workspace.opportunity.id}
+              showDetail={showDetail}
             />
           ) : null}
 
           {selectedModeId === "activation" ? (
             <OpportunityActivationPanel
               opportunityId={workspace.opportunity.id}
-              run={latestActivationRun}
+              run={activationRunForPanel}
+              showDetail={showDetail}
             />
           ) : null}
 
@@ -1431,11 +1479,13 @@ function PacketMode({
   latestActivationRun,
   packetSignals,
   selectedOpportunityId,
+  showDetail = false,
 }: {
   compact?: boolean;
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
   selectedOpportunityId: string;
+  showDetail?: boolean;
 }) {
   const matrix = latestActivationRun?.packet_field_action_matrix;
   const currentGateLabel = formatLabel(
@@ -1458,6 +1508,15 @@ function PacketMode({
 
   return (
     <>
+      {!compact ? (
+        <GatePacketCommandPanel
+          currentGateLabel={currentGateLabel}
+          fields={roadmapFields}
+          hasActivationRun={matrix !== undefined}
+          selectedOpportunityId={selectedOpportunityId}
+        />
+      ) : null}
+
       <section
         className="workspace-section"
         aria-labelledby="packet-plan-title"
@@ -1478,163 +1537,197 @@ function PacketMode({
         </div>
       </section>
 
-      {!compact && matrix !== undefined ? (
-        <>
-          <section
-            className="workspace-section"
-            aria-labelledby="live-packet-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Living Packet Live View
-                </p>
-                <h3 id="live-packet-title">
-                  Sections, data elements, support, routes
-                </h3>
-              </div>
-              <FileText className="text-ariadne-cyan" size={22} aria-hidden />
-            </div>
-            <LivingPacketLiveView
-              currentGateLabel={currentGateLabel}
-              sections={livePacketSections}
-              selectedOpportunityId={selectedOpportunityId}
-            />
-          </section>
-
-          <section
-            className="workspace-section"
-            aria-labelledby="packet-roadmap-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Milestone Roadmap
-                </p>
-                <h3 id="packet-roadmap-title">
-                  Data elements for {currentGateLabel}
-                </h3>
-              </div>
-              <ClipboardCheck
-                className="text-ariadne-cyan"
-                size={22}
-                aria-hidden
-              />
-            </div>
-            <div className="packet-roadmap-grid">
-              {roadmapSections.map((section) => (
-                <article className="packet-section-card" key={section.id}>
-                  <div>
-                    <p>{section.label}</p>
-                    <strong>{section.total} fields</strong>
-                  </div>
-                  <span>
-                    {section.answered} supported / {section.reviewReady} review
-                    / {section.blocked} gaps
-                  </span>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section
-            className="workspace-section"
-            aria-labelledby="packet-field-roadmap-title"
-          >
-            <div className="section-heading">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Packet Field Routes
-                </p>
-                <h3 id="packet-field-roadmap-title">
-                  How to populate missing answers
-                </h3>
-              </div>
-              <SearchCheck
-                className="text-ariadne-copper"
-                size={22}
-                aria-hidden
-              />
-            </div>
-            <div className="packet-field-grid">
-              {needsActionFields.length > 0 ? (
-                needsActionFields.map((field) => (
-                  <PacketRoadmapFieldCard
-                    field={field}
-                    key={field.field_key}
-                    selectedOpportunityId={selectedOpportunityId}
-                  />
-                ))
-              ) : (
-                <article className="packet-field-empty">
-                  <CheckCircle2 size={20} aria-hidden />
-                  <div>
-                    <p>No open packet field gaps in latest activation run.</p>
-                    <span>
-                      Review accepted answers, source support, and assumptions
-                      before treating packet as gate-ready.
-                    </span>
-                  </div>
-                </article>
-              )}
-            </div>
-          </section>
-
-          {supportedFields.length > 0 ? (
+      {!compact && matrix !== undefined && showDetail ? (
+        <details className="packet-detail-disclosure" open>
+          <summary>
+            <span>Packet map and field detail</span>
+            <strong>
+              {supportedFields.length} supported / {needsActionFields.length}{" "}
+              open
+            </strong>
+          </summary>
+          <div className="packet-detail-stack">
             <section
               className="workspace-section"
-              aria-labelledby="packet-supported-answer-title"
+              aria-labelledby="live-packet-title"
             >
               <div className="section-heading">
                 <div>
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                    Supported Answers
+                    Living Packet Live View
                   </p>
-                  <h3 id="packet-supported-answer-title">
-                    Packet fields already carrying trusted values
+                  <h3 id="live-packet-title">
+                    Sections, data elements, support, routes
                   </h3>
                 </div>
-                <CheckCircle2
+                <FileText className="text-ariadne-cyan" size={22} aria-hidden />
+              </div>
+              <LivingPacketLiveView
+                currentGateLabel={currentGateLabel}
+                sections={livePacketSections}
+                selectedOpportunityId={selectedOpportunityId}
+              />
+            </section>
+
+            <section
+              className="workspace-section"
+              aria-labelledby="packet-roadmap-title"
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Milestone Roadmap
+                  </p>
+                  <h3 id="packet-roadmap-title">
+                    Data elements for {currentGateLabel}
+                  </h3>
+                </div>
+                <ClipboardCheck
                   className="text-ariadne-cyan"
                   size={22}
                   aria-hidden
                 />
               </div>
-              <div className="packet-field-grid">
-                {supportedFields.map((field) => (
-                  <SupportedPacketFieldCard
-                    field={field}
-                    key={field.field_key}
-                  />
+              <div className="packet-roadmap-grid">
+                {roadmapSections.map((section) => (
+                  <article className="packet-section-card" key={section.id}>
+                    <div>
+                      <p>{section.label}</p>
+                      <strong>{section.total} fields</strong>
+                    </div>
+                    <span>
+                      {section.answered} supported / {section.reviewReady}{" "}
+                      review / {section.blocked} gaps
+                    </span>
+                  </article>
                 ))}
               </div>
             </section>
-          ) : null}
 
-          <section
-            className="workspace-section packet-content-lane"
-            aria-labelledby="packet-content-title"
-          >
-            <div>
-              <p>Packet Content Opportunities</p>
-              <h3 id="packet-content-title">
-                Visual or add-on content can be staged, not rendered yet.
-              </h3>
-            </div>
-            <span>
-              Ariadne can route ideas like synopsis visuals, timelines,
-              capability maps, customer-org views, or partner ecosystem blocks
-              into Artifact mode. huashu-design/PPTX rendering stays disabled
-              until renderer adapters exist.
-            </span>
-            <a
-              className="packet-action-link"
-              href={modeHref("artifacts", selectedOpportunityId)}
+            <section
+              className="workspace-section"
+              aria-labelledby="packet-field-roadmap-title"
             >
-              Check renderer readiness
-            </a>
-          </section>
-        </>
+              <div className="section-heading">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    Packet Field Routes
+                  </p>
+                  <h3 id="packet-field-roadmap-title">
+                    How to populate missing answers
+                  </h3>
+                </div>
+                <SearchCheck
+                  className="text-ariadne-copper"
+                  size={22}
+                  aria-hidden
+                />
+              </div>
+              <div className="packet-field-grid">
+                {needsActionFields.length > 0 ? (
+                  needsActionFields.map((field) => (
+                    <PacketRoadmapFieldCard
+                      field={field}
+                      key={field.field_key}
+                      selectedOpportunityId={selectedOpportunityId}
+                    />
+                  ))
+                ) : (
+                  <article className="packet-field-empty">
+                    <CheckCircle2 size={20} aria-hidden />
+                    <div>
+                      <p>No open packet field gaps in latest activation run.</p>
+                      <span>
+                        Review accepted answers, source support, and assumptions
+                        before treating packet as gate-ready.
+                      </span>
+                    </div>
+                  </article>
+                )}
+              </div>
+            </section>
+
+            {supportedFields.length > 0 ? (
+              <section
+                className="workspace-section"
+                aria-labelledby="packet-supported-answer-title"
+              >
+                <div className="section-heading">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                      Supported Answers
+                    </p>
+                    <h3 id="packet-supported-answer-title">
+                      Packet fields already carrying trusted values
+                    </h3>
+                  </div>
+                  <CheckCircle2
+                    className="text-ariadne-cyan"
+                    size={22}
+                    aria-hidden
+                  />
+                </div>
+                <div className="packet-field-grid">
+                  {supportedFields.map((field) => (
+                    <SupportedPacketFieldCard
+                      field={field}
+                      key={field.field_key}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <section
+              className="workspace-section packet-content-lane"
+              aria-labelledby="packet-content-title"
+            >
+              <div>
+                <p>Packet Content Opportunities</p>
+                <h3 id="packet-content-title">
+                  Visual or add-on content can be staged, not rendered yet.
+                </h3>
+              </div>
+              <span>
+                Ariadne can route ideas like synopsis visuals, timelines,
+                capability maps, customer-org views, or partner ecosystem blocks
+                into Artifact mode. huashu-design/PPTX rendering stays disabled
+                until renderer adapters exist.
+              </span>
+              <a
+                className="packet-action-link"
+                href={modeHref("artifacts", selectedOpportunityId)}
+              >
+                Check renderer readiness
+              </a>
+            </section>
+          </div>
+        </details>
+      ) : null}
+
+      {!compact && matrix !== undefined && !showDetail ? (
+        <section
+          className="packet-detail-link"
+          aria-labelledby="packet-detail-link-title"
+        >
+          <div>
+            <p>Packet Detail</p>
+            <h3 id="packet-detail-link-title">
+              Field matrix is available on demand
+            </h3>
+            <span>
+              Load {matrix.fields.length} mapped fields, route evidence, and
+              packet support detail.
+            </span>
+          </div>
+          <a
+            className="command-button"
+            href={modeHref("packet", selectedOpportunityId, { detail: "1" })}
+          >
+            <Route size={16} aria-hidden />
+            <span>Open field detail</span>
+          </a>
+        </section>
       ) : null}
 
       {!compact && matrix === undefined ? (
@@ -1654,6 +1747,103 @@ function PacketMode({
         </section>
       ) : null}
     </>
+  );
+}
+
+function GatePacketCommandPanel({
+  currentGateLabel,
+  fields,
+  hasActivationRun,
+  selectedOpportunityId,
+}: {
+  currentGateLabel: string;
+  fields: PacketRoadmapField[];
+  hasActivationRun: boolean;
+  selectedOpportunityId: string;
+}) {
+  const supportedFields = fields.filter(isRoadmapFieldAnswered);
+  const reviewReadyFields = fields.filter(isRoadmapFieldReviewReady);
+  const blockedFields = fields.filter(
+    (field) =>
+      !isRoadmapFieldAnswered(field) && !isRoadmapFieldReviewReady(field),
+  );
+  const priorityField = reviewReadyFields[0] ?? blockedFields[0] ?? null;
+  const primaryHref =
+    priorityField === null
+      ? modeHref("activation", selectedOpportunityId)
+      : packetFieldRouteHref(priorityField, selectedOpportunityId);
+  const primaryLabel =
+    priorityField === null
+      ? hasActivationRun
+        ? "Open gate review"
+        : "Run activation"
+      : isRoadmapFieldReviewReady(priorityField)
+        ? `Review ${priorityField.label}`
+        : `Start ${priorityField.label}`;
+  const commandSummary =
+    priorityField === null
+      ? hasActivationRun
+        ? "Current gate has no blocking packet field in the latest activation run."
+        : "Activation has not built the gate packet route queue yet."
+      : `${priorityField.label}: ${priorityField.gap_summary ?? priorityField.route_rationale}`;
+  const routeLabel =
+    priorityField?.recommended_route ?? "Opportunity activation sweep";
+
+  return (
+    <section
+      className="gate-command-panel"
+      aria-labelledby="gate-command-title"
+    >
+      <div className="gate-command-main">
+        <div>
+          <p>Gate Packet Path</p>
+          <h3 id="gate-command-title">Next move for {currentGateLabel}</h3>
+          <span>{commandSummary}</span>
+        </div>
+        <div className="gate-command-actions">
+          <a className="command-button primary" href={primaryHref}>
+            <Bot size={16} aria-hidden />
+            <span>{primaryLabel}</span>
+          </a>
+          <a
+            className="command-button"
+            href={modeHref("activation", selectedOpportunityId)}
+          >
+            <SearchCheck size={16} aria-hidden />
+            <span>Activation review</span>
+          </a>
+        </div>
+      </div>
+      <div
+        className="gate-command-strip"
+        aria-label="Current gate packet state"
+      >
+        <span>{fields.length} gate fields</span>
+        <span>{supportedFields.length} supported</span>
+        <span>{reviewReadyFields.length} review-ready</span>
+        <span>{blockedFields.length} blockers</span>
+      </div>
+      <div className="gate-command-route">
+        <div>
+          <strong>1. Coverage</strong>
+          <span>
+            {hasActivationRun ? "Activation run stored" : "Activation needed"}
+          </span>
+        </div>
+        <div>
+          <strong>2. Route</strong>
+          <span>{routeLabel}</span>
+        </div>
+        <div>
+          <strong>3. Review</strong>
+          <span>
+            {reviewReadyFields.length > 0
+              ? `${reviewReadyFields.length} answer candidate${reviewReadyFields.length === 1 ? "" : "s"}`
+              : "Human gate remains required"}
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -3198,6 +3388,48 @@ function firstSearchParam(
   return value;
 }
 
+function compactActivationRunForDefaultView(
+  run: OpportunityActivationRun,
+): OpportunityActivationRun {
+  const matrix = run.packet_field_action_matrix;
+  const currentGateFields = matrix.fields.filter(
+    (field) => field.current_gate_required !== false,
+  );
+  const visibleFields =
+    currentGateFields.length > 0 ? currentGateFields : matrix.fields;
+
+  return {
+    ...run,
+    activation_digest: {
+      ...run.activation_digest,
+      approval_required_routes: [],
+      coverage_gained: [],
+      next_best_actions: [],
+      recommended_skill_chains: [],
+      source_limitations: [],
+    },
+    outputs: [],
+    packet_field_action_matrix: {
+      ...matrix,
+      fields: visibleFields.map(compactActivationFieldForDefaultView),
+    },
+  };
+}
+
+function compactActivationFieldForDefaultView(
+  field: OpportunityActivationRun["packet_field_action_matrix"]["fields"][number],
+): OpportunityActivationRun["packet_field_action_matrix"]["fields"][number] {
+  return {
+    ...field,
+    answer_paths: [],
+    current_value:
+      field.action_state === "answered" ? field.current_value : null,
+    question: "",
+    route_steps: [],
+    source_refs: [],
+  };
+}
+
 function buildCommandModes(workModes: WorkMode[]): CommandMode[] {
   const backendModes = new Map(workModes.map((mode) => [mode.id, mode]));
   const orderedIds = [
@@ -3577,10 +3809,14 @@ function roadmapFieldPriority(field: PacketRoadmapField): number {
 function isRoadmapFieldActionable(field: PacketRoadmapField): boolean {
   return (
     !isRoadmapFieldAnswered(field) ||
-    field.requires_review ||
+    isRoadmapFieldReviewReady(field) ||
     field.approval_required ||
     field.gap_summary !== null
   );
+}
+
+function isRoadmapFieldReviewReady(field: PacketRoadmapField): boolean {
+  return field.requires_review || field.action_state === "review_ready";
 }
 
 function isRoadmapFieldAnswered(field: PacketRoadmapField): boolean {

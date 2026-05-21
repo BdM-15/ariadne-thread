@@ -1,0 +1,23 @@
+{
+  "skill_name": "compliance-auditor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run compliance auditor over this RFP and tell me if our response is compliant before clause refs are loaded.",
+      "expected_output": "Refuse execution as dependency-gated, name clause/eCFR and reviewed requirement prerequisites, and list focused compliance candidates.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Surface compliance-auditor in Capability Studio with status and enabling action.",
+      "expected_output": "Show dependency-gated status, missing dependencies, next enabling action, review destination, and no trusted writes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Can we copy Theseus compliance-auditor as one Ariadne skill?",
+      "expected_output": "Say no broad copy; propose smaller Ariadne-native clause and matrix checks after prerequisites.",
+      "files": []
+    }
+  ]
+}

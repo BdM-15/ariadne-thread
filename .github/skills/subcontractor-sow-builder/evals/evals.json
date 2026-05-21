@@ -1,0 +1,23 @@
+{
+  "skill_name": "subcontractor-sow-builder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build a subcontractor SOW before we have reviewed scope and teammate roles.",
+      "expected_output": "Refuse execution as dependency-gated, name reviewed scope and teammate role prerequisites, and list focused future subcontractor/SOW skills.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Register subcontractor-sow-builder as a future artifact route without making it runnable.",
+      "expected_output": "Show dependency-gated status, missing dependencies, next enabling action, Artifact Content Block destination, and no trusted writes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Can Ariadne copy Theseus subcontractor SOW builder directly?",
+      "expected_output": "Say no broad copy; decompose into assumption list, workshare checker, teammate questions, and SOW section block planner after prerequisites.",
+      "files": []
+    }
+  ]
+}

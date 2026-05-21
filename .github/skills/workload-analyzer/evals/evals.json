@@ -1,0 +1,23 @@
+{
+  "skill_name": "workload-analyzer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analyze staffing workload from these attachments before intake/parser review exists.",
+      "expected_output": "Refuse execution as dependency-gated, name workload attachment intake and reviewed scope prerequisites, and list focused future workload skills.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Show workload-analyzer as an available route for pricing research but don't run it yet.",
+      "expected_output": "Show dependency-gated status, missing dependencies, next enabling action, destination, and no trusted writes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Can Ariadne make workload assumptions from award history alone?",
+      "expected_output": "State workload-analyzer is gated; route through workload attachment intake, data-table profiling, and reviewed scope package first.",
+      "files": []
+    }
+  ]
+}

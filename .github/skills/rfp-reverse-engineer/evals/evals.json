@@ -1,0 +1,23 @@
+{
+  "skill_name": "rfp-reverse-engineer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Reverse engineer this RFP into evaluation criteria and section L/M signals before parser extraction exists.",
+      "expected_output": "Refuse execution as dependency-gated, name solicitation extraction and reviewed Extraction Bundle prerequisites, and list focused future decomposition options.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Add the RFP reverse-engineer route to Capability Studio but make clear it is not runnable yet.",
+      "expected_output": "Show dependency-gated status, next enabling action, future focused skills, and no trusted downstream writes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Can Ariadne use the broad Theseus RFP reverse engineer directly on an uploaded solicitation?",
+      "expected_output": "State no direct broad import, route through solicitation extraction review, and identify smaller Ariadne-native candidates.",
+      "files": []
+    }
+  ]
+}

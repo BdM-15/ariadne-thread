@@ -1,0 +1,23 @@
+{
+  "skill_name": "govcon-ontology",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Install the govcon ontology and align it to Ariadne's vault schema now.",
+      "expected_output": "Refuse execution as dependency-gated, name ontology alignment and Knowledge Vault schema review prerequisites, and list focused future ontology skills.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Show govcon-ontology as a future Capability Studio candidate, but do not mutate the vault.",
+      "expected_output": "Show dependency-gated status, missing dependencies, next enabling action, Ariadne Knowledge Vault destination, and no trusted writes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Can Ariadne copy Theseus govcon ontology as-is?",
+      "expected_output": "Say no broad copy; decompose into term alignment, relationship gap review, crosswalk builder, and mirror update proposal after review.",
+      "files": []
+    }
+  ]
+}

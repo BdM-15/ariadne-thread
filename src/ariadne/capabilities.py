@@ -67,6 +67,10 @@ class CapabilityContract(BaseModel):
     autonomy_tier: CapabilityAutonomyTier = CapabilityAutonomyTier.HUMAN_APPROVAL_REQUIRED
     model_role: CapabilityModelRole = CapabilityModelRole.NONE
     fake_runner_supported: bool = False
+    missing_dependencies: tuple[str, ...] = ()
+    decomposition_options: tuple[str, ...] = ()
+    product_workflow_destination: str | None = None
+    next_enabling_action: str | None = None
     provenance_requirements: tuple[str, ...] = (
         "capability_id",
         "source_path",
@@ -97,6 +101,18 @@ class CapabilityCatalog(BaseModel):
     indexed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     read_only: bool = True
     canonical_locations: tuple[str, ...] = CANONICAL_CAPABILITY_LOCATIONS
+
+
+class CapabilityDependencyGate(BaseModel):
+    capability_id: str
+    capability_status: CapabilityStatus
+    executable: bool
+    blocked_reason: str
+    missing_dependencies: tuple[str, ...]
+    decomposition_options: tuple[str, ...]
+    next_enabling_action: str | None = None
+    review_destination: str
+    trusted_downstream_writes: bool = False
 
 
 def discover_local_capability_catalog(workspace_root: Path) -> CapabilityCatalog:
@@ -165,6 +181,18 @@ def _catalog_entry_from_skill_file(
             fake_runner_supported=_bool_value(
                 frontmatter.get("fake_runner_supported", "false")
             ),
+            missing_dependencies=_csv_values(
+                frontmatter.get("missing_dependencies", "")
+            ),
+            decomposition_options=_csv_values(
+                frontmatter.get("decomposition_options", "")
+            ),
+            product_workflow_destination=_optional_value(
+                frontmatter.get("product_workflow_destination", "")
+            ),
+            next_enabling_action=_optional_value(
+                frontmatter.get("next_enabling_action", "")
+            ),
             provenance_requirements=_csv_values(
                 frontmatter.get(
                     "provenance_requirements",
@@ -172,6 +200,32 @@ def _catalog_entry_from_skill_file(
                 )
             ),
         ),
+    )
+
+
+def dependency_gate_for_catalog_entry(
+    entry: CapabilityCatalogEntry,
+) -> CapabilityDependencyGate:
+    if entry.capability_status is not CapabilityStatus.DEPENDENCY_GATED:
+        return CapabilityDependencyGate(
+            capability_id=entry.id,
+            capability_status=entry.capability_status,
+            executable=True,
+            blocked_reason="Capability is not dependency-gated.",
+            missing_dependencies=(),
+            decomposition_options=entry.contract.decomposition_options,
+            next_enabling_action=entry.contract.next_enabling_action,
+            review_destination=entry.contract.review_destination,
+        )
+    return CapabilityDependencyGate(
+        capability_id=entry.id,
+        capability_status=entry.capability_status,
+        executable=False,
+        blocked_reason="Dependency-gated capability candidate cannot execute until prerequisites are satisfied.",
+        missing_dependencies=entry.contract.missing_dependencies,
+        decomposition_options=entry.contract.decomposition_options,
+        next_enabling_action=entry.contract.next_enabling_action,
+        review_destination=entry.contract.review_destination,
     )
 
 

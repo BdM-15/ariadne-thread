@@ -18,6 +18,12 @@ Review destinations used by this map: Packet Field Answer candidate, Call Plan s
 
 Boundary: no parser/RAG/graph/rendering runtime expansion in MVP-2. This map can mention parser, retrieval, graph, or renderer prerequisites only as dependency gates or deferred work.
 
+## Completion Status
+
+MVP-2 is implemented and merged to `main`. The runnable-now candidates from this map are present as focused workspace skills or deterministic capability runners: `data-table-profiler`, `anomaly-route-recommender`, `incumbent-award-history-brief`, `compliance-spine-planner`, `win-theme-synthesizer`, `competitive-gap-route-hint`, and `subcontractor-assumption-list`.
+
+Dependency-gated and deferred candidates remain intentionally visible as route/capability gaps. They should not be promoted until their prerequisite source-profile, parser, renderer, graph/RAG, compliance, workload, or reviewed scope contracts exist.
+
 ## Decomposition Table
 
 | Theseus family | Ariadne candidate | Status | One repeatable outcome | Expected handoff | Dependency gate | Review destination |
@@ -55,9 +61,9 @@ Boundary: no parser/RAG/graph/rendering runtime expansion in MVP-2. This map can
 | `govcon-ontology` | data-element-relationship-hint | utility/reference | Suggest relationship hints for packet data elements without writing graph state. | relationship hint list | accepted data-element dictionary and vault refs | Packet Field Answer candidate |
 | `govcon-ontology` | full GovCon ontology runtime | deferred | Operate a full ontology-backed graph runtime. | ontology/graph runtime result | graph/RAG runtime decision, parser alignment, ADR | Capability Run Output |
 
-## MVP-2 Candidate Priorities
+## MVP-2 Candidate Priorities And Completion
 
-1. Start with runnable-now candidates that exercise the Capability Contract without new runtime scope: `data-table-profiler`, `incumbent-award-history-brief`, `win-theme-synthesizer`, `competitive-gap-route-hint`, `anomaly-route-recommender`, and `subcontractor-assumption-list`.
+1. MVP-2 completed runnable-now candidates that exercise the Capability Contract without new runtime scope: `data-table-profiler`, `incumbent-award-history-brief`, `win-theme-synthesizer`, `competitive-gap-route-hint`, `anomaly-route-recommender`, and `subcontractor-assumption-list`.
 2. Register dependency-gated candidates honestly so route cards can explain missing prerequisites instead of pretending broad skills are available.
 3. Keep utility/reference candidates available for planning, validation, and Hermes Improvement Proposals, but do not expose them as automatic work-product generators.
 4. Treat broad Theseus skills as inspiration-only or deferred until Ariadne has the required reviewable input contracts, source-profile coverage, parser boundary, renderer path, or graph/RAG decision.

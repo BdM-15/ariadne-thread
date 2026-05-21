@@ -46,6 +46,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Clarification Request: a review route back to the user when a raw note is too low-signal for Ariadne to infer useful capture intelligence without more context.
 - Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
 - Skill Chain Plan Map: an inspectable deterministic plan for a short sequence of Capability Modules or Product Workflows, with stable stage IDs, dependencies, accepted inputs, produced handoffs, search or retrieval hints, quality gates, review destinations, and missing-input questions before any runtime executes.
+- Thin Skill Chain Map: a short bounded Skill Chain Plan Map that stays inspectable, interruptible, and review-gated instead of becoming broad autonomous orchestration.
 - Action Capability Route: the suggested way Ariadne can help complete an action using available Capability Modules, partial assistance, user work, or a declared Capability Gap.
 - Risk Register: a review-gated workflow and artifact that tracks pursuit risks and upside opportunities, their probability, impact, response plan, owner, cost or schedule exposure, and links to evidence, packet fields, and action plan items.
 - Risk Register Item: one risk or opportunity row in the Risk Register, framed as a threat or opportunity, measurable impact, response, score, and current review status.
@@ -88,7 +89,9 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capability Gap: a missing Ariadne workflow, skill, view, adapter, or automation that would materially improve capture execution.
 - Model Role: the intended responsibility level for a model, separating frontier reasoning work from local or administrative work.
 - Frontier Reasoning Model: a model role for strategy, synthesis, mentoring, hard tradeoffs, and executive-ready recommendations.
+- Hosted Reasoning Model: a guarded cloud/frontier model capability for reviewable strategy, synthesis, and drafting support. It is disabled by default unless private local config explicitly enables hosted calls and provides credentials.
 - Local Admin Model: a model role for lower-risk tasks such as tagging, summarizing, date extraction, deduplication, formatting, and evidence preparation.
+- AI Usage Layer: the review-gated connection between model roles, focused workspace skills, skill-chain maps, source-profile routes, MCP/federal-data capabilities, adapters, and Ariadne product workflows.
 - Recompete: a new competition for work that has been awarded before.
 - Incumbent Recompete: a recompete for work currently held by the user or their organization.
 - Recompete Intelligence Intake: a review-gated workflow that turns public award, customer, incumbent, vehicle, spending, and timing signals into capture intelligence for a recompete.
@@ -144,6 +147,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capture Intelligence Workflow: a structured workflow that gathers, aggregates, and synthesizes capture data into insights, recommendations, and actions.
 - Product Workflow: a user-facing outcome workflow in Ariadne, such as building a briefing packet, creating a call plan, or researching competitors.
 - Capability Module: an underlying skill, skill chain, CLI harness, MCP tool, parser, renderer, model workflow, or adapter that a product workflow can use.
+- Focused Workspace Skill: a small `.github/skills/` capability with one repeatable outcome, explicit inputs, reviewable output, provenance, quality gate, and no automatic trusted downstream writes.
 - Capability Module Integration: the connection that lets a Product Workflow invoke an appropriate Capability Module, preserve its provenance, and return outputs to review.
 - Workflow Routing: the review-gated act of sending a capture need, recommendation, question, or capability output to the right Product Workflow, Capability Module, Action Plan, packet field, evidence review, call plan, or follow-up path.
 - Route-First Assisted Capture Orchestration: an MVP orchestration pattern where Ariadne connects user goals, Opportunity Knowledge Context, Capability Modules, AI assistance, and Product Workflows through explicit inspectable routes before adding broad autonomous planning.
@@ -250,6 +254,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - An **Artifact Source Package** can include trusted and reviewable context, but reviewable context must be explicitly labeled and constrained to draft, gap, assumption, limitation, or needs-review use until the relevant **Artifact Content Blocks** are reviewed.
 - A **Product Workflow** is the normal user-facing experience; **Capability Modules** run under the hood unless the user opens the **Capability Studio**.
 - **Capability Module Integration** should make skills, skill chains, CLI harnesses, model workflows, and adapters usable from **Product Workflows** without making the user manage the toolchain first.
+- The **AI Usage Layer** connects model roles, focused workspace skills, thin skill-chain maps, source-profile routes, MCP/federal-data capabilities, and adapters to Product Workflows through review-gated Capability Runs.
+- MVP-3 should use reviewable AI Usage Layer outputs to improve work products rather than adding standalone tool surfaces or hidden autonomous planners.
 - **Workflow Routing** connects capture needs and capability outputs back into the right review path so useful assistance can improve packets, call plans, action plans, evidence, research, or follow-up work without bypassing human gates.
 - A **Packet Field Action Matrix** should ensure every required **Packet Field Definition** has an answer path or fallback route, even when the fallback is a user action such as preparing a customer call plan with suggested questions.
 - A **Packet Field Route Kind** should be carried as structured metadata so the UI can show source-backed, research/MCP, source-profile, model-synthesis, and customer-call-plan paths without parsing display text.

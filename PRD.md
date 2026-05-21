@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.69**
+**Product Requirements Document (PRD) v1.70**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -839,6 +839,7 @@ Goal: make AI/LLM assistance and installed skills take as much approved capture 
 MVP-2 boundary:
 
 - Theseus skills are inspiration-only unless decomposed into Ariadne-native focused skills with explicit contracts. Broad Theseus skills such as `proposal-generator`, `competitive-intel`, `compliance-auditor`, `rfp-reverse-engineer`, `workload-analyzer`, `data-analyzer`, `subcontractor-sow-builder`, and `govcon-ontology` should inform Ariadne's capability language, output contracts, quality gates, and handoff patterns without becoming copied mega-skills.
+- `docs/architecture/mvp-2-skill-decomposition-map.md` records the approved decomposition map for these Theseus-inspired families, including focused candidate skills, status labels, expected handoffs, dependency gates, and likely review destinations.
 - The runnable-now focused Ariadne skills should be small, repeatable, and review-gated, such as a data-table profiler, an incumbent or award-history brief, or a proposal-support decomposition tracer with one narrow output contract.
 - The dependency-gated Theseus-inspired candidates may be visible in the Capability Catalog or route metadata when their missing prerequisite is explicit, such as solicitation extraction, clause/eCFR readiness, workload attachment intake, reviewed scope package, ontology alignment, renderer readiness, or source-profile coverage.
 - The deferred scope includes copying broad Theseus skills wholesale, treating Theseus as Ariadne's trusted record owner, direct Project Theseus parser integration, broad proposal generation, full compliance automation, broad subcontractor SOW generation, and full GovCon ontology runtime behavior.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+import os
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -23,6 +24,11 @@ from ariadne.artifact_assembly import (
     summarize_artifact_source_package,
 )
 from ariadne.capabilities import CapabilityCatalog, discover_local_capability_catalog
+from ariadne.capability_relationship_pages import (
+    CapabilityRelationshipPageReport,
+    ensure_capability_relationship_pages,
+    inspect_capability_relationship_pages,
+)
 from ariadne.capability_runs import (
     CapabilityRun,
     CapabilityRunReviewDecisionType,
@@ -111,16 +117,35 @@ from ariadne.federal_data import (
     run_federal_data_initialize_smoke_check,
     run_mcp_initialize_command,
 )
+from ariadne.knowledge_vault import (
+    KnowledgeVaultHealthReport,
+    KnowledgeVaultReadiness,
+    KnowledgeVaultSchema,
+    PacketDataElementPageReport,
+    ensure_knowledge_vault_scaffold,
+    ensure_packet_data_element_pages,
+    generate_knowledge_vault_health_report,
+    get_knowledge_vault_schema,
+    inspect_knowledge_vault_readiness,
+    list_packet_data_element_page_status,
+)
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
+from ariadne.mirror_update_proposals import (
+    MirrorUpdateProposalReport,
+    list_pending_mirror_update_proposals,
+    scan_vault_for_mirror_update_proposals,
+)
 from ariadne.next_action_recommendations import (
     NextActionRecommendationStore,
     accept_next_action_recommendation,
     recommend_next_capture_actions,
 )
+from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
     PacketFieldAnswer,
     PacketFieldAnswerStore,
     PacketFieldReview,
+    build_default_packet_field_definitions,
     build_demo_packet_field_review,
 )
 from ariadne.packet_review import (
@@ -563,6 +588,7 @@ class ProductionCommandCenterWorkspaceResponse(BaseModel):
 def create_app(
     settings: RuntimeSettings | None = None,
     *,
+    workspace_root: Path | str | None = None,
     federal_data_smoke_runner: FederalDataInitializeRunner = run_mcp_initialize_command,
     usaspending_lookup_runner: USAspendingMcpToolRunner | None = None,
     sam_gov_entity_runner: SamGovMcpToolRunner | None = None,
@@ -574,6 +600,7 @@ def create_app(
     source_provider_smoke_runner: SourceProviderSmokeRunner | None = None,
 ) -> FastAPI:
     runtime_settings = settings or RuntimeSettings.from_env_file()
+    resolved_workspace_root = Path(workspace_root) if workspace_root else Path.cwd()
     app = FastAPI(title=runtime_settings.public_app_name)
 
     @app.get("/api/runtime")
@@ -594,6 +621,74 @@ def create_app(
             "status": "online",
         }
 
+    @app.get("/api/knowledge-vault/readiness")
+    def knowledge_vault_readiness() -> KnowledgeVaultReadiness:
+        return inspect_knowledge_vault_readiness(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.post("/api/knowledge-vault/scaffold")
+    def knowledge_vault_scaffold() -> KnowledgeVaultReadiness:
+        return ensure_knowledge_vault_scaffold(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.get("/api/knowledge-vault/schema")
+    def knowledge_vault_schema() -> KnowledgeVaultSchema:
+        return get_knowledge_vault_schema()
+
+    @app.get("/api/knowledge-vault/packet-data-elements")
+    def knowledge_vault_packet_data_element_status(
+        current_milestone_gate: MilestoneGate | None = None,
+    ) -> PacketDataElementPageReport:
+        return list_packet_data_element_page_status(
+            runtime_settings.ariadne_obsidian_vault_dir,
+            build_default_packet_field_definitions(),
+            current_milestone_gate=current_milestone_gate,
+        )
+
+    @app.post("/api/knowledge-vault/packet-data-elements/scaffold")
+    def knowledge_vault_packet_data_element_scaffold(
+        current_milestone_gate: MilestoneGate | None = None,
+    ) -> PacketDataElementPageReport:
+        return ensure_packet_data_element_pages(
+            runtime_settings.ariadne_obsidian_vault_dir,
+            build_default_packet_field_definitions(),
+            current_milestone_gate=current_milestone_gate,
+        )
+
+    @app.post("/api/knowledge-vault/health-report")
+    def knowledge_vault_health_report() -> KnowledgeVaultHealthReport:
+        return generate_knowledge_vault_health_report(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.get("/api/knowledge-vault/mirror-update-proposals")
+    def knowledge_vault_mirror_update_proposals() -> MirrorUpdateProposalReport:
+        return list_pending_mirror_update_proposals(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.post("/api/knowledge-vault/mirror-update-proposals/scan")
+    def knowledge_vault_mirror_update_proposal_scan() -> MirrorUpdateProposalReport:
+        return scan_vault_for_mirror_update_proposals(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.get("/api/knowledge-vault/capability-relationships")
+    def knowledge_vault_capability_relationships() -> CapabilityRelationshipPageReport:
+        return inspect_capability_relationship_pages(
+            runtime_settings.ariadne_obsidian_vault_dir
+        )
+
+    @app.post("/api/knowledge-vault/capability-relationships")
+    def knowledge_vault_capability_relationship_scaffold() -> CapabilityRelationshipPageReport:
+        return ensure_capability_relationship_pages(
+            runtime_settings.ariadne_obsidian_vault_dir,
+            workspace_root=resolved_workspace_root,
+            env=dict(os.environ),
+        )
+
     @app.get("/api/production-command-center/workspace")
     def production_command_center_workspace(
         opportunity_id: str | None = None,
@@ -609,6 +704,7 @@ def create_app(
                 answer_store=PacketFieldAnswerStore(
                     runtime_settings.ariadne_packet_field_answers_dir
                 ),
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -629,6 +725,7 @@ def create_app(
             answer_store=PacketFieldAnswerStore(
                 runtime_settings.ariadne_packet_field_answers_dir
             ),
+            vault_root=runtime_settings.ariadne_obsidian_vault_dir,
         )
 
     @app.post("/api/production-command-center/opportunities")
@@ -642,6 +739,7 @@ def create_app(
                 activation_store=OpportunityActivationRunStore(
                     runtime_settings.ariadne_opportunity_activation_dir
                 ),
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
@@ -700,6 +798,7 @@ def create_app(
                     runtime_settings.ariadne_packet_field_answers_dir
                 ),
                 trigger=OpportunityActivationRunTrigger.USER_REQUEST,
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -795,6 +894,7 @@ def create_app(
                 ),
                 output_id=output_id,
                 request=request,
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except FileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Route output not found") from error

@@ -8,6 +8,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
 
+from ariadne.knowledge_vault import (
+    _frontmatter_list,
+    _read_frontmatter,
+    _relative_markdown_path,
+)
 from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
     AnswerPathKind,
@@ -59,6 +64,13 @@ class PacketFieldRouteKind(StrEnum):
     CUSTOMER_CALL_PLAN = "customer_call_plan"
 
 
+class PacketFieldVaultRouteContext(BaseModel):
+    page_refs: tuple[str, ...]
+    relationship_refs: tuple[str, ...]
+    titles: tuple[str, ...]
+    source_refs: tuple[str, ...] = ()
+
+
 class OpportunityActivationDigest(BaseModel):
     coverage_gained: tuple[str, ...]
     review_ready_count: int
@@ -89,6 +101,8 @@ class PacketFieldActionItem(BaseModel):
     requires_review: bool = True
     approval_required: bool = False
     source_refs: tuple[str, ...] = ()
+    vault_context_refs: tuple[str, ...] = ()
+    vault_relationship_refs: tuple[str, ...] = ()
     gap_summary: str | None = None
     current_value: str | None = None
 
@@ -237,6 +251,7 @@ def run_opportunity_activation(
     initial_coverage: tuple[str, ...] = (),
     run_id: str | None = None,
     current_milestone_gate: MilestoneGate | str = MilestoneGate.MILESTONE_1,
+    vault_root: Path | str | None = None,
 ) -> OpportunityActivationRun:
     milestone_gate = _coerce_milestone_gate(current_milestone_gate)
     completed_at = created_at or datetime.now(UTC)
@@ -245,6 +260,7 @@ def run_opportunity_activation(
         definitions=definitions,
         answers=answers,
         current_milestone_gate=milestone_gate,
+        vault_root=vault_root,
     )
     digest = build_activation_digest(
         matrix=matrix,
@@ -363,6 +379,7 @@ def build_packet_field_action_matrix(
     definitions: tuple[PacketFieldDefinition, ...],
     answers: tuple[PacketFieldAnswer, ...] = (),
     current_milestone_gate: MilestoneGate | str = MilestoneGate.MILESTONE_1,
+    vault_root: Path | str | None = None,
 ) -> PacketFieldActionMatrix:
     milestone_gate = _coerce_milestone_gate(current_milestone_gate)
     actions = tuple(
@@ -375,6 +392,7 @@ def build_packet_field_action_matrix(
                 opportunity_id=opportunity_id,
                 field_key=definition.key,
             ),
+            vault_root=vault_root,
         )
         for definition in definitions
     )
@@ -392,7 +410,9 @@ def build_packet_field_action_matrix(
             if item.action_state is PacketFieldActionState.REVIEW_READY
         ),
         answered_field_count=sum(
-            1 for item in actions if item.action_state is PacketFieldActionState.ANSWERED
+            1
+            for item in actions
+            if item.action_state is PacketFieldActionState.ANSWERED
         ),
         current_gate_field_count=len(current_gate_actions),
         current_gate_blocked_count=sum(
@@ -482,11 +502,14 @@ def _action_item_for_definition(
     definition: PacketFieldDefinition,
     current_milestone_gate: MilestoneGate,
     answer: PacketFieldAnswer | None,
+    vault_root: Path | str | None = None,
 ) -> PacketFieldActionItem:
     current_status = (
         answer.status if answer is not None else PacketFieldAnswerStatus.UNANSWERED
     )
-    evidence_status = answer.evidence_status if answer is not None else EvidenceStatus.GAP
+    evidence_status = (
+        answer.evidence_status if answer is not None else EvidenceStatus.GAP
+    )
     action_state = _action_state_for_answer(
         current_status=current_status,
         evidence_status=evidence_status,
@@ -502,6 +525,21 @@ def _action_item_for_definition(
         gap_summary = f"{definition.label} is not answered for this Opportunity."
     elif answer.gap_summary:
         gap_summary = answer.gap_summary
+    vault_context = _vault_route_context_for_definition(
+        vault_root=vault_root,
+        definition=definition,
+    )
+    route_rationale = _route_rationale(definition)
+    route_steps = _route_steps(definition)
+    if vault_context is not None:
+        route_rationale = _route_rationale_with_vault_context(
+            route_rationale,
+            vault_context,
+        )
+        route_steps = route_steps + (
+            "Review vault context pages before route execution: "
+            + ", ".join(vault_context.page_refs),
+        )
 
     return PacketFieldActionItem(
         field_key=definition.key,
@@ -517,15 +555,136 @@ def _action_item_for_definition(
         current_gate_required=current_gate_required,
         route_kind=recommend_packet_field_route_kind(definition),
         recommended_route=recommend_packet_field_route(definition),
-        route_rationale=_route_rationale(definition),
-        route_steps=_route_steps(definition),
+        route_rationale=route_rationale,
+        route_steps=route_steps,
         approval_gate=_approval_gate(definition),
         requires_review=action_state is not PacketFieldActionState.ANSWERED,
         approval_required=_approval_required(definition),
         source_refs=answer.evidence_ids if answer is not None else (),
+        vault_context_refs=(
+            vault_context.page_refs if vault_context is not None else ()
+        ),
+        vault_relationship_refs=(
+            vault_context.relationship_refs if vault_context is not None else ()
+        ),
         gap_summary=gap_summary,
         current_value=answer.value if answer is not None else None,
     )
+
+
+def _vault_route_context_for_definition(
+    *,
+    vault_root: Path | str | None,
+    definition: PacketFieldDefinition,
+) -> PacketFieldVaultRouteContext | None:
+    if vault_root is None:
+        return None
+    root = Path(vault_root)
+    if not root.is_dir():
+        return None
+
+    field_targets = (
+        f"data-elements/briefing-packet/{definition.key}",
+        f"data-elements/{definition.key}",
+    )
+    field_page_path = (
+        root / "data-elements" / "briefing-packet" / f"{definition.key}.md"
+    )
+    legacy_field_page_path = root / "data-elements" / f"{definition.key}.md"
+    candidate_paths: list[Path] = []
+    if field_page_path.is_file():
+        candidate_paths.append(field_page_path)
+    elif legacy_field_page_path.is_file():
+        candidate_paths.append(legacy_field_page_path)
+
+    for page_path in sorted(root.rglob("*.md")):
+        if page_path in {field_page_path, legacy_field_page_path}:
+            continue
+        if (
+            _relative_markdown_path(root, page_path)
+            == "data-elements/dictionary-index.md"
+        ):
+            continue
+        frontmatter = _read_frontmatter(page_path)
+        if frontmatter is None:
+            continue
+        relationships = _frontmatter_list(frontmatter.get("relationships"))
+        if any(
+            _relationship_targets_data_element(relationship, field_targets)
+            for relationship in relationships
+        ):
+            candidate_paths.append(page_path)
+
+    page_refs: list[str] = []
+    relationship_refs: list[str] = []
+    titles: list[str] = []
+    source_refs: list[str] = []
+    for page_path in candidate_paths:
+        frontmatter = _read_frontmatter(page_path)
+        if frontmatter is None:
+            continue
+        relationships = _frontmatter_list(frontmatter.get("relationships"))
+        matching_relationships = tuple(
+            relationship
+            for relationship in relationships
+            if _relationship_targets_data_element(relationship, field_targets)
+            or relationship.startswith("suggests_route:")
+            or relationship.startswith("uses_capability:")
+            or relationship.startswith("uses_source_provider:")
+        )
+        if page_path in {field_page_path, legacy_field_page_path}:
+            matching_relationships = relationships
+        if page_path != field_page_path and not matching_relationships:
+            continue
+
+        page_refs.append(_relative_markdown_path(root, page_path))
+        relationship_refs.extend(matching_relationships)
+        title = str(frontmatter.get("title", "")).strip()
+        if title:
+            titles.append(title)
+        source_refs.extend(_frontmatter_list(frontmatter.get("source_refs")))
+
+    if not page_refs:
+        return None
+    return PacketFieldVaultRouteContext(
+        page_refs=tuple(dict.fromkeys(page_refs)),
+        relationship_refs=tuple(dict.fromkeys(relationship_refs)),
+        titles=tuple(dict.fromkeys(titles)),
+        source_refs=tuple(dict.fromkeys(source_refs)),
+    )
+
+
+def _route_rationale_with_vault_context(
+    base_rationale: str,
+    vault_context: PacketFieldVaultRouteContext,
+) -> str:
+    title_context = ", ".join(vault_context.titles[:3])
+    relationship_context = ", ".join(vault_context.relationship_refs[:4])
+    page_context = ", ".join(vault_context.page_refs[:3])
+    return (
+        f"{base_rationale} Vault context: {title_context or page_context} "
+        f"cites typed relationships {relationship_context or 'none'}; use it as "
+        "route guidance only until a human review accepts a packet answer."
+    )
+
+
+def _relationship_targets_data_element(
+    relationship: str,
+    field_targets: tuple[str, ...],
+) -> bool:
+    if ":" not in relationship:
+        return False
+    _relationship_kind, target = relationship.split(":", 1)
+    return _normalize_relationship_target(target) in field_targets
+
+
+def _normalize_relationship_target(target: str) -> str:
+    normalized = target.strip().strip('"').strip("'")
+    if normalized.startswith("[[") and normalized.endswith("]]"):
+        normalized = normalized[2:-2].split("|", 1)[0].strip()
+    if normalized.endswith(".md"):
+        normalized = normalized[:-3]
+    return normalized.lstrip("/")
 
 
 def _coerce_milestone_gate(value: MilestoneGate | str) -> MilestoneGate:
@@ -562,9 +721,7 @@ def _answer_from_activation_review(
     accepted_value: str,
 ) -> PacketFieldAnswer:
     evidence_status = (
-        EvidenceStatus.ANSWERED
-        if request.evidence_ids
-        else EvidenceStatus.ASSUMPTION
+        EvidenceStatus.ANSWERED if request.evidence_ids else EvidenceStatus.ASSUMPTION
     )
     rationale = request.reviewer_rationale.strip()
     provenance_note = (
@@ -722,11 +879,11 @@ def _action_state_for_answer(
     current_status: PacketFieldAnswerStatus,
     evidence_status: EvidenceStatus,
 ) -> PacketFieldActionState:
-    if (
-        current_status is PacketFieldAnswerStatus.ANSWERED
-        and evidence_status
-        in {EvidenceStatus.ANSWERED, EvidenceStatus.PARTIAL, EvidenceStatus.ASSUMPTION}
-    ):
+    if current_status is PacketFieldAnswerStatus.ANSWERED and evidence_status in {
+        EvidenceStatus.ANSWERED,
+        EvidenceStatus.PARTIAL,
+        EvidenceStatus.ASSUMPTION,
+    }:
         return PacketFieldActionState.ANSWERED
     if current_status is PacketFieldAnswerStatus.NEEDS_REVIEW:
         return PacketFieldActionState.REVIEW_READY
@@ -743,7 +900,9 @@ def _route_rationale(definition: PacketFieldDefinition) -> str:
         return "Source-profile data should be loaded before synthesis or user judgment."
     if AnswerPathKind.MODEL_SYNTHESIS in kinds:
         return "Synthesis is useful only after accepted evidence or explicit assumptions exist."
-    return "Ariadne cannot safely infer this field without capture lead or customer input."
+    return (
+        "Ariadne cannot safely infer this field without capture lead or customer input."
+    )
 
 
 def _route_steps(definition: PacketFieldDefinition) -> tuple[str, ...]:
@@ -753,7 +912,9 @@ def _route_steps(definition: PacketFieldDefinition) -> tuple[str, ...]:
             "Approve capability-backed research route.",
             _route_step_for_labels(
                 prefix="Use",
-                labels=_answer_path_labels(definition, AnswerPathKind.CAPABILITY_MODULE),
+                labels=_answer_path_labels(
+                    definition, AnswerPathKind.CAPABILITY_MODULE
+                ),
                 fallback="available research capability",
             ),
         )
@@ -802,7 +963,9 @@ def _route_steps(definition: PacketFieldDefinition) -> tuple[str, ...]:
             fallback="source material",
         ),
     )
-    context_labels = _answer_path_labels(definition, AnswerPathKind.HUMAN_INPUT) + _answer_path_labels(
+    context_labels = _answer_path_labels(
+        definition, AnswerPathKind.HUMAN_INPUT
+    ) + _answer_path_labels(
         definition,
         AnswerPathKind.IMPORTED_DATA,
     )
@@ -830,9 +993,13 @@ def _approval_gate_for_route_kind(
     approval_required: bool,
 ) -> str | None:
     if approval_required:
-        return "Operator approval required before capability-backed or external research."
+        return (
+            "Operator approval required before capability-backed or external research."
+        )
     if route_kind is PacketFieldRouteKind.MODEL_SYNTHESIS:
-        return "Human review required before synthesized content becomes a trusted answer."
+        return (
+            "Human review required before synthesized content becomes a trusted answer."
+        )
     return None
 
 
@@ -954,14 +1121,15 @@ def _labels_matching(
     needles: tuple[str, ...],
 ) -> tuple[str, ...]:
     return tuple(
-        label
-        for label in labels
-        if any(needle in label.lower() for needle in needles)
+        label for label in labels if any(needle in label.lower() for needle in needles)
     )
 
 
 def _approval_required(definition: PacketFieldDefinition) -> bool:
-    return any(path.kind is AnswerPathKind.CAPABILITY_MODULE for path in definition.answer_paths)
+    return any(
+        path.kind is AnswerPathKind.CAPABILITY_MODULE
+        for path in definition.answer_paths
+    )
 
 
 def _output_from_action_item(
@@ -980,9 +1148,13 @@ def _recommended_skill_chains(
     matrix: PacketFieldActionMatrix,
 ) -> tuple[str, ...]:
     chains: list[str] = []
-    if any("source material" in item.recommended_route.lower() for item in matrix.fields):
+    if any(
+        "source material" in item.recommended_route.lower() for item in matrix.fields
+    ):
         chains.append("source extraction -> packet field review")
-    if any("source-profile" in item.recommended_route.lower() for item in matrix.fields):
+    if any(
+        "source-profile" in item.recommended_route.lower() for item in matrix.fields
+    ):
         chains.append("source-profile lookup -> packet implication")
     if any("capability" in item.recommended_route.lower() for item in matrix.fields):
         chains.append("capability route -> reviewable packet candidate")
@@ -1001,13 +1173,17 @@ def _approval_required_routes(
     )
     if routes:
         return routes
-    return ("Review generated packet-field candidates before any trusted answer changes.",)
+    return (
+        "Review generated packet-field candidates before any trusted answer changes.",
+    )
 
 
 def _source_limitations(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
     limitations: list[str] = []
     if matrix.source_ref_count == 0:
-        limitations.append("No accepted source evidence is attached to these fields yet.")
+        limitations.append(
+            "No accepted source evidence is attached to these fields yet."
+        )
     if matrix.current_gate_blocked_count:
         limitations.append(
             f"{matrix.current_gate_blocked_count} current-gate packet fields still need evidence, import, synthesis, or user input."
@@ -1017,7 +1193,9 @@ def _source_limitations(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
 
 def _next_best_actions(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
     blocked_fields = tuple(
-        item for item in matrix.fields if item.action_state is PacketFieldActionState.BLOCKED
+        item
+        for item in matrix.fields
+        if item.action_state is PacketFieldActionState.BLOCKED
     )
     current_gate_blocked_fields = tuple(
         item for item in blocked_fields if item.current_gate_required

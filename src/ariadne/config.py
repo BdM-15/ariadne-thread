@@ -50,6 +50,9 @@ class RuntimeSettings(BaseModel):
     ariadne_reference_wiki_dir: Path = Field(
         default=Path("docs/reference/project-ariadne/knowledge")
     )
+    ariadne_obsidian_vault_dir: Path = Field(
+        default=Path("knowledge/ariadnes-thread")
+    )
     mcp_tool_timeout_seconds: int = 60
     federal_data_env: dict[str, str] = Field(default_factory=dict, exclude=True)
     capture_research_source_env: dict[str, str] = Field(
@@ -171,6 +174,12 @@ class RuntimeSettings(BaseModel):
                 values.get(
                     "ARIADNE_REFERENCE_WIKI_DIR",
                     str(cls.model_fields["ariadne_reference_wiki_dir"].default),
+                )
+            ),
+            ariadne_obsidian_vault_dir=Path(
+                values.get(
+                    "ARIADNE_OBSIDIAN_VAULT_DIR",
+                    str(cls.model_fields["ariadne_obsidian_vault_dir"].default),
                 )
             ),
             mcp_tool_timeout_seconds=int(

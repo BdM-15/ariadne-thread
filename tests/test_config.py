@@ -13,6 +13,20 @@ def test_artifact_assembly_dir_uses_configured_local_store_path() -> None:
     )
 
 
+def test_obsidian_vault_dir_defaults_to_canonical_llm_wiki_path() -> None:
+    default_settings = RuntimeSettings.from_mapping({})
+    configured_settings = RuntimeSettings.from_mapping(
+        {"ARIADNE_OBSIDIAN_VAULT_DIR": "private/ariadne-vault"}
+    )
+
+    assert default_settings.ariadne_obsidian_vault_dir == Path(
+        "knowledge/ariadnes-thread"
+    )
+    assert configured_settings.ariadne_obsidian_vault_dir == Path(
+        "private/ariadne-vault"
+    )
+
+
 def test_opportunities_dir_uses_configured_local_store_path() -> None:
     settings = RuntimeSettings.from_mapping(
         {"ARIADNE_OPPORTUNITIES_DIR": ".ariadne/opportunities-test"}

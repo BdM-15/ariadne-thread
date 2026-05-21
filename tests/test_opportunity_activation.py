@@ -13,6 +13,7 @@ from ariadne.opportunity_activation import (
     record_opportunity_activation_field_review,
     run_opportunity_activation,
 )
+from ariadne.knowledge_vault import ensure_packet_data_element_pages
 from ariadne.opportunities import MilestoneGate
 from ariadne.packet_knowledge import (
     PacketFieldAnswerStore,
@@ -38,8 +39,7 @@ def test_activation_run_covers_all_packet_field_definitions() -> None:
     assert matrix.blocked_field_count == len(definitions)
     assert matrix.review_ready_count == 0
     assert all(
-        field.action_state is PacketFieldActionState.BLOCKED
-        for field in matrix.fields
+        field.action_state is PacketFieldActionState.BLOCKED for field in matrix.fields
     )
     assert all(field.recommended_route for field in matrix.fields)
 
@@ -85,7 +85,9 @@ def test_activation_matrix_exposes_route_steps_and_approval_gates() -> None:
     )
     pwin = next(field for field in matrix.fields if field.field_key == "pwin")
 
-    assert any("notice or call-note extraction" in step for step in customer.route_steps)
+    assert any(
+        "notice or call-note extraction" in step for step in customer.route_steps
+    )
     assert customer.approval_gate is None
     assert competition.route_kind is PacketFieldRouteKind.RESEARCH_OR_MCP
     assert competition.route_steps == (
@@ -101,6 +103,149 @@ def test_activation_matrix_exposes_route_steps_and_approval_gates() -> None:
     assert pwin.route_steps[-1] == "Review synthesized answer before trusted use."
     assert pwin.approval_gate == (
         "Human review required before synthesized content becomes a trusted answer."
+    )
+
+
+def test_activation_matrix_uses_vault_context_for_customer_route(tmp_path) -> None:
+    vault_root = tmp_path / "vault"
+    definitions = build_default_packet_field_definitions()
+    ensure_packet_data_element_pages(
+        vault_root,
+        definitions,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+    )
+    source_page = (
+        vault_root
+        / "source-summaries"
+        / "project-ariadne"
+        / "customer-hot-button-identification.md"
+    )
+    source_page.parent.mkdir(parents=True)
+    source_page.write_text(
+        """---
+page_type: source_summary
+title: Customer Hot Button Identification
+source_refs: [project-ariadne:global_wiki/capture/customer-hot-button-identification.md]
+relationships: [informs:data-elements/briefing-packet/customer, suggests_route:workflow/customer-engagement]
+---
+
+# Customer Hot Button Identification
+
+Hot buttons identify customer priorities and source expectations.
+""",
+        encoding="utf-8",
+    )
+
+    matrix = build_packet_field_action_matrix(
+        opportunity_id="opp-disa-cloud",
+        definitions=definitions,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+        vault_root=vault_root,
+    )
+
+    customer = next(field for field in matrix.fields if field.field_key == "customer")
+
+    assert "data-elements/briefing-packet/customer.md" in customer.vault_context_refs
+    assert (
+        "source-summaries/project-ariadne/customer-hot-button-identification.md"
+        in customer.vault_context_refs
+    )
+    assert (
+        "informs:data-elements/briefing-packet/customer"
+        in customer.vault_relationship_refs
+    )
+    assert "Customer Hot Button Identification" in customer.route_rationale
+    assert any("vault context" in step.lower() for step in customer.route_steps)
+    assert customer.action_state is PacketFieldActionState.BLOCKED
+
+
+def test_activation_matrix_falls_back_when_vault_has_no_relevant_context(
+    tmp_path,
+) -> None:
+    definitions = build_default_packet_field_definitions()
+    vault_root = tmp_path / "vault"
+    unrelated_page = vault_root / "source-summaries" / "unrelated.md"
+    unrelated_page.parent.mkdir(parents=True)
+    unrelated_page.write_text(
+        """---
+page_type: source_summary
+title: Unrelated
+source_refs: [manual:test]
+relationships: [informs:data-elements/briefing-packet/pwin]
+---
+
+# Unrelated
+""",
+        encoding="utf-8",
+    )
+    (vault_root / "invalid.md").write_text(
+        "# Invalid page without frontmatter\n",
+        encoding="utf-8",
+    )
+
+    matrix = build_packet_field_action_matrix(
+        opportunity_id="opp-disa-cloud",
+        definitions=definitions,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+        vault_root=vault_root,
+    )
+
+    customer = next(field for field in matrix.fields if field.field_key == "customer")
+
+    assert customer.vault_context_refs == ()
+    assert customer.vault_relationship_refs == ()
+    assert "Vault context" not in customer.route_rationale
+
+
+def test_vault_informed_activation_run_does_not_write_packet_answer_until_review(
+    tmp_path,
+) -> None:
+    definitions = build_default_packet_field_definitions()
+    vault_root = tmp_path / "vault"
+    ensure_packet_data_element_pages(
+        vault_root,
+        definitions,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+    )
+    run_store = OpportunityActivationRunStore(tmp_path / "activation-runs")
+    answer_store = PacketFieldAnswerStore(tmp_path / "answers")
+
+    run = run_opportunity_activation(
+        opportunity_id="opp-disa-cloud",
+        definitions=definitions,
+        store=run_store,
+        current_milestone_gate=MilestoneGate.MILESTONE_1,
+        vault_root=vault_root,
+    )
+
+    customer = next(
+        field
+        for field in run.packet_field_action_matrix.fields
+        if field.field_key == "customer"
+    )
+    assert customer.vault_context_refs == ("data-elements/briefing-packet/customer.md",)
+    assert answer_store.list(opportunity_id="opp-disa-cloud") == ()
+
+    response = record_opportunity_activation_field_review(
+        run_store=run_store,
+        answer_store=answer_store,
+        run_id=run.run_id,
+        field_key="customer",
+        request=OpportunityActivationFieldReviewRequest(
+            decision=OpportunityActivationFieldReviewDecisionType.ACCEPT,
+            value="DISA",
+            evidence_ids=("ev_customer",),
+            confidence=0.9,
+        ),
+    )
+
+    assert response.packet_field_answer is not None
+    assert (
+        answer_store.read(
+            opportunity_id="opp-disa-cloud",
+            field_key="customer",
+        ).value
+        == "DISA"
     )
 
 
@@ -247,7 +392,10 @@ def test_activation_field_acceptance_promotes_packet_field_answer(tmp_path) -> N
     assert answer.evidence_status is EvidenceStatus.ASSUMPTION
     assert answer.review_status == "accept"
     assert answer.source_draft_id == run.run_id
-    assert answer_store.read(opportunity_id="opp-disa-cloud", field_key="customer") == answer
+    assert (
+        answer_store.read(opportunity_id="opp-disa-cloud", field_key="customer")
+        == answer
+    )
     customer = next(
         field
         for field in response.run.packet_field_action_matrix.fields
@@ -256,8 +404,13 @@ def test_activation_field_acceptance_promotes_packet_field_answer(tmp_path) -> N
     assert customer.action_state is PacketFieldActionState.ANSWERED
     assert customer.current_value == "DISA"
     assert response.decision.promoted_answer_created is True
-    assert response.run.outputs[0].review_state is OpportunityActivationReviewState.ACCEPTED
-    assert response.run.provenance["field_review_decisions"][0]["field_key"] == "customer"
+    assert (
+        response.run.outputs[0].review_state
+        is OpportunityActivationReviewState.ACCEPTED
+    )
+    assert (
+        response.run.provenance["field_review_decisions"][0]["field_key"] == "customer"
+    )
 
 
 def test_activation_field_route_records_review_without_trusted_answer(tmp_path) -> None:

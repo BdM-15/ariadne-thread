@@ -25,6 +25,7 @@ def test_mvp2_skills_review_surface_can_seed_visible_demo(tmp_path) -> None:
     assert "actroute_competition_data_table_profile_next_route_chain" in updated.text
     assert "data-table-profile-next-route-chain" in updated.text
     assert "stage_1_data_table_profiler" in updated.text
+    assert "stage_2_anomaly_route_recommender" in updated.text
     assert "passed_pending_human_review" in updated.text
     assert "Hermes Improvement Proposals" in updated.text
     assert "Add workload-assumption review after data profiling" in updated.text
@@ -42,7 +43,7 @@ def test_mvp2_skills_review_api_exposes_reviewable_contracts(tmp_path) -> None:
     assert response.status_code == 200
     assert body["review_status"] == "ready_for_human_review"
     assert body["trusted_downstream_writes"] is False
-    assert body["focused_skill_count"] >= 3
+    assert body["focused_skill_count"] >= 4
     assert body["dependency_gated_count"] >= 5
     assert body["pending_output_count"] >= 1
     assert body["route_cards"][0]["approval_required"] is True

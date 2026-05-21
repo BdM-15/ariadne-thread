@@ -1,0 +1,23 @@
+{
+  "skill_name": "anomaly-route-recommender",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The data-table profiler found duplicate Contract ID values and missing vendor fields in an award-history table. Recommend the next Ariadne route, but do not create trusted Action Plan items or packet answers.",
+      "expected_output": "A review-gated anomaly route recommendation with high or medium priority, rationale, assumptions, gaps, provenance, Action Plan recommendation destination, and no trusted downstream writes.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Route this reviewed staffing table profile after the profiler flagged missing Hours and mixed value types. I need one deterministic next action recommendation for review, not workload analysis.",
+      "expected_output": "A deterministic pending-review Capability Run Output that carries anomaly signals forward, recommends a data-quality or review route, avoids workload interpretation, and records no model/network use.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Profiler says no anomalies in this normalized source-profile table. What should Ariadne do next before using it in packet or research work? Keep it review-gated.",
+      "expected_output": "A low-priority downstream-use confirmation route that requires human review before packet, research, or action use and preserves provenance/no trusted writes.",
+      "files": []
+    }
+  ]
+}

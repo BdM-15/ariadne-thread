@@ -49,7 +49,7 @@ def test_data_table_profile_chain_runs_with_stage_progression(tmp_path) -> None:
     stages = chain["stage_records"]
     assert [stage["stage_id"] for stage in stages] == [
         "stage_1_data_table_profiler",
-        "stage_2_data_profile_route_review",
+        "stage_2_anomaly_route_recommender",
     ]
     first_stage = stages[0]
     assert first_stage["capability_id"] == "data-table-profiler"
@@ -64,17 +64,21 @@ def test_data_table_profile_chain_runs_with_stage_progression(tmp_path) -> None:
     )
 
     second_stage = stages[1]
-    assert second_stage["capability_id"] == "data-profile-route-review"
+    assert second_stage["capability_id"] == "anomaly-route-recommender"
     assert second_stage["status"] == "needs_review"
     assert second_stage["input_refs"] == [first_stage["produced_handoff"]]
-    assert second_stage["review_destination"] == "Follow-Up Route"
-    assert second_stage["quality_gate_result"] == "review_before_route_use_pending"
+    assert second_stage["review_destination"] == "Action Plan recommendation"
+    assert second_stage["quality_gate_result"] == "passed_pending_human_review"
     assert second_stage["provenance"]["route_id"] == (
-        "review_data_quality_before_packet_or_research_route"
+        "create_data_quality_action_before_packet_use"
+    )
+    assert second_stage["provenance"]["capability_run_id"].startswith(
+        "caprun_anomaly_route_recommendation_"
     )
 
     persisted_runs = store.list()
     assert {persisted.capability_id for persisted in persisted_runs} == {
+        "anomaly-route-recommender",
         "data-table-profiler",
         "data-table-profile-next-route-chain",
     }
@@ -100,7 +104,11 @@ def test_chain_review_keeps_trusted_writes_human_gated(tmp_path) -> None:
     assert reviewed_run.outputs[0].review_state is CapabilityRunOutputReviewState.ACCEPTED
     assert reviewed_run.provenance["trusted_downstream_writes"] is False
     assert reviewed_run.outputs[0].provenance["trusted_downstream_writes"] is False
-    assert len(store.list()) == 2
+    assert {persisted.capability_id for persisted in store.list()} == {
+        "anomaly-route-recommender",
+        "data-table-profiler",
+        "data-table-profile-next-route-chain",
+    }
 
 
 def test_data_table_profile_chain_api_returns_visible_progression(tmp_path) -> None:
@@ -139,6 +147,8 @@ def test_data_table_profile_chain_api_returns_visible_progression(tmp_path) -> N
     assert stage_progression[0]["quality_gate_result"] == (
         "passed_pending_human_review"
     )
+    assert stage_progression[1]["capability_id"] == "anomaly-route-recommender"
+    assert stage_progression[1]["review_destination"] == "Action Plan recommendation"
     assert run["outputs"][0]["provenance"]["thin_orchestration_chain"][
         "output_summary"
     ].startswith("Thin chain produced")

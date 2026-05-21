@@ -179,6 +179,28 @@ def test_data_table_profiler_skill_is_discoverable_through_mvp2_contract() -> No
     assert entry.contract.fake_runner_supported is True
 
 
+def test_anomaly_route_recommender_skill_is_discoverable_through_mvp2_contract() -> None:
+    workspace_root = Path(__file__).resolve().parents[1]
+
+    catalog = discover_local_capability_catalog(workspace_root)
+
+    entry = next(
+        entry for entry in catalog.entries if entry.id == "anomaly-route-recommender"
+    )
+    assert entry.capability_type is CapabilityType.WORKSPACE_SKILL
+    assert entry.capability_status is CapabilityStatus.RUNNABLE
+    assert entry.validation_status is CapabilityValidationStatus.TESTED
+    assert entry.contract.source_family == "structured_table"
+    assert entry.contract.input_expectations == (
+        "data_table_profile",
+        "source_output_id",
+    )
+    assert entry.contract.quality_gate == "human_review_required_before_action_creation"
+    assert entry.contract.review_destination == "Action Plan recommendation"
+    assert entry.contract.model_role is CapabilityModelRole.NONE
+    assert entry.contract.fake_runner_supported is True
+
+
 def test_incumbent_award_history_skill_is_discoverable_through_mvp2_contract() -> None:
     workspace_root = Path(__file__).resolve().parents[1]
 

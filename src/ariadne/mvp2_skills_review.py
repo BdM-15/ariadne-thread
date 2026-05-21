@@ -47,6 +47,7 @@ MVP2_REVIEW_ACTIVATION_RUN_ID = "actrun_mvp2_skills_review_demo"
 MVP2_FOCUSED_SKILL_IDS = frozenset(
     {
         "data-table-profiler",
+        "anomaly-route-recommender",
         "incumbent-award-history-brief",
         "compliance-spine-planner",
     }

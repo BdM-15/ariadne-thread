@@ -92,6 +92,7 @@ def test_activation_invokes_approved_low_risk_chain_as_reviewable_output(tmp_pat
 
     persisted_runs = capability_store.list()
     assert {persisted.capability_id for persisted in persisted_runs} == {
+        "anomaly-route-recommender",
         "data-table-profiler",
         "data-table-profile-next-route-chain",
     }

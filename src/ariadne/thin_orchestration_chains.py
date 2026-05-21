@@ -7,6 +7,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ariadne.anomaly_route_recommender import (
+    AnomalyRouteRecommendationRequest,
+    run_anomaly_route_recommender_capability,
+)
 from ariadne.capability_runs import (
     CapabilityRun,
     CapabilityRunAutonomyRecommendation,
@@ -19,6 +23,7 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
 )
 from ariadne.data_table_profiler import (
+    DataTableProfile,
     DataTableProfileRequest,
     run_data_table_profile_capability,
 )
@@ -160,29 +165,40 @@ def execute_data_table_profile_next_route_chain(
     )
     profile_output = profile_run.outputs[0]
     profile_payload = _dict_payload(profile_output.provenance["data_table_profile"])
-    route_payload = _dict_payload(profile_payload["recommended_next_route"])
     stage_by_id = {stage.stage_id: stage for stage in chain.plan.stages}
     data_profile_stage = _data_profile_stage_record(
         stage=stage_by_id["stage_1_data_table_profiler"],
         profile_run=profile_run,
         profile_payload=profile_payload,
     )
-    route_review_stage = _route_review_stage_record(
-        stage=stage_by_id["stage_2_data_profile_route_review"],
+    anomaly_route_run = run_anomaly_route_recommender_capability(
+        request=AnomalyRouteRecommendationRequest(
+            data_table_profile=DataTableProfile.model_validate(profile_payload),
+            opportunity_id=opportunity_id,
+            source_output_id=profile_output.output_id,
+            approval_basis=chain.approval_basis,
+        ),
+        store=store,
+        product_workflow="thin_orchestration_chain",
+    )
+    anomaly_route_stage = _anomaly_route_stage_record(
+        stage=stage_by_id["stage_2_anomaly_route_recommender"],
         input_handoff=data_profile_stage.produced_handoff,
-        profile_payload=profile_payload,
-        route_payload=route_payload,
+        anomaly_route_run=anomaly_route_run,
     )
     completed_chain = chain.model_copy(
         update={
             "status": "needs_review",
-            "stage_records": (data_profile_stage, route_review_stage),
-            "output_summary": _output_summary(route_payload, profile_payload),
+            "stage_records": (data_profile_stage, anomaly_route_stage),
+            "output_summary": _output_summary(anomaly_route_run, profile_payload),
             "provenance": {
                 **chain.provenance,
                 "executed_at": datetime.now(UTC).isoformat(),
-                "stage_run_ids": [profile_run.run_id],
-                "stage_output_ids": [profile_output.output_id],
+                "stage_run_ids": [profile_run.run_id, anomaly_route_run.run_id],
+                "stage_output_ids": [
+                    profile_output.output_id,
+                    anomaly_route_run.outputs[0].output_id,
+                ],
             },
         }
     )
@@ -254,31 +270,35 @@ def _data_profile_stage_record(
     )
 
 
-def _route_review_stage_record(
+def _anomaly_route_stage_record(
     *,
     stage: SkillChainPlanStage,
     input_handoff: str,
-    profile_payload: dict[str, Any],
-    route_payload: dict[str, Any],
+    anomaly_route_run: CapabilityRun,
 ) -> ThinOrchestrationStageRecord:
+    output = anomaly_route_run.outputs[0]
+    recommendation = _dict_payload(output.provenance["anomaly_route_recommendation"])
     return ThinOrchestrationStageRecord(
         stage_id=stage.stage_id,
         title=stage.title,
         capability_id=stage.capability_id,
         status="needs_review",
         input_refs=(input_handoff,),
-        produced_handoff=f"data_profile_route_review:{route_payload['route_id']}",
-        quality_gate_result="review_before_route_use_pending",
+        produced_handoff=output.output_id,
+        quality_gate_result="passed_pending_human_review",
         review_destination=stage.review_destination,
         assumptions=(
-            "Route recommendation is advisory until human review accepts it.",
-            "No packet, research, or action record was written by this chain.",
+            "Anomaly route recommendation is advisory until human review accepts it.",
+            "No Action Plan item, packet answer, research brief, or trusted record was written by this chain.",
         ),
-        gaps=_string_tuple(profile_payload.get("gaps", ())),
+        gaps=output.gaps,
         provenance={
-            "route_id": route_payload["route_id"],
-            "route_label": route_payload["label"],
-            "route_rationale": route_payload["rationale"],
+            "capability_run_id": anomaly_route_run.run_id,
+            "capability_output_id": output.output_id,
+            "route_id": recommendation["route_id"],
+            "route_label": recommendation["label"],
+            "route_rationale": recommendation["rationale"],
+            "priority": recommendation["priority"],
             "quality_gate": stage.quality_gate,
             "trusted_downstream_writes": False,
         },
@@ -353,14 +373,16 @@ def _write_chain_capability_run(
 
 
 def _output_summary(
-    route_payload: dict[str, Any],
+    anomaly_route_run: CapabilityRun,
     profile_payload: dict[str, Any],
 ) -> str:
     shape = _dict_payload(profile_payload["shape"])
+    output = anomaly_route_run.outputs[0]
+    recommendation = _dict_payload(output.provenance["anomaly_route_recommendation"])
     return (
         "Thin chain produced a reviewable next-route summary from "
         f"{shape['row_count']} row(s) and {shape['column_count']} column(s); "
-        f"recommended route: {route_payload['label']}."
+        f"recommended route: {recommendation['label']}."
     )
 
 

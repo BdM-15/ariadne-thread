@@ -169,6 +169,8 @@ def _missing_input_question(input_key: str) -> str:
         "opportunity_id": "Which Opportunity should this chain plan use?",
         "table_source_ref": "Which structured table or table-like source should be profiled?",
         "table_rows": "Which normalized rows should the data-table profiler inspect?",
+        "requirement_refs": "Which accepted or reviewable requirement refs should the planner map?",
+        "proposal_sections": "Which proposal or artifact sections should receive compliance spine items?",
     }
     return labels.get(input_key, f"What {input_key.replace('_', ' ')} should this stage use?")
 
@@ -205,6 +207,37 @@ def _generic_goal_template(capture_goal: str) -> tuple[dict[str, object], ...]:
 
 
 _CAPTURE_GOAL_TEMPLATES: dict[str, tuple[dict[str, object], ...]] = {
+    "compliance_spine_planner": (
+        {
+            "stage_id": "stage_1_compliance_spine_planner",
+            "title": "Compliance spine planner",
+            "capability_id": "compliance-spine-planner",
+            "input_expectations": (
+                "opportunity_id",
+                "requirement_refs",
+                "proposal_sections",
+            ),
+            "produced_handoff_type": "Artifact Content Block",
+            "search_retrieval_hints": (
+                "accepted requirement refs",
+                "reviewable requirement refs",
+                "proposal sections",
+            ),
+            "quality_gate": "requirements_mapped_to_sections_with_source_refs",
+            "review_destination": "Artifact Content Block",
+        },
+        {
+            "stage_id": "stage_2_artifact_block_review",
+            "title": "Artifact block review",
+            "capability_id": "artifact-block-review",
+            "depends_on": ("stage_1_compliance_spine_planner",),
+            "input_expectations": (),
+            "produced_handoff_type": "Artifact Content Block",
+            "search_retrieval_hints": ("Artifact Assembly Store",),
+            "quality_gate": "human_review_before_artifact_use",
+            "review_destination": "Artifact Content Block",
+        },
+    ),
     "data_table_profile_next_route": (
         {
             "stage_id": "stage_1_data_table_profiler",

@@ -1,0 +1,23 @@
+{
+  "skill_name": "compliance-spine-planner",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Do not generate the proposal. I only need the first proposal-generator decomposition tracer: map these accepted Section C/L/M requirement refs into a compliance spine for review.",
+      "expected_output": "A review-gated compliance spine plan that maps requirement refs to proposal sections, documents future separate proposal skills, and does not create trusted proposal or artifact records.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Build a deterministic proposal support tracer from these reviewable requirement refs and proposal sections. I need quality gate, review destination, provenance requirements, gaps, and a chain-map-ready output.",
+      "expected_output": "A deterministic Capability Run Output with input/output contract, quality gate, review destination, provenance requirements, compliance spine items, and pending review state.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The broad proposal generator idea is too big. Make just the compliance spine stage from explicit Ariadne context, and list win themes/FAB/outline/executive summary as future separate skills.",
+      "expected_output": "A narrow compliance-spine result that explicitly covers only requirement-to-section mapping and identifies win-theme, FAB, outline, and executive summary as separate future skills.",
+      "files": []
+    }
+  ]
+}

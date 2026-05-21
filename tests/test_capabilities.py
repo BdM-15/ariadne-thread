@@ -201,6 +201,29 @@ def test_incumbent_award_history_skill_is_discoverable_through_mvp2_contract() -
     assert entry.contract.fake_runner_supported is True
 
 
+def test_compliance_spine_planner_skill_is_discoverable_through_mvp2_contract() -> None:
+    workspace_root = Path(__file__).resolve().parents[1]
+
+    catalog = discover_local_capability_catalog(workspace_root)
+
+    entry = next(entry for entry in catalog.entries if entry.id == "compliance-spine-planner")
+    assert entry.capability_type is CapabilityType.WORKSPACE_SKILL
+    assert entry.capability_status is CapabilityStatus.RUNNABLE
+    assert entry.validation_status is CapabilityValidationStatus.TESTED
+    assert entry.contract.source_family == "ariadne_context"
+    assert entry.contract.input_expectations == (
+        "opportunity_id",
+        "requirement_refs",
+        "proposal_sections",
+    )
+    assert entry.contract.quality_gate == (
+        "requirements_mapped_to_sections_with_source_refs"
+    )
+    assert entry.contract.review_destination == "Artifact Content Block"
+    assert entry.contract.model_role is CapabilityModelRole.NONE
+    assert entry.contract.fake_runner_supported is True
+
+
 def test_catalog_is_read_only_and_reports_canonical_locations(tmp_path) -> None:
     catalog = discover_local_capability_catalog(tmp_path)
 

@@ -63,6 +63,31 @@ def test_data_table_profile_can_appear_in_chain_plan() -> None:
     assert plan.missing_inputs == ()
 
 
+def test_compliance_spine_planner_can_appear_as_one_chain_stage() -> None:
+    plan = build_skill_chain_plan_from_capture_goal(
+        capture_goal="compliance spine planner",
+        available_inputs=("opportunity_id", "requirement_refs", "proposal_sections"),
+    )
+
+    assert plan.plan_id == "chain_plan_compliance_spine_planner"
+    assert tuple(stage.capability_id for stage in plan.stages) == (
+        "compliance-spine-planner",
+        "artifact-block-review",
+    )
+    assert plan.stages[0].input_expectations == (
+        "opportunity_id",
+        "requirement_refs",
+        "proposal_sections",
+    )
+    assert plan.stages[0].produced_handoff_type == "Artifact Content Block"
+    assert plan.stages[0].quality_gate == (
+        "requirements_mapped_to_sections_with_source_refs"
+    )
+    assert plan.execution_mode == "deterministic_plan_map"
+    assert plan.model_required is False
+    assert plan.trusted_downstream_writes is False
+
+
 def test_chain_plan_from_packet_field_route_can_be_persisted(tmp_path) -> None:
     item = PacketFieldActionItem(
         field_key="competition",

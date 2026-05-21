@@ -1,0 +1,23 @@
+{
+  "skill_name": "incumbent-award-history-brief",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Use this PIID profile to make a competition packet-field incumbent brief. I need incumbent, award, obligations, recompete signals, source limitations, and route options, but do not call live USAspending.",
+      "expected_output": "A review-gated incumbent award-history brief from the selected PIID profile with source refs, limitations, approval basis, assumptions, gaps, and no trusted downstream writes.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "We have a fake USAspending profile fixture for an IDIQ order. Build the narrow competitive intel output and tell me whether it should route to packet, capture research, action plan, or just stay as a capability output.",
+      "expected_output": "A deterministic brief that records route options for Packet Field Answer candidate, Capture Research candidate, Action Plan recommendation, and Capability Run Output.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Before we do broader competitor research, summarize the incumbent award history from this source-profile ref and preserve all USAspending limitations and approval provenance for review.",
+      "expected_output": "A source-profile-backed incumbent brief that avoids broad competitor analysis and preserves USAspending limitations, approval basis, provenance, and pending review state.",
+      "files": []
+    }
+  ]
+}

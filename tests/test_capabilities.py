@@ -179,6 +179,28 @@ def test_data_table_profiler_skill_is_discoverable_through_mvp2_contract() -> No
     assert entry.contract.fake_runner_supported is True
 
 
+def test_incumbent_award_history_skill_is_discoverable_through_mvp2_contract() -> None:
+    workspace_root = Path(__file__).resolve().parents[1]
+
+    catalog = discover_local_capability_catalog(workspace_root)
+
+    entry = next(
+        entry for entry in catalog.entries if entry.id == "incumbent-award-history-brief"
+    )
+    assert entry.capability_type is CapabilityType.WORKSPACE_SKILL
+    assert entry.capability_status is CapabilityStatus.RUNNABLE
+    assert entry.validation_status is CapabilityValidationStatus.TESTED
+    assert entry.contract.source_family == "usaspending"
+    assert entry.contract.input_expectations == (
+        "opportunity_id",
+        "piid_profile_ref",
+    )
+    assert entry.contract.quality_gate == "cites_source_profile_and_limitations"
+    assert entry.contract.review_destination == "Packet Field Answer candidate"
+    assert entry.contract.model_role is CapabilityModelRole.NONE
+    assert entry.contract.fake_runner_supported is True
+
+
 def test_catalog_is_read_only_and_reports_canonical_locations(tmp_path) -> None:
     catalog = discover_local_capability_catalog(tmp_path)
 

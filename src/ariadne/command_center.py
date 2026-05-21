@@ -456,6 +456,7 @@ def render_command_center_shell(
         <p class="advanced-label">Advanced / read-only</p>
         <nav class="nav" aria-label="Advanced surfaces">
           <a href="#capability-studio">Capability Studio <small>{_capability_outputs_needing_review_count(capability_runs)}</small></a>
+          <a href="/mvp-2/skills-review">MVP-2 Skills Review <small>human gate</small></a>
           <a href="#artifact-assembly">Artifact Assembly <small>{_artifact_source_package_nav_label(artifact_source_package)}</small></a>
           <a href="#federal-data-capabilities">Federal Data <small>{len(federal_data_registry.capabilities)}</small></a>
                     <a href="#capture-research-enrichment">Capture Research <small>{len(capture_research_runs)}</small></a>
@@ -496,6 +497,7 @@ def render_command_center_shell(
         {_render_accepted_promotions_panel(accepted_evidence, accepted_action, accepted_packet_answer, discarded_output)}
         {_render_packet_panel(packet, coverage_view)}
         {_render_action_plan_panel(action_view)}
+                {_render_mvp2_skills_review_panel(catalog, capability_runs)}
         {_render_capability_panel(catalog, capability_runs)}
       </div>
     </main>
@@ -2420,6 +2422,35 @@ def _render_capability_panel(
       </div>
             <a class="link-row" href="/capability-studio">Open Capability Studio</a>
             <a class="link-row" href="/api/capabilities/catalog">Open catalog API</a>
+    </section>"""
+
+
+def _render_mvp2_skills_review_panel(
+    catalog: CapabilityCatalog,
+    capability_runs: tuple[CapabilityRun, ...],
+) -> str:
+    focused_ids = {
+        "data-table-profiler",
+        "incumbent-award-history-brief",
+        "compliance-spine-planner",
+    }
+    focused_count = sum(entry.id in focused_ids for entry in catalog.entries)
+    dependency_gated_count = sum(
+        entry.capability_status.value == "dependency_gated"
+        for entry in catalog.entries
+    )
+    chain_stage_count = sum(
+        len(output.provenance.get("thin_orchestration_chain", {}).get("stage_records", ()))
+        for run in capability_runs
+        for output in run.outputs
+        if isinstance(output.provenance.get("thin_orchestration_chain"), dict)
+    )
+    return f"""<section class="panel" id="mvp-2-skills-review" aria-labelledby="mvp-2-skills-review-heading">
+      <div class="panel-heading"><h2 id="mvp-2-skills-review-heading">MVP-2 Skills Review</h2><span class="status-chip amber">human gate</span></div>
+      <div class="row-list">
+        <div class="row"><strong>Review cockpit</strong><span>Focused skills: {focused_count} - Dependency-gated candidates: {dependency_gated_count} - Chain stages visible: {chain_stage_count}</span><span>No trusted downstream writes. Use the review page to create a deterministic demo and inspect route cards, quality gates, model role contracts, and Hermes proposals.</span></div>
+      </div>
+      <a class="link-row" href="/mvp-2/skills-review">Open MVP-2 Skills Review</a>
     </section>"""
 
 

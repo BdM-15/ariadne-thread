@@ -70,6 +70,12 @@ from ariadne.command_center import (
     render_command_center_shell,
     render_sam_gov_enrichment_profile_shell,
 )
+from ariadne.mvp2_skills_review import (
+    Mvp2SkillsReviewSummary,
+    build_mvp2_skills_review_summary,
+    render_mvp2_skills_review_shell,
+    seed_mvp2_skills_review_demo,
+)
 from ariadne.config import RuntimeSettings
 from ariadne.data_table_profiler import DataTableProfileRequest
 from ariadne.opportunity_activation import (
@@ -351,6 +357,10 @@ class CapabilityRunResponse(BaseModel):
 
 class CapabilityRunListResponse(BaseModel):
     runs: tuple[CapabilityRun, ...]
+
+
+class Mvp2SkillsReviewResponse(Mvp2SkillsReviewSummary):
+    pass
 
 
 class ArtifactSourcePackageResponse(BaseModel):
@@ -954,6 +964,24 @@ def create_app(
             raise HTTPException(status_code=404, detail="Capability Run not found") from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/mvp-2/skills-review", response_class=HTMLResponse)
+    def mvp2_skills_review() -> str:
+        return render_mvp2_skills_review_shell(runtime_settings, workspace_root=Path.cwd())
+
+    @app.post("/mvp-2/skills-review/actions/demo-run")
+    def mvp2_skills_review_demo_action() -> RedirectResponse:
+        seed_mvp2_skills_review_demo(runtime_settings, workspace_root=Path.cwd())
+        return RedirectResponse(url="/mvp-2/skills-review", status_code=303)
+
+    @app.get("/api/mvp-2/skills-review")
+    def mvp2_skills_review_api() -> Mvp2SkillsReviewResponse:
+        return Mvp2SkillsReviewResponse.model_validate(
+            build_mvp2_skills_review_summary(
+                runtime_settings,
+                workspace_root=Path.cwd(),
+            ).model_dump()
+        )
 
     @app.post("/capability-studio/actions/catalog-validation")
     def capability_studio_catalog_validation_action() -> RedirectResponse:

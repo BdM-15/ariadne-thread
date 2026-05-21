@@ -45,6 +45,7 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Follow-Up Question Route: an explicit routing decision that turns draft questions into a next research, customer engagement, call plan, or skill-run prompt without writing trusted evidence.
 - Clarification Request: a review route back to the user when a raw note is too low-signal for Ariadne to infer useful capture intelligence without more context.
 - Skill Chain Recommendation: Ariadne's suggested sequence of Capability Modules or product workflows for handling one draft part, evidence item, action, or gap.
+- Skill Chain Plan Map: an inspectable deterministic plan for a short sequence of Capability Modules or Product Workflows, with stable stage IDs, dependencies, accepted inputs, produced handoffs, search or retrieval hints, quality gates, review destinations, and missing-input questions before any runtime executes.
 - Action Capability Route: the suggested way Ariadne can help complete an action using available Capability Modules, partial assistance, user work, or a declared Capability Gap.
 - Risk Register: a review-gated workflow and artifact that tracks pursuit risks and upside opportunities, their probability, impact, response plan, owner, cost or schedule exposure, and links to evidence, packet fields, and action plan items.
 - Risk Register Item: one risk or opportunity row in the Risk Register, framed as a threat or opportunity, measurable impact, response, score, and current review status.

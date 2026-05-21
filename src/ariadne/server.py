@@ -744,6 +744,9 @@ def create_app(
     def production_command_center_opportunities() -> ProductionOpportunityPortfolioResponse:
         return list_production_opportunity_portfolio(
             store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+            activation_store=OpportunityActivationRunStore(
+                runtime_settings.ariadne_opportunity_activation_dir
+            ),
             answer_store=PacketFieldAnswerStore(
                 runtime_settings.ariadne_packet_field_answers_dir
             ),

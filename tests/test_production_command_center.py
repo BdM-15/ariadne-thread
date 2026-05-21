@@ -268,6 +268,93 @@ def test_portfolio_lists_representative_lifecycle_statuses(tmp_path) -> None:
     assert portfolio_by_name["Archived cloud pursuit"]["lifecycle_state"] == "archived"
 
 
+def test_portfolio_uses_stored_activation_runs_without_recomputing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from ariadne.opportunity_activation import OpportunityActivationRunStore
+    from ariadne.production_command_center import (
+        OpportunityScaffoldStore,
+        ProductionOpportunityIntakeRequest,
+        create_standard_opportunity_scaffold,
+        list_production_opportunity_portfolio,
+    )
+
+    opportunity_store = OpportunityScaffoldStore(tmp_path / "opportunities")
+    activation_store = OpportunityActivationRunStore(tmp_path / "activation-runs")
+    scaffold = create_standard_opportunity_scaffold(
+        request=ProductionOpportunityIntakeRequest(name="Fast portfolio watch"),
+        store=opportunity_store,
+        activation_store=activation_store,
+    )
+
+    def fail_recompute(**_kwargs):
+        raise AssertionError("portfolio listing should reuse stored activation runs")
+
+    monkeypatch.setattr(
+        "ariadne.production_command_center.run_opportunity_activation",
+        fail_recompute,
+    )
+
+    response = list_production_opportunity_portfolio(
+        store=opportunity_store,
+        activation_store=activation_store,
+    )
+
+    item = next(
+        opportunity
+        for opportunity in response.opportunities
+        if opportunity.id == scaffold.opportunity.id
+    )
+    assert item.name == "Fast portfolio watch"
+    assert item.blocked_field_count > 0
+    assert item.attention_route_label.startswith("Open roadmap:")
+
+
+def test_portfolio_skips_vault_refresh_for_missing_stored_activation_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from ariadne.opportunity_activation import OpportunityActivationRunStore
+    from ariadne import production_command_center
+    from ariadne.production_command_center import (
+        OpportunityScaffoldStore,
+        ProductionOpportunityIntakeRequest,
+        create_standard_opportunity_scaffold,
+        list_production_opportunity_portfolio,
+    )
+
+    opportunity_store = OpportunityScaffoldStore(tmp_path / "opportunities")
+    scaffold = create_standard_opportunity_scaffold(
+        request=ProductionOpportunityIntakeRequest(name="Legacy portfolio watch"),
+        store=opportunity_store,
+    )
+    original_run_opportunity_activation = (
+        production_command_center.run_opportunity_activation
+    )
+
+    def assert_no_vault_refresh(**kwargs):
+        assert kwargs["vault_root"] is None
+        return original_run_opportunity_activation(**kwargs)
+
+    monkeypatch.setattr(
+        production_command_center,
+        "run_opportunity_activation",
+        assert_no_vault_refresh,
+    )
+
+    response = list_production_opportunity_portfolio(
+        store=opportunity_store,
+        activation_store=OpportunityActivationRunStore(tmp_path / "activation-runs"),
+        vault_root=tmp_path / "vault",
+    )
+
+    assert any(
+        opportunity.id == scaffold.opportunity.id
+        for opportunity in response.opportunities
+    )
+
+
 def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:
     from fastapi.testclient import TestClient
 

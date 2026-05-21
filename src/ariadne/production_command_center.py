@@ -1065,9 +1065,16 @@ def build_production_command_center_workspace(
 def list_production_opportunity_portfolio(
     *,
     store: OpportunityScaffoldStore,
+    activation_store: OpportunityActivationRunStore | None = None,
     answer_store: PacketFieldAnswerStore | None = None,
     vault_root: Path | str | None = None,
 ) -> ProductionOpportunityPortfolioResponse:
+    latest_activation_runs = (
+        _latest_activation_runs_by_opportunity(activation_store.list())
+        if activation_store is not None
+        else {}
+    )
+    fallback_vault_root = None if activation_store is not None else vault_root
     return ProductionOpportunityPortfolioResponse(
         opportunities=(
             ProductionOpportunityPortfolioItem(
@@ -1090,8 +1097,12 @@ def list_production_opportunity_portfolio(
             *(
                 _portfolio_item_from_scaffold(
                     scaffold,
+                    latest_activation_run=_stored_activation_run_for_scaffold(
+                        scaffold,
+                        latest_activation_runs,
+                    ),
                     answer_store=answer_store,
-                    vault_root=vault_root,
+                    vault_root=fallback_vault_root,
                 )
                 for scaffold in store.list_scaffolds()
             ),
@@ -1102,10 +1113,11 @@ def list_production_opportunity_portfolio(
 def _portfolio_item_from_scaffold(
     scaffold: ProductionOpportunityScaffold,
     *,
+    latest_activation_run: OpportunityActivationRun | None = None,
     answer_store: PacketFieldAnswerStore | None = None,
     vault_root: Path | str | None = None,
 ) -> ProductionOpportunityPortfolioItem:
-    activation_run = _activation_run_for_scaffold(
+    activation_run = latest_activation_run or _activation_run_for_scaffold(
         scaffold,
         answer_store=answer_store,
         vault_root=vault_root,
@@ -1170,6 +1182,37 @@ def _activation_run_for_scaffold(
         ),
         vault_root=vault_root,
     )
+
+
+def _latest_activation_runs_by_opportunity(
+    runs: tuple[OpportunityActivationRun, ...],
+) -> dict[str, OpportunityActivationRun]:
+    latest_runs: dict[str, OpportunityActivationRun] = {}
+    for run in runs:
+        existing = latest_runs.get(run.opportunity_id)
+        if existing is None or _activation_run_sort_key(run) > _activation_run_sort_key(
+            existing
+        ):
+            latest_runs[run.opportunity_id] = run
+    return latest_runs
+
+
+def _stored_activation_run_for_scaffold(
+    scaffold: ProductionOpportunityScaffold,
+    latest_activation_runs: dict[str, OpportunityActivationRun],
+) -> OpportunityActivationRun | None:
+    run = latest_activation_runs.get(scaffold.opportunity.id)
+    if run is None:
+        return None
+    if run.packet_field_action_matrix.current_milestone_gate != str(
+        _milestone_gate_from_scaffold_opportunity(scaffold.opportunity).value
+    ):
+        return None
+    return run
+
+
+def _activation_run_sort_key(run: OpportunityActivationRun) -> tuple[object, str]:
+    return (run.completed_at or run.created_at, run.run_id)
 
 
 def _attention_item_from_matrix(

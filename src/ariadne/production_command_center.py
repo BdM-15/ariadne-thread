@@ -8,6 +8,7 @@ import re
 from pydantic import BaseModel, Field
 
 from ariadne.capability_runs import CapabilityRunOutputReviewState, CapabilityRunStore
+from ariadne.capabilities import CapabilityModelRole
 from ariadne.config import RuntimeSettings
 from ariadne.document_intake import (
     DocumentIntakeCandidateReviewState,
@@ -197,6 +198,17 @@ class AssistedCaptureAutonomyTier(StrEnum):
     SAFE_TO_AUTO_RUN_LATER = "safe_to_auto_run_later"
 
 
+class AssistedRouteModelRoleContract(BaseModel):
+    model_role: CapabilityModelRole
+    allowed_uses: tuple[str, ...]
+    approval_requirement: AssistedCaptureAutonomyTier
+    expected_output: str
+    review_destination: str
+    approval_required: bool = True
+    fake_runner_supported: bool = True
+    live_provider_allowed: bool = False
+
+
 class AssistedCaptureGoal(BaseModel):
     id: str
     label: str
@@ -222,6 +234,7 @@ class CapabilityRouteStep(BaseModel):
     capability_type: str
     executor_kind: str
     output_target: str
+    model_role: CapabilityModelRole = CapabilityModelRole.NONE
     status: CapabilityRouteStepStatus = CapabilityRouteStepStatus.PLANNED
 
 
@@ -230,6 +243,7 @@ class CapabilityRouteCard(BaseModel):
     title: str
     capability_count: int
     steps: tuple[CapabilityRouteStep, ...]
+    model_role_contract: AssistedRouteModelRoleContract | None = None
 
 
 class CapabilityRouteProgress(BaseModel):
@@ -252,6 +266,7 @@ class AssistedRouteRecommendation(BaseModel):
     capability_route_card: CapabilityRouteCard
     input_refs: tuple[str, ...]
     reasoning: tuple[str, ...]
+    model_role_contract: AssistedRouteModelRoleContract | None = None
     status: str = "recommended"
 
 
@@ -303,6 +318,7 @@ class AssistedRouteOutput(BaseModel):
     source_refs: tuple[str, ...]
     assumptions: tuple[str, ...]
     gaps: tuple[str, ...]
+    model_role_contract: AssistedRouteModelRoleContract | None = None
     review_state: AssistedRouteOutputReviewState = (
         AssistedRouteOutputReviewState.PENDING_REVIEW
     )
@@ -709,6 +725,32 @@ CAPABILITY_STEP_METADATA: dict[str, tuple[str, str, str, str]] = {
         "Action Plan",
     ),
 }
+
+
+LOCAL_ADMIN_SOURCE_BACKED_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.LOCAL_ADMIN_MODEL,
+    allowed_uses=(
+        "source-backed draft prep",
+        "evidence-gap summarization",
+        "operator review checklist prep",
+    ),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable source-backed packet answer draft.",
+    review_destination="living_packet_review_queue",
+)
+
+
+FRONTIER_SYNTHESIS_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.FRONTIER_REASONING_MODEL,
+    allowed_uses=(
+        "strategy synthesis",
+        "executive recommendation drafting",
+        "assumption and limitation surfacing",
+    ),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable model-assisted packet synthesis draft.",
+    review_destination="living_packet_review_queue",
+)
 
 
 def create_standard_opportunity_scaffold(
@@ -1587,11 +1629,22 @@ def execute_assisted_capture_route(
         raise PermissionError("Route execution requires explicit operator approval")
     recommendation = store.read_recommendation(recommendation_id)
     output = _route_output_for_recommendation(recommendation)
+    model_role_contract = recommendation.model_role_contract
+    model_role = (
+        model_role_contract.model_role
+        if model_role_contract is not None
+        else CapabilityModelRole.NONE
+    )
+    fake_model_runner = _uses_fake_model_runner(recommendation)
+    executor_kind = "fake_model_runner" if fake_model_runner else "deterministic_python"
+    run_id_suffix = "fake-model-draft" if fake_model_runner else "deterministic-draft"
     run = AssistedRouteRun(
-        id=f"run_{recommendation.id}_deterministic-draft",
+        id=f"run_{recommendation.id}_{run_id_suffix}",
         recommendation_id=recommendation.id,
         opportunity_id=recommendation.opportunity_id,
         status=AssistedRouteRunStatus.NEEDS_REVIEW,
+        executor_kind=executor_kind,
+        model_required=fake_model_runner,
         stages=(
             AssistedRouteRunStage(
                 id="inspect_inputs",
@@ -1621,9 +1674,12 @@ def execute_assisted_capture_route(
             "operator_rationale": operator_rationale or "",
             "autonomy_tier": recommendation.autonomy_tier.value,
             "route_kind": recommendation.route_kind,
+            "model_role": model_role.value,
+            "fake_model_runner": fake_model_runner,
             "review_gate_required": recommendation.requires_review,
             "network_required": False,
-            "model_required": False,
+            "model_required": fake_model_runner,
+            "trusted_downstream_writes": False,
             "external_execution": False,
         },
     )
@@ -1993,6 +2049,7 @@ def _recommendations_for_goal(
                     packet_field_key=packet_field_key,
                 ),
             )
+        model_role_contract = LOCAL_ADMIN_SOURCE_BACKED_CONTRACT
         return (
             AssistedRouteRecommendation(
                 id=(recommendation_id := f"route_{opportunity_id}_{goal.id}_packet-answer-draft"),
@@ -2013,12 +2070,14 @@ def _recommendations_for_goal(
                         "knowledge_context_review",
                         "packet_answer_draft",
                     ),
+                    model_role_contract=model_role_contract,
                 ),
                 input_refs=("packet.customer_context", "evidence.ev_customer_call"),
                 reasoning=(
                     "The Living Packet has a partial customer-context answer that can "
                     "be advanced with source-backed review.",
                 ),
+                model_role_contract=model_role_contract,
             ),
         )
     return (
@@ -2071,6 +2130,7 @@ def _packet_field_gap_recommendation(
     route_kind = recommend_packet_field_route_kind(definition)
     recommendation_id = f"route_{opportunity_id}_{goal.id}_packet-field-{definition.key}"
     capability_chain = _capability_chain_for_packet_field_route(route_kind)
+    model_role_contract = _model_role_contract_for_route_kind(route_kind)
     return AssistedRouteRecommendation(
         id=recommendation_id,
         opportunity_id=opportunity_id,
@@ -2086,6 +2146,7 @@ def _packet_field_gap_recommendation(
             recommendation_id=recommendation_id,
             title=f"Close packet gap: {definition.label}",
             capability_chain=capability_chain,
+            model_role_contract=model_role_contract,
         ),
         input_refs=(
             f"packet_field.{definition.key}",
@@ -2097,6 +2158,7 @@ def _packet_field_gap_recommendation(
             f"Question to answer: {definition.question}",
             f"Recommended route: {recommended_route}",
         ),
+        model_role_contract=model_role_contract,
     )
 
 
@@ -2171,6 +2233,20 @@ def _capability_chain_for_packet_field_route(
     )
 
 
+def _model_role_contract_for_route_kind(
+    route_kind: PacketFieldRouteKind,
+) -> AssistedRouteModelRoleContract | None:
+    if route_kind == PacketFieldRouteKind.SOURCE_BACKED_ANSWER:
+        return LOCAL_ADMIN_SOURCE_BACKED_CONTRACT
+    if route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS:
+        return FRONTIER_SYNTHESIS_CONTRACT
+    return None
+
+
+def _uses_fake_model_runner(recommendation: AssistedRouteRecommendation) -> bool:
+    return recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value
+
+
 def _route_output_for_recommendation(
     recommendation: AssistedRouteRecommendation,
 ) -> AssistedRouteOutput:
@@ -2188,6 +2264,7 @@ def _route_output_for_recommendation(
         source_refs=recommendation.input_refs,
         assumptions=_output_assumptions_for_route(recommendation),
         gaps=_output_gaps_for_route(recommendation),
+        model_role_contract=recommendation.model_role_contract,
     )
 
 
@@ -2239,7 +2316,7 @@ def _output_summary_for_route(recommendation: AssistedRouteRecommendation) -> st
         )
     if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
         return (
-            "Prepare a model-synthesis prompt and assumptions checklist for the "
+            "Prepare a model-synthesis draft with the fake model runner for the "
             "packet field without invoking a model yet."
         )
     if recommendation.route_label == "Draft packet answer":
@@ -2254,7 +2331,7 @@ def _output_assumptions_for_route(
 ) -> tuple[str, ...]:
     assumptions = (
         "Draft content remains reviewable until the capture operator accepts it.",
-        "No external model or network call was used for this deterministic run.",
+        "No live external model or network call was used for this deterministic run.",
     )
     if recommendation.route_kind == PacketFieldRouteKind.RESEARCH_OR_MCP.value:
         return assumptions + (
@@ -2266,7 +2343,7 @@ def _output_assumptions_for_route(
         )
     if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
         return assumptions + (
-            "Model synthesis has not run; this output only frames the review-safe prompt and assumptions.",
+            "fake model runner produced deterministic synthesis scaffolding for review only.",
         )
     return assumptions
 
@@ -2293,6 +2370,7 @@ def _output_gaps_for_route(
     if recommendation.route_kind == PacketFieldRouteKind.MODEL_SYNTHESIS.value:
         return (
             "Accepted evidence or an explicit reviewer assumption is required before synthesis can become trusted.",
+            "Model-assisted output requires explicit review before any trusted record update.",
         )
     if recommendation.route_label == "Sequence capture actions":
         return ("Confirm owners and due dates before applying actions to the Action Plan.",)
@@ -2429,19 +2507,32 @@ def _capability_route_card(
     recommendation_id: str,
     title: str,
     capability_chain: tuple[str, ...],
+    model_role_contract: AssistedRouteModelRoleContract | None = None,
 ) -> CapabilityRouteCard:
-    steps = tuple(_capability_route_step(capability_id) for capability_id in capability_chain)
+    steps = tuple(
+        _capability_route_step(
+            capability_id,
+            model_role=(
+                model_role_contract.model_role
+                if model_role_contract is not None and index == len(capability_chain) - 1
+                else CapabilityModelRole.NONE
+            ),
+        )
+        for index, capability_id in enumerate(capability_chain)
+    )
     return CapabilityRouteCard(
         id=f"card_{recommendation_id}",
         title=title,
         capability_count=len(steps),
         steps=steps,
+        model_role_contract=model_role_contract,
     )
 
 
 def _capability_route_step(
     capability_id: str,
     *,
+    model_role: CapabilityModelRole = CapabilityModelRole.NONE,
     status: CapabilityRouteStepStatus = CapabilityRouteStepStatus.PLANNED,
 ) -> CapabilityRouteStep:
     label, capability_type, executor_kind, output_target = CAPABILITY_STEP_METADATA.get(
@@ -2454,6 +2545,7 @@ def _capability_route_step(
         capability_type=capability_type,
         executor_kind=executor_kind,
         output_target=output_target,
+        model_role=model_role,
         status=status,
     )
 
@@ -2464,6 +2556,7 @@ def _capability_progress_for_route(
     steps = tuple(
         _capability_route_step(
             step.capability_id,
+            model_role=step.model_role,
             status=CapabilityRouteStepStatus.SUCCEEDED,
         )
         for step in route_card.steps

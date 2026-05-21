@@ -892,6 +892,85 @@ def test_field_route_execution_reflects_packet_route_kind(tmp_path) -> None:
         assert run["provenance"]["external_execution"] is False
 
 
+def test_packet_field_routes_expose_model_role_contracts(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA model role contract watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+
+    source_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap", "packet_field_key": "customer"},
+    )
+    synthesis_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap", "packet_field_key": "pwin"},
+    )
+
+    source_route = source_response.json()["recommendations"][0]
+    synthesis_route = synthesis_response.json()["recommendations"][0]
+    assert source_route["model_role_contract"]["model_role"] == "local_admin_model"
+    assert "source-backed draft prep" in source_route["model_role_contract"]["allowed_uses"]
+    assert source_route["model_role_contract"]["approval_requirement"] == (
+        "human_approval_required"
+    )
+    assert source_route["capability_route_card"]["model_role_contract"] == (
+        source_route["model_role_contract"]
+    )
+    assert synthesis_route["model_role_contract"]["model_role"] == (
+        "frontier_reasoning_model"
+    )
+    assert "strategy synthesis" in synthesis_route["model_role_contract"]["allowed_uses"]
+    assert synthesis_route["model_role_contract"]["expected_output"] == (
+        "Reviewable model-assisted packet synthesis draft."
+    )
+    assert synthesis_route["capability_route_card"]["steps"][-1]["model_role"] == (
+        "frontier_reasoning_model"
+    )
+
+
+def test_model_synthesis_route_uses_fake_runner_and_stays_review_gated(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(_command_center_settings(tmp_path)))
+    create_response = client.post(
+        "/api/production-command-center/opportunities",
+        json={"name": "DISA fake model runner watch"},
+    )
+    opportunity_id = create_response.json()["scaffold"]["opportunity"]["id"]
+    recommendation_response = client.post(
+        f"/api/production-command-center/opportunities/{opportunity_id}/"
+        "route-recommendations",
+        json={"goal_id": "close_packet_gap", "packet_field_key": "pwin"},
+    )
+    recommendation = recommendation_response.json()["recommendations"][0]
+
+    run_response = client.post(
+        f"/api/production-command-center/routes/{recommendation['id']}/runs",
+        json={"approved": True, "approval_basis": "fake_model_runner_contract_test"},
+    )
+
+    assert run_response.status_code == 200, run_response.text
+    run = run_response.json()["run"]
+    output = run["output"]
+    assert run["executor_kind"] == "fake_model_runner"
+    assert run["model_required"] is True
+    assert run["network_required"] is False
+    assert run["provenance"]["model_role"] == "frontier_reasoning_model"
+    assert run["provenance"]["fake_model_runner"] is True
+    assert run["provenance"]["trusted_downstream_writes"] is False
+    assert output["review_state"] == "pending_review"
+    assert output["model_role_contract"]["model_role"] == "frontier_reasoning_model"
+    assert "fake model runner" in output["assumptions"][-1]
+    assert any("explicit review" in gap for gap in output["gaps"])
+
+
 def test_assisted_capture_route_output_acceptance_projects_work_updates(
     tmp_path,
 ) -> None:

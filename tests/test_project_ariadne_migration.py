@@ -56,7 +56,6 @@ Structured decision process for opportunity qualification.
     migrated_page = (
         vault_root
         / "source-summaries"
-        / "project-ariadne"
         / "global_wiki"
         / "capture"
         / "customer-hot-button-identification.md"
@@ -139,13 +138,11 @@ Customer hot buttons, milestones, risk, and artifact fields for {source_path}.
     assert report.skipped_count == 0
     assert report.pending_count == 0
     assert {item.target_path for item in report.incorporated} == {
-        f"source-summaries/project-ariadne/{source_path}"
-        for source_path in source_paths
+        f"source-summaries/{source_path}" for source_path in source_paths
     }
     assert (
         vault_root
         / "source-summaries"
-        / "project-ariadne"
         / "global_wiki"
         / "capture"
         / "customer-hot-button-identification.md"
@@ -153,7 +150,6 @@ Customer hot buttons, milestones, risk, and artifact fields for {source_path}.
     assert (
         vault_root
         / "source-summaries"
-        / "project-ariadne"
         / "pursuits"
         / "_template"
         / "01_capture"
@@ -187,20 +183,13 @@ decision makers, hot buttons, and customer needs.
     report = migrate_project_ariadne_corpus(corpus_root, vault_root)
 
     artifact_path = (
-        vault_root
-        / "artifact-patterns"
-        / "project-ariadne"
-        / "pursuits"
-        / "_template"
-        / "01_capture"
-        / "customer"
-        / "profile.md"
+        vault_root / "artifact-patterns" / "capture" / "customer" / "profile.md"
     )
     artifact_text = artifact_path.read_text(encoding="utf-8")
 
     assert report.incorporated_count == 1
     assert report.incorporated[0].native_target_paths == (
-        "artifact-patterns/project-ariadne/pursuits/_template/01_capture/customer/profile.md",
+        "artifact-patterns/capture/customer/profile.md",
     )
     assert "page_type: artifact_pattern" in artifact_text
     assert "expects_data_element:data-elements/customer" in artifact_text
@@ -295,41 +284,29 @@ KBR capability baseline includes logistics, digital, cyber, and mission support 
         path for item in report.incorporated for path in item.native_target_paths
     }
     assert native_targets == {
-        "capture-concepts/project-ariadne/global_wiki/capture/customer-hot-button-identification.md",
-        "milestones/project-ariadne/domain_intel/milestones/ms1-qualification.md",
-        "entities/project-ariadne/domain_intel/capabilities/kbr-inc.md",
+        "capture-concepts/capture/customer-hot-button-identification.md",
+        "milestones/ms1-qualification.md",
+        "entities/capabilities/kbr-inc.md",
     }
 
     concept_text = (
         vault_root
         / "capture-concepts"
-        / "project-ariadne"
-        / "global_wiki"
         / "capture"
         / "customer-hot-button-identification.md"
     ).read_text(encoding="utf-8")
-    milestone_text = (
-        vault_root
-        / "milestones"
-        / "project-ariadne"
-        / "domain_intel"
-        / "milestones"
-        / "ms1-qualification.md"
-    ).read_text(encoding="utf-8")
-    entity_text = (
-        vault_root
-        / "entities"
-        / "project-ariadne"
-        / "domain_intel"
-        / "capabilities"
-        / "kbr-inc.md"
-    ).read_text(encoding="utf-8")
+    milestone_text = (vault_root / "milestones" / "ms1-qualification.md").read_text(
+        encoding="utf-8"
+    )
+    entity_text = (vault_root / "entities" / "capabilities" / "kbr-inc.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "page_type: capture_concept" in concept_text
     assert "informs:data-elements/customer_hot_buttons" in concept_text
     assert "suggests_route:workflow/capture-research" in concept_text
     assert (
-        "uses_source:source-summaries/project-ariadne/global_wiki/capture/customer-hot-button-identification"
+        "uses_source:source-summaries/global_wiki/capture/customer-hot-button-identification"
         in concept_text
     )
 
@@ -342,8 +319,7 @@ KBR capability baseline includes logistics, digital, cyber, and mission support 
     assert "informs:data-elements/seller_capabilities" in entity_text
     assert "suggests_route:workflow/seller-capability-baseline" in entity_text
     assert (
-        "uses_source:source-summaries/project-ariadne/domain_intel/capabilities/kbr-inc"
-        in entity_text
+        "uses_source:source-summaries/domain_intel/capabilities/kbr-inc" in entity_text
     )
 
     validation_report = validate_knowledge_vault_pages(vault_root)

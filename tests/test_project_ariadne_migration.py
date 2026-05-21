@@ -80,9 +80,15 @@ Structured decision process for opportunity qualification.
         in migrated_text
     )
     assert "migration_status: incorporated" in migrated_text
-    assert "derived_from:project-ariadne/global_wiki/capture/customer-hot-button-identification.md" in migrated_text
+    assert (
+        "derived_from:project-ariadne/global_wiki/capture/customer-hot-button-identification.md"
+        in migrated_text
+    )
     assert "informs:data-elements/customer" in migrated_text
-    assert "candidate_reusable_insight:reusable-insights/customer-hot-button-identification" in migrated_text
+    assert (
+        "candidate_reusable_insight:reusable-insights/customer-hot-button-identification"
+        in migrated_text
+    )
     assert "Hot buttons are customer's highest-priority concerns" in migrated_text
     assert "## Migration Status" in migrated_text
     assert "## Source Summary" in migrated_text
@@ -132,9 +138,7 @@ Customer hot buttons, milestones, risk, and artifact fields for {source_path}.
     assert report.incorporated_count == len(source_paths)
     assert report.skipped_count == 0
     assert report.pending_count == 0
-    assert {
-        item.target_path for item in report.incorporated
-    } == {
+    assert {item.target_path for item in report.incorporated} == {
         f"source-summaries/project-ariadne/{source_path}"
         for source_path in source_paths
     }
@@ -226,7 +230,9 @@ Hot buttons can be detected from RFP language and validated by engagement.
 
     migrate_project_ariadne_corpus(corpus_root, vault_root)
 
-    theseus_page = vault_root / "skills-capabilities" / "capability-theseus-solicitation-parser.md"
+    theseus_page = (
+        vault_root / "skills-capabilities" / "capability-theseus-solicitation-parser.md"
+    )
     theseus_text = theseus_page.read_text(encoding="utf-8")
 
     assert "page_type: workflow_capability" in theseus_text
@@ -237,6 +243,147 @@ Hot buttons can be detected from RFP language and validated by engagement.
     assert "suggests_route:workflow/document-intake" in theseus_text
     assert "Extraction Bundle" in theseus_text
     assert "does not write trusted Ariadne records" in theseus_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
+def test_project_ariadne_full_migration_creates_native_concept_milestone_and_entity_pages(
+    tmp_path,
+) -> None:
+    corpus_root = tmp_path / "project-ariadne" / "knowledge"
+    vault_root = tmp_path / "vault"
+    source_paths = (
+        "global_wiki/capture/customer-hot-button-identification.md",
+        "domain_intel/milestones/ms1-qualification.md",
+        "domain_intel/capabilities/kbr-inc.md",
+    )
+    _write(
+        corpus_root / source_paths[0],
+        """---
+title: Customer Hot Button Identification
+entity_type: customer_priority
+---
+
+Customer hot buttons guide call planning and evaluation strategy.
+""",
+    )
+    _write(
+        corpus_root / source_paths[1],
+        """---
+title: MS1 Qualification
+entity_type: milestone_gate
+---
+
+Qualification decision confirms customer, scope, value, timing, and bid decision fit.
+""",
+    )
+    _write(
+        corpus_root / source_paths[2],
+        """---
+title: KBR Inc
+entity_type: seller
+---
+
+KBR capability baseline includes logistics, digital, cyber, and mission support proof.
+""",
+    )
+
+    report = migrate_project_ariadne_corpus(corpus_root, vault_root)
+
+    native_targets = {
+        path for item in report.incorporated for path in item.native_target_paths
+    }
+    assert native_targets == {
+        "capture-concepts/project-ariadne/global_wiki/capture/customer-hot-button-identification.md",
+        "milestones/project-ariadne/domain_intel/milestones/ms1-qualification.md",
+        "entities/project-ariadne/domain_intel/capabilities/kbr-inc.md",
+    }
+
+    concept_text = (
+        vault_root
+        / "capture-concepts"
+        / "project-ariadne"
+        / "global_wiki"
+        / "capture"
+        / "customer-hot-button-identification.md"
+    ).read_text(encoding="utf-8")
+    milestone_text = (
+        vault_root
+        / "milestones"
+        / "project-ariadne"
+        / "domain_intel"
+        / "milestones"
+        / "ms1-qualification.md"
+    ).read_text(encoding="utf-8")
+    entity_text = (
+        vault_root
+        / "entities"
+        / "project-ariadne"
+        / "domain_intel"
+        / "capabilities"
+        / "kbr-inc.md"
+    ).read_text(encoding="utf-8")
+
+    assert "page_type: capture_concept" in concept_text
+    assert "informs:data-elements/customer_hot_buttons" in concept_text
+    assert "suggests_route:workflow/capture-research" in concept_text
+    assert (
+        "uses_source:source-summaries/project-ariadne/global_wiki/capture/customer-hot-button-identification"
+        in concept_text
+    )
+
+    assert "page_type: capture_concept" in milestone_text
+    assert "applies_to_gate:milestone_1" in milestone_text
+    assert "informs:data-elements/approval_criteria" in milestone_text
+    assert "suggests_route:workflow/opportunity-activation" in milestone_text
+
+    assert "page_type: entity" in entity_text
+    assert "informs:data-elements/seller_capabilities" in entity_text
+    assert "suggests_route:workflow/seller-capability-baseline" in entity_text
+    assert (
+        "uses_source:source-summaries/project-ariadne/domain_intel/capabilities/kbr-inc"
+        in entity_text
+    )
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
+def test_project_ariadne_full_migration_creates_relationship_map_page(tmp_path) -> None:
+    corpus_root = tmp_path / "project-ariadne" / "knowledge"
+    vault_root = tmp_path / "vault"
+    _write(
+        corpus_root / "global_wiki/evaluation/technical-approach-evaluation-factor.md",
+        """---
+title: Technical Approach Evaluation Factor
+---
+
+Evaluation criteria shape proposal proof, technical discriminators, and customer hot buttons.
+""",
+    )
+    _write(
+        corpus_root / "pursuits/_template/01_capture/strategy/risk_register.md",
+        """# Risk Register
+
+Capture risk register expects risk owners, mitigations, gate decisions, and customer impact.
+""",
+    )
+
+    migrate_project_ariadne_corpus(corpus_root, vault_root)
+
+    map_text = (
+        vault_root / "relationships" / "project-ariadne-native-relationship-map.md"
+    ).read_text(encoding="utf-8")
+
+    assert "page_type: relationship" in map_text
+    assert "Project Ariadne Native Relationship Map" in map_text
+    assert "source summary pages" in map_text
+    assert "native concept/entity/artifact pages" in map_text
+    assert "informs:data-elements/evaluation_factors" in map_text
+    assert "expects_data_element:data-elements/risks" in map_text
+    assert "suggests_route:workflow/capture-research" in map_text
+    assert "suggests_route:workflow/artifact-assembly" in map_text
 
     validation_report = validate_knowledge_vault_pages(vault_root)
     assert validation_report.valid is True

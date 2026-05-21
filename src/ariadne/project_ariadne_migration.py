@@ -9,6 +9,8 @@ class ProjectAriadneMigrationCoverageItem(BaseModel):
     source_path: str
     status: str
     target_path: str | None = None
+    native_target_paths: tuple[str, ...] = ()
+    classification: str | None = None
     reason: str | None = None
 
 
@@ -22,6 +24,18 @@ class ProjectAriadneMigrationReport(BaseModel):
     incorporated: tuple[ProjectAriadneMigrationCoverageItem, ...]
     skipped: tuple[ProjectAriadneMigrationCoverageItem, ...]
     pending: tuple[ProjectAriadneMigrationCoverageItem, ...]
+
+
+def migrate_project_ariadne_corpus(
+    corpus_root: Path | str,
+    vault_root: Path | str,
+) -> ProjectAriadneMigrationReport:
+    source_root = Path(corpus_root)
+    return migrate_project_ariadne_slice(
+        source_root,
+        vault_root,
+        source_relative_paths=_discover_markdown_paths(source_root),
+    )
 
 
 def migrate_project_ariadne_slice(
@@ -61,20 +75,37 @@ def migrate_project_ariadne_slice(
 
         source_text = source_file.read_text(encoding="utf-8")
         frontmatter = _parse_frontmatter(source_text)
+        classification = _classify_source_path(source_path)
         target_path = _target_source_summary_path(source_path)
         target_file = target_root / target_path
         target_file.parent.mkdir(parents=True, exist_ok=True)
         target_file.write_text(
-            _source_summary_page(source_path, source_text, frontmatter),
+            _source_summary_page(
+                source_path,
+                source_text,
+                frontmatter,
+                classification=classification,
+            ),
             encoding="utf-8",
+        )
+        native_target_paths = _write_native_pages_for_source(
+            source_path=source_path,
+            source_text=source_text,
+            frontmatter=frontmatter,
+            classification=classification,
+            vault_root=target_root,
         )
         incorporated.append(
             ProjectAriadneMigrationCoverageItem(
                 source_path=source_path,
                 status="incorporated",
                 target_path=target_path,
+                native_target_paths=native_target_paths,
+                classification=classification,
             )
         )
+
+    _write_theseus_complementary_context(target_root)
 
     pending = tuple(
         ProjectAriadneMigrationCoverageItem(source_path=path, status="pending")
@@ -100,13 +131,15 @@ def migrate_project_ariadne_slice(
 
 
 def _target_source_summary_path(source_path: str) -> str:
-    return f"source-summaries/project-ariadne/{Path(source_path).stem}.md"
+    return f"source-summaries/project-ariadne/{source_path}"
 
 
 def _source_summary_page(
     source_path: str,
     source_text: str,
     frontmatter: dict[str, str],
+    *,
+    classification: str,
 ) -> str:
     title = frontmatter.get("title") or Path(source_path).stem.replace("-", " ").title()
     summary = _body_without_frontmatter(source_text).strip()
@@ -120,6 +153,7 @@ title: {title}
 source_refs: [project-ariadne:{source_path}]
 relationships: [{", ".join(relationships)}]
 migration_status: incorporated
+knowledge_role: {classification}
 source_corpus: project-ariadne
 source_path: {source_path}
 source_updated: {frontmatter.get("updated", "unknown")}
@@ -130,6 +164,7 @@ source_updated: {frontmatter.get("updated", "unknown")}
 ## Migration Status
 
 - Status: incorporated
+- Knowledge role: `{classification}`
 - Source corpus: Project Ariadne temporary corpus
 - Source path: `{source_path}`
 - Target role: Ariadne-native source summary in the canonical LLM-wiki vault
@@ -189,8 +224,8 @@ migration_status: coverage
 
 ## Boundary
 
-This report tracks migration coverage only. It does not preserve Project Ariadne
-as an enduring second reference home.
+This report tracks migration coverage only. The old corpus retained until maintainer retirement approval;
+it should not remain an enduring second reference home after native vault coverage is accepted.
 """
 
 
@@ -200,9 +235,190 @@ def _coverage_lines(items: tuple[ProjectAriadneMigrationCoverageItem, ...]) -> s
     lines = []
     for item in items:
         suffix = f" -> `{item.target_path}`" if item.target_path else ""
+        native = (
+            f"; native: {', '.join(f'`{path}`' for path in item.native_target_paths)}"
+            if item.native_target_paths
+            else ""
+        )
+        classification = f" [{item.classification}]" if item.classification else ""
         reason = f" ({item.reason})" if item.reason else ""
-        lines.append(f"- `{item.source_path}`: {item.status}{suffix}{reason}")
+        lines.append(
+            f"- `{item.source_path}`: {item.status}{classification}{suffix}{native}{reason}"
+        )
     return "\n".join(lines)
+
+
+def _write_native_pages_for_source(
+    *,
+    source_path: str,
+    source_text: str,
+    frontmatter: dict[str, str],
+    classification: str,
+    vault_root: Path,
+) -> tuple[str, ...]:
+    if classification != "artifact_pattern":
+        return ()
+
+    target_path = _artifact_pattern_path(source_path)
+    target_file = vault_root / target_path
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    target_file.write_text(
+        _artifact_pattern_page(source_path, source_text, frontmatter),
+        encoding="utf-8",
+    )
+    return (target_path,)
+
+
+def _artifact_pattern_path(source_path: str) -> str:
+    return f"artifact-patterns/project-ariadne/{source_path}"
+
+
+def _artifact_pattern_page(
+    source_path: str,
+    source_text: str,
+    frontmatter: dict[str, str],
+) -> str:
+    title = frontmatter.get("title") or Path(source_path).stem.replace("_", " ").replace("-", " ").title()
+    summary = _body_without_frontmatter(source_text).strip()
+    data_elements = _artifact_data_elements(source_path, summary)
+    relationships = tuple(
+        dict.fromkeys(
+            (
+                f"derived_from:project-ariadne/{source_path}",
+                *(
+                    f"expects_data_element:data-elements/{data_element}"
+                    for data_element in data_elements
+                ),
+                f"maps_to_artifact_block:artifact-block/{_artifact_block_slug(source_path)}",
+                "suggests_route:workflow/artifact-assembly",
+            )
+        )
+    )
+    relationship_lines = "\n".join(f"- `{relationship}`" for relationship in relationships)
+    data_element_lines = "\n".join(f"- `{data_element}`" for data_element in data_elements)
+    return f"""---
+page_type: artifact_pattern
+title: {title}
+source_refs: [project-ariadne:{source_path}]
+relationships: [{", ".join(relationships)}]
+source_corpus: project-ariadne
+source_path: {source_path}
+---
+
+# {title}
+
+## Artifact Expectation Role
+
+This page captures reusable data expectations from a Project Ariadne template or
+work-product pattern. Private source formats remain local or ignored; Ariadne
+tracks public-like data elements, evidence expectations, and review routes.
+
+## Expected Data Elements
+
+{data_element_lines or "- `primary_scope`"}
+
+## Source Pattern Summary
+
+{summary or "No source body was available in the migrated artifact pattern."}
+
+## Relationship Links
+
+{relationship_lines}
+
+## Boundary
+
+This artifact pattern is not an opportunity-specific Packet Field Answer,
+Evidence Item, Artifact Block Review, or renderer export profile. It can guide
+Ariadne in finding and filling required data elements before a private format is
+rendered through a future Artifact Export Profile.
+"""
+
+
+def _artifact_data_elements(source_path: str, summary: str) -> tuple[str, ...]:
+    haystack = f"{source_path}\n{summary}".lower()
+    elements: list[str] = []
+    if "customer" in haystack:
+        elements.extend(("customer", "customer_hot_buttons"))
+    if "risk" in haystack:
+        elements.append("risks")
+    if "pwin" in haystack or "win probability" in haystack:
+        elements.append("pwin")
+    if "value" in haystack or "contract" in haystack:
+        elements.append("total_contract_value")
+    if "approval" in haystack or "milestone" in haystack or "decision" in haystack:
+        elements.append("approval_criteria")
+    if "scope" in haystack or "requirements" in haystack:
+        elements.append("primary_scope")
+    return tuple(dict.fromkeys(elements or ["primary_scope"]))
+
+
+def _write_theseus_complementary_context(vault_root: Path) -> None:
+    path = vault_root / "skills-capabilities" / "capability-theseus-solicitation-parser.md"
+    if path.exists():
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_theseus_complementary_context_page(), encoding="utf-8")
+
+
+def _theseus_complementary_context_page() -> str:
+    relationships = (
+        "uses_capability:capability/theseus-solicitation-parser",
+        "suggests_route:workflow/document-intake",
+        "suggests_route:workflow/solicitation-analysis",
+        "informs:data-elements/customer_hot_buttons",
+        "informs:data-elements/evaluation_factors",
+        "informs:data-elements/approval_criteria",
+        "candidate_reusable_insight:reusable-insights/theseus-ontology-signal-mapping",
+    )
+    relationship_lines = "\n".join(f"- `{relationship}`" for relationship in relationships)
+    return f"""---
+page_type: workflow_capability
+title: Project Theseus Solicitation Parser
+source_refs: [project-theseus:solicitation-parser-candidate, ariadne-adr:0006]
+relationships: [{", ".join(relationships)}]
+category: capability_module
+readiness: deferred_adapter
+---
+
+# Project Theseus Solicitation Parser
+
+## Complementary Role
+
+Project Theseus is complementary solicitation-parser and ontology context for
+RFP-like documents. It can help identify requirements, evaluation factors,
+customer hot buttons, risks, discriminators, dates, and relationship candidates.
+
+## Ariadne Boundary
+
+Theseus-style parsing should produce an Extraction Bundle with source spans,
+entity candidates, relationship candidates, warnings, confidence, and parser
+provenance. It does not write trusted Ariadne records, Packet Field Answers,
+Evidence Items, review decisions, or artifact blocks directly.
+
+## Relationship Links
+
+{relationship_lines}
+"""
+
+
+def _classify_source_path(source_path: str) -> str:
+    if source_path.startswith("pursuits/_template/"):
+        return "artifact_pattern"
+    if source_path.startswith("domain_intel/milestones/"):
+        return "milestone_gate_reference"
+    if source_path.startswith("domain_intel/capabilities/"):
+        return "seller_capability_or_entity"
+    if source_path.startswith("global_wiki/shipley/"):
+        return "shipley_methodology"
+    if source_path.startswith("global_wiki/evaluation/"):
+        return "evaluation_methodology"
+    if source_path.startswith("global_wiki/regulations/"):
+        return "regulatory_reference"
+    if source_path.startswith("global_wiki/workload/"):
+        return "workload_pricing_reference"
+    if source_path.startswith("global_wiki/capture/"):
+        return "capture_methodology"
+    return "source_summary"
 
 
 def _relationship_hints(
@@ -217,10 +433,31 @@ def _relationship_hints(
     if "customer" in haystack:
         relationships.append("informs:data-elements/customer")
         relationships.append("suggests_route:workflow/customer-engagement")
+    if "hot button" in haystack:
+        relationships.append("informs:data-elements/customer_hot_buttons")
+    if "evaluation" in haystack:
+        relationships.append("informs:data-elements/evaluation_factors")
     if "decision" in haystack or "qualification" in haystack:
         relationships.append("applies_to_gate:milestone_1")
+    if source_path.startswith("pursuits/_template/"):
+        relationships.append(
+            f"maps_to_artifact_block:artifact-block/{_artifact_block_slug(source_path)}"
+        )
     relationships.append(f"candidate_reusable_insight:reusable-insights/{stem}")
     return tuple(dict.fromkeys(relationships))
+
+
+def _artifact_block_slug(source_path: str) -> str:
+    path = Path(source_path)
+    parent_name = path.parent.name
+    stem = path.stem
+    if parent_name and parent_name != "_template":
+        return _slug(f"{parent_name}-{stem}")
+    return _slug(stem)
+
+
+def _slug(value: str) -> str:
+    return value.replace("_", "-").replace(" ", "-").lower()
 
 
 def _discover_markdown_paths(corpus_root: Path) -> tuple[str, ...]:

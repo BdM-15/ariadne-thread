@@ -46,6 +46,9 @@ def test_knowledge_vault_scaffold_creates_required_wiki_shape(tmp_path) -> None:
         "workflows",
         "skills-capabilities",
         "reusable-insights",
+        "artifact-patterns",
+        "capture-concepts",
+        "milestones",
         "proposals",
         "generated-projections",
         "reports",
@@ -130,6 +133,8 @@ def test_knowledge_vault_api_exposes_page_types_and_relationship_vocabulary(
         "relationship",
         "workflow_capability",
         "reusable_insight_candidate",
+        "artifact_pattern",
+        "source_manifest",
         "opportunity_projection",
         "mirror_update_proposal",
         "hermes_learning_proposal",
@@ -148,6 +153,9 @@ def test_knowledge_vault_api_exposes_page_types_and_relationship_vocabulary(
         "applies_to_gate",
         "produces_artifact_block",
         "candidate_reusable_insight",
+        "expects_data_element",
+        "maps_to_artifact_block",
+        "uses_source",
     }
 
 
@@ -320,7 +328,10 @@ Qualification discipline.
 def test_knowledge_vault_health_report_flags_unhealthy_fixture(tmp_path) -> None:
     vault_root = tmp_path / "vault"
     ensure_knowledge_vault_scaffold(vault_root)
-    (vault_root / "capture-concepts" / "orphan.md").parent.mkdir(parents=True)
+    (vault_root / "capture-concepts" / "orphan.md").parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
     (vault_root / "capture-concepts" / "orphan.md").write_text(
         """---
 page_type: capture_concept

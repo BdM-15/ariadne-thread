@@ -1,7 +1,10 @@
 from pathlib import Path
 
 from ariadne.knowledge_vault import validate_knowledge_vault_pages
-from ariadne.project_ariadne_migration import migrate_project_ariadne_slice
+from ariadne.project_ariadne_migration import (
+    migrate_project_ariadne_corpus,
+    migrate_project_ariadne_slice,
+)
 
 
 def _write(path: Path, text: str) -> None:
@@ -50,7 +53,14 @@ Structured decision process for opportunity qualification.
         source_relative_paths=(source_path, "global_wiki/capture/missing.md"),
     )
 
-    migrated_page = vault_root / "source-summaries" / "project-ariadne" / "customer-hot-button-identification.md"
+    migrated_page = (
+        vault_root
+        / "source-summaries"
+        / "project-ariadne"
+        / "global_wiki"
+        / "capture"
+        / "customer-hot-button-identification.md"
+    )
     migrated_text = migrated_page.read_text(encoding="utf-8")
     coverage_text = (vault_root / report.coverage_report_path).read_text(
         encoding="utf-8"
@@ -86,6 +96,147 @@ Structured decision process for opportunity qualification.
     assert source_path in coverage_text
     assert pending_path in coverage_text
     assert "global_wiki/capture/missing.md" in coverage_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
+def test_project_ariadne_full_corpus_migration_preserves_paths_and_covers_all_md(
+    tmp_path,
+) -> None:
+    corpus_root = tmp_path / "project-ariadne" / "knowledge"
+    vault_root = tmp_path / "vault"
+    source_paths = (
+        "global_wiki/capture/customer-hot-button-identification.md",
+        "global_wiki/shipley/win-theme-development.md",
+        "domain_intel/milestones/ms1-qualification.md",
+        "domain_intel/capabilities/kbr-inc.md",
+        "pursuits/_template/01_capture/customer/profile.md",
+        "pursuits/_template/01_capture/strategy/risk_register.md",
+    )
+    for source_path in source_paths:
+        _write(
+            corpus_root / source_path,
+            f"""---
+title: {Path(source_path).stem.replace("_", " ").replace("-", " ").title()}
+entity_type: concept
+updated: '2026-04-22T23:01:16'
+---
+
+Customer hot buttons, milestones, risk, and artifact fields for {source_path}.
+""",
+        )
+
+    report = migrate_project_ariadne_corpus(corpus_root, vault_root)
+
+    assert report.incorporated_count == len(source_paths)
+    assert report.skipped_count == 0
+    assert report.pending_count == 0
+    assert {
+        item.target_path for item in report.incorporated
+    } == {
+        f"source-summaries/project-ariadne/{source_path}"
+        for source_path in source_paths
+    }
+    assert (
+        vault_root
+        / "source-summaries"
+        / "project-ariadne"
+        / "global_wiki"
+        / "capture"
+        / "customer-hot-button-identification.md"
+    ).exists()
+    assert (
+        vault_root
+        / "source-summaries"
+        / "project-ariadne"
+        / "pursuits"
+        / "_template"
+        / "01_capture"
+        / "customer"
+        / "profile.md"
+    ).exists()
+
+    coverage_text = (vault_root / report.coverage_report_path).read_text(
+        encoding="utf-8"
+    )
+    assert "pending: 0" in coverage_text
+    assert "old corpus retained until maintainer retirement approval" in coverage_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
+def test_project_ariadne_template_pages_create_artifact_expectations(tmp_path) -> None:
+    corpus_root = tmp_path / "project-ariadne" / "knowledge"
+    vault_root = tmp_path / "vault"
+    source_path = "pursuits/_template/01_capture/customer/profile.md"
+    _write(
+        corpus_root / source_path,
+        """# Customer Profile
+
+Customer organization mission, budget cycle, org chart, acquisition history,
+decision makers, hot buttons, and customer needs.
+""",
+    )
+
+    report = migrate_project_ariadne_corpus(corpus_root, vault_root)
+
+    artifact_path = (
+        vault_root
+        / "artifact-patterns"
+        / "project-ariadne"
+        / "pursuits"
+        / "_template"
+        / "01_capture"
+        / "customer"
+        / "profile.md"
+    )
+    artifact_text = artifact_path.read_text(encoding="utf-8")
+
+    assert report.incorporated_count == 1
+    assert report.incorporated[0].native_target_paths == (
+        "artifact-patterns/project-ariadne/pursuits/_template/01_capture/customer/profile.md",
+    )
+    assert "page_type: artifact_pattern" in artifact_text
+    assert "expects_data_element:data-elements/customer" in artifact_text
+    assert "expects_data_element:data-elements/customer_hot_buttons" in artifact_text
+    assert "maps_to_artifact_block:artifact-block/customer-profile" in artifact_text
+    assert "Private source formats remain local or ignored" in artifact_text
+    assert "not an opportunity-specific Packet Field Answer" in artifact_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
+def test_project_ariadne_full_migration_adds_theseus_complementary_context(
+    tmp_path,
+) -> None:
+    corpus_root = tmp_path / "project-ariadne" / "knowledge"
+    vault_root = tmp_path / "vault"
+    _write(
+        corpus_root / "global_wiki/capture/customer-hot-button-identification.md",
+        """---
+title: Customer Hot Button Identification
+---
+
+Hot buttons can be detected from RFP language and validated by engagement.
+""",
+    )
+
+    migrate_project_ariadne_corpus(corpus_root, vault_root)
+
+    theseus_page = vault_root / "skills-capabilities" / "capability-theseus-solicitation-parser.md"
+    theseus_text = theseus_page.read_text(encoding="utf-8")
+
+    assert "page_type: workflow_capability" in theseus_text
+    assert "Project Theseus Solicitation Parser" in theseus_text
+    assert "uses_capability:capability/theseus-solicitation-parser" in theseus_text
+    assert "informs:data-elements/customer_hot_buttons" in theseus_text
+    assert "informs:data-elements/evaluation_factors" in theseus_text
+    assert "suggests_route:workflow/document-intake" in theseus_text
+    assert "Extraction Bundle" in theseus_text
+    assert "does not write trusted Ariadne records" in theseus_text
 
     validation_report = validate_knowledge_vault_pages(vault_root)
     assert validation_report.valid is True

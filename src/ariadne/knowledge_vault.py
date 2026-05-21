@@ -21,6 +21,9 @@ REQUIRED_VAULT_DIRECTORIES: tuple[str, ...] = (
     "workflows",
     "skills-capabilities",
     "reusable-insights",
+    "artifact-patterns",
+    "capture-concepts",
+    "milestones",
     "proposals",
     "generated-projections",
     "reports",
@@ -147,6 +150,16 @@ PAGE_TYPES: tuple[KnowledgeVaultVocabularyItem, ...] = (
         description="Reviewable candidate insight that may support future opportunities.",
     ),
     KnowledgeVaultVocabularyItem(
+        id="artifact_pattern",
+        label="Artifact Pattern",
+        description="Reusable artifact or private-format data expectation map.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="source_manifest",
+        label="Source Manifest",
+        description="Source asset custody, extraction, and usage metadata.",
+    ),
+    KnowledgeVaultVocabularyItem(
         id="opportunity_projection",
         label="Opportunity Projection",
         description="Read-only projection or summary of structured opportunity context.",
@@ -177,6 +190,9 @@ RELATIONSHIP_TYPES: tuple[KnowledgeVaultVocabularyItem, ...] = (
     KnowledgeVaultVocabularyItem(id="applies_to_gate", label="Applies To Gate", description="Page applies to target milestone gate."),
     KnowledgeVaultVocabularyItem(id="produces_artifact_block", label="Produces Artifact Block", description="Workflow or source can produce target artifact block."),
     KnowledgeVaultVocabularyItem(id="candidate_reusable_insight", label="Candidate Reusable Insight", description="Page may become or support target reusable insight."),
+    KnowledgeVaultVocabularyItem(id="expects_data_element", label="Expects Data Element", description="Artifact, template, or workflow expects target data element."),
+    KnowledgeVaultVocabularyItem(id="maps_to_artifact_block", label="Maps To Artifact Block", description="Pattern or data element maps to target artifact block."),
+    KnowledgeVaultVocabularyItem(id="uses_source", label="Uses Source", description="Page uses target source asset or source manifest."),
 )
 
 _PAGE_TYPE_IDS = frozenset(item.id for item in PAGE_TYPES)
@@ -184,6 +200,7 @@ _RELATIONSHIP_TYPE_IDS = frozenset(item.id for item in RELATIONSHIP_TYPES)
 _SCAFFOLD_MARKDOWN_PATHS = frozenset(
     {
         "AGENTS.md",
+        "Welcome.md",
         "index.md",
         "log.md",
         "foundation/ariadne-wiki-schema.md",
@@ -798,8 +815,11 @@ Canonical local LLM-wiki for Ariadne global capture knowledge.
 
 - [[data-elements/|Global Data Elements]]
 - [[sources/|Source Summaries]]
+- [[capture-concepts/|Capture Concepts]]
+- [[milestones/|Milestones]]
 - [[relationships/|Typed Relationships]]
 - [[skills-capabilities/|Skills and Capabilities]]
+- [[artifact-patterns/|Artifact Patterns]]
 - [[reusable-insights/|Reusable Insights]]
 - [[proposals/|Mirror Update Proposals]]
 - [[hermes-learning/|Hermes Learning]]
@@ -857,6 +877,8 @@ This schema adapts the Karpathy LLM-wiki pattern to Ariadne's capture platform.
 - `relationship`
 - `workflow_capability`
 - `reusable_insight_candidate`
+- `artifact_pattern`
+- `source_manifest`
 - `opportunity_projection`
 - `mirror_update_proposal`
 - `hermes_learning_proposal`
@@ -879,8 +901,9 @@ relationships: [suggests_route:workflow/capture-research]
 Use typed relationships to connect knowledge pages. Early relationship language
 includes `supports`, `answers`, `informs`, `blocks`, `contradicts`,
 `derived_from`, `evidence_for`, `fills_gap_in`, `suggests_route`,
-`uses_capability`, `applies_to_gate`, `produces_artifact_block`, and
-`candidate_reusable_insight`.
+`uses_capability`, `applies_to_gate`, `produces_artifact_block`,
+`candidate_reusable_insight`, `expects_data_element`,
+`maps_to_artifact_block`, and `uses_source`.
 
 ## Complementary Systems
 

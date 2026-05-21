@@ -1,4 +1,7 @@
-from ariadne.knowledge_vault import ensure_knowledge_vault_scaffold, validate_knowledge_vault_pages
+from ariadne.knowledge_vault import (
+    ensure_knowledge_vault_scaffold,
+    validate_knowledge_vault_pages,
+)
 from ariadne.mirror_update_proposals import (
     list_pending_mirror_update_proposals,
     scan_vault_for_mirror_update_proposals,
@@ -32,7 +35,7 @@ def test_vault_edit_targeting_packet_answer_creates_proposal_without_store_write
 page_type: capture_concept
 title: Customer Answer Edit Attempt
 source_refs: [vault-edit:customer-answer-edit]
-relationships: [informs:data-elements/customer]
+relationships: [informs:data-elements/briefing-packet/customer]
 target_record_kind: packet_field_answer
 target_record_ref: opp-disa-cloud/customer
 requested_change_summary: Change customer answer from DISA to DISA J9.
@@ -92,7 +95,7 @@ def test_pending_mirror_update_proposals_api_lists_review_queue(tmp_path) -> Non
 page_type: capture_concept
 title: Evidence Edit Attempt
 source_refs: [vault-edit:evidence-edit]
-relationships: [supports:data-elements/customer]
+relationships: [supports:data-elements/briefing-packet/customer]
 target_record_kind: evidence_item
 target_record_ref: ev_customer
 requested_change_summary: Replace accepted evidence summary.

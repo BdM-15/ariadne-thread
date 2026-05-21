@@ -1,6 +1,6 @@
 # Ariadne Thread
 
-**Product Requirements Document (PRD) v1.66**
+**Product Requirements Document (PRD) v1.67**
 
 **North Star: One elegant, powerful Capture Command Center that allows a single capture professional to manage the entire capture lifecycle — from opportunity identification through award — with maximum effectiveness and minimum friction.**
 
@@ -68,6 +68,7 @@
 - Opportunity Portfolio items now expose explicit `next_action_urgency` and `source_freshness_label` values in the API and Command Center chips, so the global pulse can distinguish active blockers, review-ready work, source-limited roadmaps, partial source support, and steady archived/outcome Opportunities without recomputing those meanings only in the browser.
 - MVP-1B is closed as a product slice after Opportunity Activation, Packet Field Action Matrix, and Opportunity Portfolio Foundation reached the agreed route-first, review-gated stopping point. Further work must move to a newly selected MVP slice rather than extending MVP-1B by default.
 - MVP-1C is selected as **LLM-Wiki Knowledge Vault Foundation**. The next slice should create one canonical Ariadne Obsidian/LLM-wiki vault at `knowledge/ariadnes-thread/`, use Karpathy-style `index.md`, `log.md`, schema instructions, pages, and lint/health workflows, make global data elements and typed relationships the lightweight knowledge graph that improves opportunity execution, and keep opportunity-specific Packet Field Answers, Evidence Items, Action Plan state, review decisions, and trusted workflow records in Ariadne's structured stores.
+- MVP-1C data-element projection now treats the code-owned Briefing Packet field definitions, the Risk Register data dictionary, and the Call Plan data dictionary as explicit vault dictionary groups under `data-elements/briefing-packet/`, `data-elements/risk-register/`, and `data-elements/call-plan/`, with a shared `data-elements/dictionary-index.md` and relationship refs that point to the grouped paths instead of old root-level packet pages.
 
 **Still Deferred**
 

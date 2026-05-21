@@ -350,6 +350,8 @@ def ensure_packet_data_element_pages(
             _write_if_missing(path, _packet_data_element_page_template(definition))
             created_count += 1
 
+    _write_data_dictionary_index(root)
+
     status_report = list_packet_data_element_page_status(
         root,
         definitions,
@@ -388,13 +390,7 @@ def ensure_reference_data_dictionary_pages(
                 )
             )
 
-    index_path = root / "data-elements" / "dictionary-index.md"
-    index_existed = index_path.exists()
-    index_path.write_text(
-        _reference_dictionary_index_template(dictionaries, tuple(pages)),
-        encoding="utf-8",
-    )
-    if not index_existed:
+    if _write_data_dictionary_index(root):
         created_count += 1
     pages.append(
         ReferenceDataDictionaryFieldPageStatus(
@@ -648,7 +644,7 @@ def _packet_data_element_status(
 
 
 def _packet_data_element_relative_path(definition: PacketFieldDefinition) -> str:
-    return f"data-elements/{definition.key}.md"
+    return f"data-elements/briefing-packet/{definition.key}.md"
 
 
 def _packet_data_element_page_template(definition: PacketFieldDefinition) -> str:
@@ -666,6 +662,8 @@ page_type: global_data_element
 title: {definition.label}
 source_refs: [packet-field-definition:{definition.key}]
 relationships: [{", ".join(relationships)}]
+dictionary_id: briefing_packet
+field_key: {definition.key}
 ---
 
 # {definition.label}
@@ -735,13 +733,73 @@ def _packet_data_element_relationships(
         f"applies_to_gate:{gate.value}" for gate in definition.required_milestone_gates
     )
     route_relationships = (
+        "derived_from:packet-field-definitions/briefing-packet",
         "suggests_route:workflow/opportunity-activation",
         "suggests_route:workflow/packet-field-action-matrix",
         "suggests_route:workflow/capture-research",
         "uses_capability:capability/document-intake",
+        "maps_to_artifact_block:artifact-block/living-briefing-packet",
         f"candidate_reusable_insight:reusable-insights/{definition.key}",
     )
     return gate_relationships + route_relationships
+
+
+_DATA_DICTIONARY_METADATA: dict[str, dict[str, str]] = {
+    "briefing_packet": {
+        "label": "Briefing Packet Data Dictionary",
+        "source": "src/ariadne/packet_knowledge.py::build_default_packet_field_definitions",
+        "source_ref": "packet-field-definitions:briefing_packet",
+    },
+    "risk_register": {
+        "label": "Risk Register Data Dictionary",
+        "source": "docs/reference/risk_register/RISK_REGISTER_DATA_DICTIONARY.md",
+        "source_ref": "reference-data-dictionary:risk_register",
+    },
+    "call_plan": {
+        "label": "Call Plan Data Dictionary",
+        "source": "docs/reference/call_plan/CALL_PLAN_DATA_DICTIONARY.md",
+        "source_ref": "reference-data-dictionary:call_plan",
+    },
+}
+
+
+def _write_data_dictionary_index(root: Path) -> bool:
+    index_path = root / "data-elements" / "dictionary-index.md"
+    index_existed = index_path.exists()
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(
+        _data_dictionary_index_template(_data_dictionary_index_pages(root)),
+        encoding="utf-8",
+    )
+    return not index_existed
+
+
+def _data_dictionary_index_pages(root: Path) -> tuple[dict[str, str], ...]:
+    data_elements_root = root / "data-elements"
+    if not data_elements_root.exists():
+        return ()
+    pages: list[dict[str, str]] = []
+    for page_path in sorted(data_elements_root.rglob("*.md")):
+        relative_path = _relative_markdown_path(root, page_path)
+        if relative_path == "data-elements/dictionary-index.md":
+            continue
+        frontmatter = _read_frontmatter(page_path)
+        if frontmatter is None or frontmatter.get("page_type") != "global_data_element":
+            continue
+        dictionary_id = str(frontmatter.get("dictionary_id", "")).strip()
+        if not dictionary_id:
+            continue
+        field_key = str(frontmatter.get("field_key", page_path.stem)).strip()
+        title = str(frontmatter.get("title", field_key)).strip()
+        pages.append(
+            {
+                "dictionary_id": dictionary_id,
+                "field_key": field_key,
+                "path": relative_path,
+                "title": title,
+            }
+        )
+    return tuple(pages)
 
 
 def _reference_data_dictionary_specs(
@@ -868,34 +926,36 @@ def _dictionary_field_title(field_key: str, concept: str) -> str:
     return field_key.replace("_", " ").replace("-", " ").title()
 
 
-def _reference_dictionary_index_template(
-    dictionaries: tuple[dict[str, str], ...],
-    pages: tuple[ReferenceDataDictionaryFieldPageStatus, ...],
-) -> str:
+def _data_dictionary_index_template(pages: tuple[dict[str, str], ...]) -> str:
     relationships = tuple(
-        dict.fromkeys(
-            f"answers:{page.path.removesuffix('.md')}"
-            for page in pages
-            if page.field_key != "dictionary_index"
-        )
+        dict.fromkeys(f"answers:{page['path'].removesuffix('.md')}" for page in pages)
     )
+    dictionary_ids = tuple(
+        dictionary_id
+        for dictionary_id in _ordered_dictionary_ids(pages)
+        if dictionary_id in _DATA_DICTIONARY_METADATA
+    )
+    source_refs = tuple(
+        _DATA_DICTIONARY_METADATA[dictionary_id]["source_ref"]
+        for dictionary_id in dictionary_ids
+    ) or ("reference-data-dictionary:index",)
     dictionary_lines = "\n".join(
-        f"- {dictionary['label']}: `{Path(dictionary['path']).as_posix()}`"
-        for dictionary in dictionaries
+        f"- {_DATA_DICTIONARY_METADATA[dictionary_id]['label']}: "
+        f"`{_DATA_DICTIONARY_METADATA[dictionary_id]['source']}`"
+        for dictionary_id in dictionary_ids
     )
-    page_lines = "\n".join(
-        f"- [[{page.path.removesuffix('.md')}|{page.field_key}]] ({page.dictionary_id})"
-        for page in pages
-        if page.field_key != "dictionary_index"
+    section_lines = "\n\n".join(
+        _data_dictionary_index_section(dictionary_id, pages)
+        for dictionary_id in dictionary_ids
     )
     return f"""---
 page_type: source_manifest
-title: Reference Data Dictionary Index
-source_refs: [reference-data-dictionary:risk_register, reference-data-dictionary:call_plan]
+title: Data Dictionary Index
+source_refs: [{", ".join(source_refs)}]
 relationships: [{", ".join(relationships)}]
 ---
 
-# Reference Data Dictionary Index
+# Data Dictionary Index
 
 ## Source Dictionaries
 
@@ -903,13 +963,41 @@ relationships: [{", ".join(relationships)}]
 
 ## Data Elements
 
-{page_lines or "- None"}
+{section_lines or "- None"}
 
 ## Boundary
 
-Reference dictionary data elements describe reusable field expectations. Trusted
-opportunity values still live in Ariadne structured stores after review.
+Data dictionary elements describe reusable field expectations. Trusted
+opportunity values, packet answers, Risk Register Items, and Call Plan outputs
+still live in Ariadne structured stores after review.
 """
+
+
+def _ordered_dictionary_ids(pages: tuple[dict[str, str], ...]) -> tuple[str, ...]:
+    preferred_order = ("briefing_packet", "risk_register", "call_plan")
+    present = tuple(dict.fromkeys(page["dictionary_id"] for page in pages))
+    ordered = tuple(
+        dictionary_id for dictionary_id in preferred_order if dictionary_id in present
+    )
+    extras = tuple(
+        dictionary_id
+        for dictionary_id in sorted(present)
+        if dictionary_id not in ordered
+    )
+    return ordered + extras
+
+
+def _data_dictionary_index_section(
+    dictionary_id: str,
+    pages: tuple[dict[str, str], ...],
+) -> str:
+    metadata = _DATA_DICTIONARY_METADATA[dictionary_id]
+    page_lines = "\n".join(
+        f"- [[{page['path'].removesuffix('.md')}|{page['field_key']}]] - {page['title']}"
+        for page in pages
+        if page["dictionary_id"] == dictionary_id
+    )
+    return f"### {metadata['label']}\n\n{page_lines or '- None'}"
 
 
 def _health_pages(root: Path) -> tuple[dict[str, object], ...]:

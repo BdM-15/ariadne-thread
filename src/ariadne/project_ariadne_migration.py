@@ -377,6 +377,25 @@ def _native_page_type(classification: str) -> str:
     return "capture_concept"
 
 
+_DATA_ELEMENT_REFS: dict[str, str] = {
+    "approval_criteria": "data-elements/briefing-packet/approval_criteria",
+    "competition": "data-elements/briefing-packet/competition",
+    "customer": "data-elements/briefing-packet/customer",
+    "customer_hot_buttons": "data-elements/call-plan/customer_hot_buttons",
+    "evaluation_factors": "data-elements/briefing-packet/evaluation_methodology",
+    "evaluation_methodology": "data-elements/briefing-packet/evaluation_methodology",
+    "primary_scope": "data-elements/briefing-packet/primary_scope",
+    "pwin": "data-elements/briefing-packet/pwin",
+    "rfp_release_date": "data-elements/briefing-packet/rfp_release_date",
+    "risks": "data-elements/briefing-packet/risks",
+    "total_contract_value": "data-elements/briefing-packet/total_contract_value",
+}
+
+
+def _data_element_ref(field_key: str) -> str:
+    return _DATA_ELEMENT_REFS.get(field_key, f"data-elements/{field_key}")
+
+
 def _native_relationships(
     source_path: str,
     frontmatter: dict[str, str],
@@ -389,7 +408,7 @@ def _native_relationships(
         relationships.extend(
             (
                 f"applies_to_gate:{_milestone_gate_ref(source_path)}",
-                "informs:data-elements/approval_criteria",
+                f"informs:{_data_element_ref('approval_criteria')}",
                 "suggests_route:workflow/opportunity-activation",
                 "suggests_route:workflow/packet-field-action-matrix",
             )
@@ -465,7 +484,7 @@ def _artifact_pattern_page(
             (
                 f"derived_from:project-ariadne/{source_path}",
                 *(
-                    f"expects_data_element:data-elements/{data_element}"
+                    f"expects_data_element:{_data_element_ref(data_element)}"
                     for data_element in data_elements
                 ),
                 f"maps_to_artifact_block:artifact-block/{_artifact_block_slug(source_path)}",
@@ -539,8 +558,6 @@ def _write_theseus_complementary_context(vault_root: Path) -> None:
     path = (
         vault_root / "skills-capabilities" / "capability-theseus-solicitation-parser.md"
     )
-    if path.exists():
-        return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_theseus_complementary_context_page(), encoding="utf-8")
 
@@ -605,14 +622,14 @@ def _relationship_refs_from_report(
             relationships.extend(
                 (
                     "suggests_route:workflow/capture-research",
-                    "informs:data-elements/evaluation_factors",
+                    f"informs:{_data_element_ref('evaluation_factors')}",
                 )
             )
         if item.classification == "milestone_gate_reference":
             relationships.extend(
                 (
                     "applies_to_gate:milestone_review",
-                    "informs:data-elements/approval_criteria",
+                    f"informs:{_data_element_ref('approval_criteria')}",
                 )
             )
         if item.classification == "seller_capability_or_entity":
@@ -625,7 +642,7 @@ def _relationship_refs_from_report(
         if item.classification == "artifact_pattern":
             relationships.extend(
                 (
-                    "expects_data_element:data-elements/risks",
+                    f"expects_data_element:{_data_element_ref('risks')}",
                     "suggests_route:workflow/artifact-assembly",
                 )
             )
@@ -637,9 +654,9 @@ def _theseus_complementary_context_page() -> str:
         "uses_capability:capability/theseus-solicitation-parser",
         "suggests_route:workflow/document-intake",
         "suggests_route:workflow/solicitation-analysis",
-        "informs:data-elements/customer_hot_buttons",
-        "informs:data-elements/evaluation_factors",
-        "informs:data-elements/approval_criteria",
+        f"informs:{_data_element_ref('customer_hot_buttons')}",
+        f"informs:{_data_element_ref('evaluation_factors')}",
+        f"informs:{_data_element_ref('approval_criteria')}",
         "candidate_reusable_insight:reusable-insights/theseus-ontology-signal-mapping",
     )
     relationship_lines = "\n".join(
@@ -709,12 +726,12 @@ def _relationship_hints(
     entity_type = frontmatter.get("entity_type", "")
     haystack = f"{entity_type}\n{summary}".lower()
     if "customer" in haystack:
-        relationships.append("informs:data-elements/customer")
+        relationships.append(f"informs:{_data_element_ref('customer')}")
         relationships.append("suggests_route:workflow/customer-engagement")
     if "hot button" in haystack:
-        relationships.append("informs:data-elements/customer_hot_buttons")
+        relationships.append(f"informs:{_data_element_ref('customer_hot_buttons')}")
     if "evaluation" in haystack:
-        relationships.append("informs:data-elements/evaluation_factors")
+        relationships.append(f"informs:{_data_element_ref('evaluation_factors')}")
     if "decision" in haystack or "qualification" in haystack:
         relationships.append("applies_to_gate:milestone_1")
     if source_path.startswith("pursuits/_template/"):

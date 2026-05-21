@@ -214,7 +214,7 @@ def test_packet_data_element_page_tracer_creates_current_gate_page_from_definiti
         current_milestone_gate=MilestoneGate.MILESTONE_1,
     )
 
-    customer_page = vault_root / "data-elements" / "customer.md"
+    customer_page = vault_root / "data-elements" / "briefing-packet" / "customer.md"
     customer_text = customer_page.read_text(encoding="utf-8")
     customer_status = next(
         page for page in report.pages if page.field_key == "customer"
@@ -222,18 +222,29 @@ def test_packet_data_element_page_tracer_creates_current_gate_page_from_definiti
 
     assert customer_status.exists is True
     assert customer_status.connected is True
-    assert customer_status.path == "data-elements/customer.md"
+    assert customer_status.path == "data-elements/briefing-packet/customer.md"
     assert "page_type: global_data_element" in customer_text
     assert "title: Customer" in customer_text
     assert "source_refs: [packet-field-definition:customer]" in customer_text
+    assert "dictionary_id: briefing_packet" in customer_text
     assert "applies_to_gate:milestone_1" in customer_text
+    assert "derived_from:packet-field-definitions/briefing-packet" in customer_text
     assert "suggests_route:workflow/opportunity-activation" in customer_text
     assert "suggests_route:workflow/packet-field-action-matrix" in customer_text
+    assert (
+        "maps_to_artifact_block:artifact-block/living-briefing-packet" in customer_text
+    )
     assert "Which customer or buying command owns the need?" in customer_text
     assert "notice or call-note extraction" in customer_text
     assert "Evidence Standards" in customer_text
     assert "Common Source Types" in customer_text
     assert "Packet Field Answers live in Ariadne structured stores" in customer_text
+
+    index_text = (vault_root / "data-elements" / "dictionary-index.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Briefing Packet Data Dictionary" in index_text
+    assert "data-elements/briefing-packet/customer" in index_text
 
     validation_report = validate_knowledge_vault_pages(vault_root)
     assert validation_report.valid is True
@@ -351,6 +362,55 @@ def test_reference_data_dictionary_pages_group_fields_by_workflow_dictionary(
     assert validation_report.valid is True
 
 
+def test_dictionary_index_combines_packet_and_reference_dictionaries(tmp_path) -> None:
+    vault_root = tmp_path / "vault"
+    reference_root = tmp_path / "docs" / "reference"
+    risk_dictionary = (
+        reference_root / "risk_register" / "RISK_REGISTER_DATA_DICTIONARY.md"
+    )
+    call_dictionary = reference_root / "call_plan" / "CALL_PLAN_DATA_DICTIONARY.md"
+    risk_dictionary.parent.mkdir(parents=True)
+    call_dictionary.parent.mkdir(parents=True)
+    risk_dictionary.write_text(
+        """# Risk Register Data Dictionary Draft
+
+| Field key | Workbook concept | Kind | Likely source | Connected packet fields |
+| --------- | ---------------- | ---- | ------------- | ----------------------- |
+| `risk_short_title` | Risk Short Title | scalar/prose | human input | risk summary |
+""",
+        encoding="utf-8",
+    )
+    call_dictionary.write_text(
+        """# Call Plan Data Dictionary Draft
+
+| Field key | Template concept | Kind | Likely source | Connected packet fields |
+| --------- | ---------------- | ---- | ------------- | ----------------------- |
+| `meeting_purpose` | Purpose of customer meeting | prose | human input | `opportunity_context` |
+""",
+        encoding="utf-8",
+    )
+
+    ensure_packet_data_element_pages(
+        vault_root,
+        build_default_packet_field_definitions(),
+    )
+    ensure_reference_data_dictionary_pages(vault_root, reference_root)
+
+    index_text = (vault_root / "data-elements" / "dictionary-index.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Briefing Packet Data Dictionary" in index_text
+    assert "Risk Register Data Dictionary" in index_text
+    assert "Call Plan Data Dictionary" in index_text
+    assert "data-elements/briefing-packet/customer" in index_text
+    assert "data-elements/risk-register/risk_short_title" in index_text
+    assert "data-elements/call-plan/meeting_purpose" in index_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
 def test_knowledge_vault_health_report_passes_connected_fixture(tmp_path) -> None:
     vault_root = tmp_path / "vault"
     corpus_root = tmp_path / "project-ariadne" / "knowledge"
@@ -427,7 +487,7 @@ relationships: []
 page_type: source_summary
 title: Weak Source
 source_refs: [manual:unknown]
-relationships: [informs:data-elements/customer]
+relationships: [informs:data-elements/briefing-packet/customer]
 ---
 
 # Weak Source
@@ -438,7 +498,7 @@ relationships: [informs:data-elements/customer]
         """---
 page_type: source_summary
 title: Missing Source
-relationships: [informs:data-elements/customer]
+relationships: [informs:data-elements/briefing-packet/customer]
 ---
 
 # Missing Source
@@ -462,7 +522,7 @@ relationships: []
 page_type: relationship
 title: Weak Relationship Provenance
 source_refs: [manual:unknown]
-relationships: [supports:data-elements/customer]
+relationships: [supports:data-elements/briefing-packet/customer]
 ---
 
 # Weak Relationship Provenance
@@ -500,7 +560,7 @@ def test_knowledge_vault_health_report_api_writes_report(tmp_path) -> None:
         """---
 page_type: source_summary
 title: Missing Source
-relationships: [informs:data-elements/customer]
+relationships: [informs:data-elements/briefing-packet/customer]
 ---
 
 # Missing Source

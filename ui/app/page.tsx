@@ -21,6 +21,10 @@ import {
   type AssistedCaptureGoal,
 } from "../components/AssistedCapturePanel";
 import {
+  Mvp2SkillsReviewPanel,
+  type Mvp2SkillsReviewSummary,
+} from "../components/Mvp2SkillsReviewPanel";
+import {
   OpportunityActivationPanel,
   type OpportunityActivationRun,
 } from "../components/OpportunityActivationPanel";
@@ -481,6 +485,11 @@ const modeIcons: Record<
   documents: FileStack,
   artifacts: Archive,
   capability_studio: Bot,
+  mvp2_skills_review: ShieldCheck,
+};
+
+const workModeLabels: Record<string, string> = {
+  mvp2_skills_review: "MVP-2 Skills Review",
 };
 
 const workModeDescriptions: Record<string, string> = {
@@ -496,6 +505,8 @@ const workModeDescriptions: Record<string, string> = {
   artifacts: "Draft readiness, renderer status, and future export paths.",
   capability_studio:
     "Advanced capability inventory, validation, runs, and provenance.",
+  mvp2_skills_review:
+    "Focused skills, dependency gates, chain stages, model roles, and Hermes proposals.",
 };
 
 const apiBaseUrl = process.env.ARIADNE_API_BASE_URL ?? "http://127.0.0.1:9622";
@@ -746,6 +757,20 @@ async function loadCapabilityCatalog(): Promise<CapabilityCatalog | null> {
   }
 }
 
+async function loadMvp2SkillsReviewSummary(): Promise<Mvp2SkillsReviewSummary | null> {
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/mvp-2/skills-review`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as Mvp2SkillsReviewSummary;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CommandCenterPage({
   searchParams,
 }: CommandCenterPageProps) {
@@ -783,6 +808,7 @@ export default async function CommandCenterPage({
     documentCapabilities,
     capabilityRuns,
     capabilityCatalog,
+    mvp2SkillsReviewSummary,
   ] = await Promise.all([
     loadLatestActivationRun(workspace.opportunity.id),
     loadWorkProductUpdates(workspace.opportunity.id, "action_plan"),
@@ -795,6 +821,7 @@ export default async function CommandCenterPage({
     loadDocumentIntakeCapabilities(),
     loadCapabilityRuns(),
     loadCapabilityCatalog(),
+    loadMvp2SkillsReviewSummary(),
   ]);
   const targetedPacketField =
     latestActivationRun?.packet_field_action_matrix.fields.find(
@@ -1063,6 +1090,10 @@ export default async function CommandCenterPage({
             />
           ) : null}
 
+          {selectedModeId === "mvp2_skills_review" ? (
+            <Mvp2SkillsReviewPanel summary={mvp2SkillsReviewSummary} />
+          ) : null}
+
           {isPlaceholderMode(selectedModeId) ? (
             <FocusedModePlaceholder mode={selectedMode} />
           ) : null}
@@ -1220,6 +1251,11 @@ function CommandCenterHome({
       id: "artifacts",
       label: "Check artifact readiness",
       description: "See renderer readiness and blocked export paths.",
+    },
+    {
+      id: "mvp2_skills_review",
+      label: "Review MVP-2 skills",
+      description: "Inspect chains, gates, model roles, and Hermes proposals.",
     },
   ];
 
@@ -3175,12 +3211,13 @@ function buildCommandModes(workModes: WorkMode[]): CommandMode[] {
     "documents",
     "artifacts",
     "capability_studio",
+    "mvp2_skills_review",
   ];
   const orderedModes = orderedIds.map((id) => {
     const backendMode = backendModes.get(id);
     return {
       id,
-      label: backendMode?.label ?? formatLabel(id),
+      label: backendMode?.label ?? workModeLabels[id] ?? formatLabel(id),
       pending_count: backendMode?.pending_count ?? 0,
       description:
         workModeDescriptions[id] ?? "Focused Command Center work mode.",

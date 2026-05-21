@@ -35,9 +35,8 @@ from ariadne.opportunity_activation import (
 )
 from ariadne.packet_knowledge import build_default_packet_field_definitions
 from ariadne.production_command_center import (
-    FRONTIER_SYNTHESIS_CONTRACT,
-    LOCAL_ADMIN_SOURCE_BACKED_CONTRACT,
     AssistedRouteModelRoleContract,
+    MVP2_MODEL_ROLE_CONTRACTS,
 )
 
 
@@ -50,6 +49,9 @@ MVP2_FOCUSED_SKILL_IDS = frozenset(
         "anomaly-route-recommender",
         "incumbent-award-history-brief",
         "compliance-spine-planner",
+        "win-theme-synthesizer",
+        "competitive-gap-route-hint",
+        "subcontractor-assumption-list",
     }
 )
 
@@ -348,7 +350,7 @@ def _stage_card(run_id: str, stage: dict[str, Any]) -> Mvp2ChainStageReviewCard:
 def _model_role_cards() -> tuple[Mvp2ModelRoleReviewCard, ...]:
     return tuple(
         _model_role_card(contract)
-        for contract in (LOCAL_ADMIN_SOURCE_BACKED_CONTRACT, FRONTIER_SYNTHESIS_CONTRACT)
+        for contract in MVP2_MODEL_ROLE_CONTRACTS
     )
 
 

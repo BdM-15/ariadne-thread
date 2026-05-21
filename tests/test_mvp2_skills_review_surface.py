@@ -43,15 +43,27 @@ def test_mvp2_skills_review_api_exposes_reviewable_contracts(tmp_path) -> None:
     assert response.status_code == 200
     assert body["review_status"] == "ready_for_human_review"
     assert body["trusted_downstream_writes"] is False
-    assert body["focused_skill_count"] >= 4
+    assert body["focused_skill_count"] >= 7
     assert body["dependency_gated_count"] >= 5
     assert body["pending_output_count"] >= 1
-    assert body["route_cards"][0]["approval_required"] is True
-    assert body["route_cards"][0]["review_destination"] == "Capability Run Output"
+    chain_route = next(
+        route
+        for route in body["route_cards"]
+        if route["capability_id"] == "data-table-profile-next-route-chain"
+    )
+    model_route = next(
+        route
+        for route in body["route_cards"]
+        if route["capability_id"] == "hosted-packet-synthesis-model"
+    )
+    assert chain_route["approval_required"] is True
+    assert chain_route["review_destination"] == "Capability Run Output"
+    assert model_route["approval_required"] is True
+    assert model_route["review_destination"] == "Packet Field Answer candidate"
     assert body["chain_stages"][0]["quality_gate_result"] == (
         "passed_pending_human_review"
     )
-    assert body["model_role_contracts"]
+    assert len(body["model_role_contracts"]) >= 7
     assert body["improvement_proposals"][0]["review_state"] == "suggestion"
     assert body["improvement_proposals"][0]["mutates_skills"] is False
     assert body["improvement_proposals"][0]["mutates_chain_maps"] is False

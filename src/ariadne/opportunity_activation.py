@@ -1222,33 +1222,96 @@ def _capability_routes_for_definition(
     route_kind: PacketFieldRouteKind,
     approval_required: bool,
 ) -> tuple[OpportunityActivationCapabilityRoute, ...]:
-    if route_kind is not PacketFieldRouteKind.RESEARCH_OR_MCP:
-        return ()
-    route_id = f"actroute_{definition.key}_data_table_profile_next_route_chain"
+    route_specs = {
+        PacketFieldRouteKind.RESEARCH_OR_MCP: {
+            "suffix": "data_table_profile_next_route_chain",
+            "capability_id": "data-table-profile-next-route-chain",
+            "capability_type": "skill_chain",
+            "status": OpportunityActivationCapabilityRouteStatus.APPROVAL_REQUIRED,
+            "approval_required": approval_required,
+            "approval_gate": "Operator approval required before activation invokes this chain.",
+            "queued_reason": "Approval required before activation can invoke this capability route.",
+            "review_destination": "Capability Run Output",
+            "network_required": False,
+            "model_required": False,
+            "execution_mode": "deterministic_plan_map",
+        },
+        PacketFieldRouteKind.SOURCE_BACKED_ANSWER: {
+            "suffix": "source_backed_answer_review",
+            "capability_id": "document-intake-source-backed-answer",
+            "capability_type": "adapter",
+            "status": OpportunityActivationCapabilityRouteStatus.SOURCE_LIMITED,
+            "approval_required": False,
+            "approval_gate": None,
+            "queued_reason": "Source material or extraction bundle required before source-backed answer route.",
+            "review_destination": "Packet Field Answer candidate",
+            "network_required": False,
+            "model_required": False,
+            "execution_mode": "source_backed_review_route",
+        },
+        PacketFieldRouteKind.SOURCE_PROFILE_LOOKUP: {
+            "suffix": "source_profile_lookup",
+            "capability_id": "source-profile-lookup-route",
+            "capability_type": "source_profile_route",
+            "status": OpportunityActivationCapabilityRouteStatus.SOURCE_LIMITED,
+            "approval_required": False,
+            "approval_gate": None,
+            "queued_reason": "Source-profile ref or imported data required before packet implication route.",
+            "review_destination": "Packet Field Answer candidate",
+            "network_required": False,
+            "model_required": False,
+            "execution_mode": "source_profile_route",
+        },
+        PacketFieldRouteKind.MODEL_SYNTHESIS: {
+            "suffix": "hosted_packet_synthesis",
+            "capability_id": "hosted-packet-synthesis-model",
+            "capability_type": "model_workflow",
+            "status": OpportunityActivationCapabilityRouteStatus.APPROVAL_REQUIRED,
+            "approval_required": True,
+            "approval_gate": "Operator approval required before hosted model synthesis.",
+            "queued_reason": "Approval and accepted evidence or explicit assumptions required before model synthesis.",
+            "review_destination": "Packet Field Answer candidate",
+            "network_required": True,
+            "model_required": True,
+            "execution_mode": "hosted_model_review_route",
+        },
+        PacketFieldRouteKind.CUSTOMER_CALL_PLAN: {
+            "suffix": "call_plan_question_prep",
+            "capability_id": "call-plan-question-prep",
+            "capability_type": "model_workflow",
+            "status": OpportunityActivationCapabilityRouteStatus.APPROVAL_REQUIRED,
+            "approval_required": True,
+            "approval_gate": "Operator approval required before call-plan draft support.",
+            "queued_reason": "Approval and customer/stakeholder context required before call-plan prep.",
+            "review_destination": "Call Plan signal",
+            "network_required": False,
+            "model_required": True,
+            "execution_mode": "local_or_hosted_model_review_route",
+        },
+    }
+    spec = route_specs[route_kind]
+    limitation = spec["queued_reason"] if spec["status"] is OpportunityActivationCapabilityRouteStatus.SOURCE_LIMITED else None
     return (
         OpportunityActivationCapabilityRoute(
-            route_id=route_id,
+            route_id=f"actroute_{definition.key}_{spec['suffix']}",
             field_key=definition.key,
-            capability_id="data-table-profile-next-route-chain",
-            capability_type="skill_chain",
-            status=OpportunityActivationCapabilityRouteStatus.APPROVAL_REQUIRED,
-            approval_required=approval_required,
-            approval_gate=(
-                "Operator approval required before activation invokes this chain."
-            ),
-            queued_reason=(
-                "Approval required before activation can invoke this capability route."
-            ),
-            review_destination="Capability Run Output",
+            capability_id=str(spec["capability_id"]),
+            capability_type=str(spec["capability_type"]),
+            status=spec["status"],
+            approval_required=bool(spec["approval_required"]),
+            approval_gate=spec["approval_gate"],
+            queued_reason=spec["queued_reason"],
+            source_limitations=(str(limitation),) if limitation else (),
+            review_destination=str(spec["review_destination"]),
             fake_runner_supported=True,
-            network_required=False,
-            model_required=False,
+            network_required=bool(spec["network_required"]),
+            model_required=bool(spec["model_required"]),
             trusted_downstream_writes=False,
             provenance={
                 "route_family": "packet_field_action_matrix",
                 "route_kind": route_kind.value,
-                "low_risk_when_approved": True,
-                "execution_mode": "deterministic_plan_map",
+                "low_risk_when_approved": route_kind is PacketFieldRouteKind.RESEARCH_OR_MCP,
+                "execution_mode": spec["execution_mode"],
             },
         ),
     )
@@ -1310,7 +1373,7 @@ def _activation_capability_route_after_policy(
     if input_payload is None:
         return _source_limited_route(
             route,
-            "Approved chain route lacks required data-table profile inputs.",
+            _missing_input_limitation(route),
         )
     if route.capability_id != "data-table-profile-next-route-chain":
         return route.model_copy(
@@ -1325,6 +1388,16 @@ def _activation_capability_route_after_policy(
         capability_run_store=capability_run_store,
         input_payload=input_payload,
     )
+
+
+def _missing_input_limitation(route: OpportunityActivationCapabilityRoute) -> str:
+    if route.capability_id == "data-table-profile-next-route-chain":
+        return "Approved chain route lacks required data-table profile inputs."
+    if route.capability_type == "model_workflow":
+        return "Approved model route lacks accepted evidence, assumptions, or prompt input."
+    if route.capability_type == "source_profile_route":
+        return "Approved source-profile route lacks required source-profile ref."
+    return "Approved capability route lacks required inputs."
 
 
 def _source_limited_route(
@@ -1459,11 +1532,18 @@ def _recommended_skill_chains(
 def _approval_required_routes(
     matrix: PacketFieldActionMatrix,
 ) -> tuple[str, ...]:
-    routes = tuple(
+    field_routes = tuple(
         f"{item.label}: approve capability-backed work before live collection or external research."
         for item in matrix.fields
         if item.approval_required
     )
+    capability_routes = tuple(
+        f"{item.label}: approve {route.capability_id} before route execution."
+        for item in matrix.fields
+        for route in item.capability_routes
+        if route.approval_required
+    )
+    routes = tuple(dict.fromkeys((*field_routes, *capability_routes)))
     if routes:
         return routes
     return (

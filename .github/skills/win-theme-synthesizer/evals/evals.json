@@ -1,0 +1,23 @@
+{
+  "skill_name": "win-theme-synthesizer",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create candidate win themes from these reviewed priorities, seller proof points, and competitive gaps. Keep it review-gated and do not draft a proposal.",
+      "expected_output": "Small set of reviewable win theme candidates with rationale, supporting inputs, assumptions, gaps, source refs, and no trusted downstream writes.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Turn customer hot buttons and seller strengths into value-prop theme candidates for review. No final messaging yet.",
+      "expected_output": "Pending-review candidate themes that pair priority, strength, and gap without final artifact or proposal output.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "We have weak customer priorities but need to see what win-theme inputs are missing.",
+      "expected_output": "Reviewable fallback output that names missing customer priority or seller proof gaps rather than inventing themes.",
+      "files": []
+    }
+  ]
+}

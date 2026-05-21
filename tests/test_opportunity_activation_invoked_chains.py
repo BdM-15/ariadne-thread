@@ -74,7 +74,14 @@ def test_activation_invokes_approved_low_risk_chain_as_reviewable_output(tmp_pat
     assert route.trusted_downstream_writes is False
     assert any(CHAIN_ROUTE_ID in invoked for invoked in run.activation_digest.invoked_routes)
     assert any(route.invoked_output_ids[0] in output for output in run.activation_digest.reviewable_outputs)
-    assert run.activation_digest.queued_approval_routes == ()
+    assert any(
+        "hosted_packet_synthesis" in queued
+        for queued in run.activation_digest.queued_approval_routes
+    )
+    assert not any(
+        queued.startswith(f"{CHAIN_ROUTE_ID}:")
+        for queued in run.activation_digest.queued_approval_routes
+    )
     assert run.provenance["network_required"] is False
     assert run.provenance["model_required"] is False
     assert run.provenance["trusted_downstream_writes"] is False

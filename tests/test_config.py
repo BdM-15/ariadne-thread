@@ -67,3 +67,30 @@ def test_capture_research_source_provider_env_exposes_configured_connectors() ->
     assert "serpapi-secret" not in dumped
     assert "olostep-secret" not in dumped
     assert "firecrawl-secret" not in dumped
+
+
+def test_hosted_model_settings_parse_guarded_provider_defaults_without_dumping_keys() -> None:
+    settings = RuntimeSettings.from_mapping(
+        {
+            "HOSTED_REASONING_MODEL_ENABLED": "true",
+            "DEFAULT_LLM_PROVIDER": "xai",
+            "REASONING_LLM_MODEL": "grok-4.3",
+            "DAILY_LLM_MODEL": "grok-mini",
+            "LLM_MODEL_TEMPERATURE": "0.1",
+            "LLM_MAX_OUTPUT_TOKENS": "4096",
+            "LLM_TIMEOUT_SECONDS": "45",
+            "XAI_API_KEY": "xai-secret",
+            "OPENAI_API_KEY": "openai-secret",
+        }
+    )
+
+    assert settings.hosted_model.enabled is True
+    assert settings.hosted_model.provider == "xai"
+    assert settings.hosted_model.reasoning_model == "grok-4.3"
+    assert settings.hosted_model.daily_model == "grok-mini"
+    assert settings.hosted_model.temperature == 0.1
+    assert settings.hosted_model.max_output_tokens == 4096
+    assert settings.hosted_model.timeout_seconds == 45
+    dumped = settings.model_dump_json()
+    assert "xai-secret" not in dumped
+    assert "openai-secret" not in dumped

@@ -832,7 +832,7 @@ Acceptance demo:
 - Any vault edit that would affect trusted opportunity execution is represented as a Mirror Update Proposal, not a direct structured-store overwrite.
 - No semantic retrieval/RAG engine, graph database, LightRAG runtime, broad Hermes autonomy, or automatic trusted downstream write is introduced in this slice.
 
-**MVP-2: AI Usage Layer + Skills Integration** ← **SELECTED NEXT**
+**MVP-2: AI Usage Layer + Skills Integration** ← **IMPLEMENTED ON MVP-2 EPIC BRANCH**
 
 Goal: make AI/LLM assistance and installed skills take as much approved capture action as possible rather than remaining decorative inventory.
 
@@ -866,6 +866,14 @@ Acceptance demo:
 - At least one installed skill or skill-backed capability can run through the Capability Run Store and route a reviewable output into packet/call/action/artifact work.
 - At least one MCP-backed/federal-data capability can produce a reviewable packet-field or source-profile candidate, with source limitations visible.
 - The same workflow works without a live model by using deterministic or fake runners in tests.
+
+Completion checkpoint:
+
+- MVP-2 model-use contracts cover capture need analysis, packet synthesis support, call/engagement prep, value proposition/messaging, research brief creation, output review summaries, and artifact-block drafting.
+- Local Admin Model and hosted reasoning model readiness routes are wired through guarded Capability Runs; hosted/cloud calls remain disabled unless `HOSTED_REASONING_MODEL_ENABLED=true` in private local config.
+- Runnable focused skills in the MVP-2 decomposition map are present as review-gated Capability Modules: `data-table-profiler`, `anomaly-route-recommender`, `incumbent-award-history-brief`, `compliance-spine-planner`, `win-theme-synthesizer`, `competitive-gap-route-hint`, and `subcontractor-assumption-list`.
+- Opportunity Activation exposes route cards for source-backed answer, source-profile lookup, model synthesis, customer call-plan prep, and approved low-risk skill-chain execution.
+- MVP-2 remains bounded: no LangGraph runtime, parser/RAG/graph/rendering expansion, broad Theseus mega-skill copy, or automatic trusted downstream writes.
 
 **MVP-3: Capture Work Product Loop**
 

@@ -8,7 +8,13 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from ariadne.capabilities import CapabilityCatalogEntry, discover_local_capability_catalog
-from ariadne.config import LocalAdminModelSettings
+from ariadne.config import HostedModelSettings, LocalAdminModelSettings
+from ariadne.hosted_model import (
+    HostedModelAssistStatus,
+    HostedModelClient,
+    HostedModelPurpose,
+    request_hosted_model_assist,
+)
 from ariadne.local_admin_model import (
     LocalAdminModelAssistStatus,
     LocalAdminModelClient,
@@ -255,6 +261,61 @@ def run_local_admin_model_readiness_probe(
     return store.write(run)
 
 
+def run_hosted_model_readiness_probe(
+    *,
+    settings: HostedModelSettings,
+    store: CapabilityRunStore,
+    client: HostedModelClient | None = None,
+) -> CapabilityRun:
+    assist = request_hosted_model_assist(
+        "Capability Run readiness probe. Return one concise confidence note.",
+        purpose=HostedModelPurpose.OUTPUT_REVIEW_SUMMARY,
+        settings=settings,
+        client=client,
+    )
+    completed_at = datetime.now(UTC)
+    run = CapabilityRun(
+        run_id=f"caprun_{uuid4().hex}",
+        capability_id="hosted_reasoning_model_readiness_probe",
+        capability_type=CapabilityRunCapabilityType.MODEL_WORKFLOW,
+        executor_kind=CapabilityRunExecutorKind.HOSTED_MODEL,
+        product_workflow="capability_catalog",
+        status=(
+            CapabilityRunStatus.NEEDS_REVIEW
+            if assist.status is HostedModelAssistStatus.USED
+            else CapabilityRunStatus.UNAVAILABLE
+        ),
+        inputs_summary=(
+            "Checked optional hosted reasoning model readiness through explicit "
+            "operator-enabled configuration."
+        ),
+        outputs=(_hosted_model_probe_output(assist, settings),),
+        provenance={
+            "sources": [
+                "HOSTED_REASONING_MODEL_ENABLED",
+                "DEFAULT_LLM_PROVIDER",
+                "REASONING_LLM_MODEL",
+                "DAILY_LLM_MODEL",
+            ],
+            "tool_names": ["request_hosted_model_assist"],
+            "executor": CapabilityRunExecutorKind.HOSTED_MODEL.value,
+            "source_mode": "hosted_model_probe",
+            "provider": assist.provider,
+            "model_name": assist.model,
+            "model_status": assist.status.value,
+            "purpose": assist.purpose.value,
+            "timeout_seconds": settings.timeout_seconds,
+            "used": assist.used,
+            "checked_at": completed_at.isoformat(),
+            "network_required": bool(settings.enabled),
+            "model_required": True,
+            "trusted_downstream_writes": False,
+        },
+        completed_at=completed_at,
+    )
+    return store.write(run)
+
+
 def record_capability_run_output_review(
     *,
     store: CapabilityRunStore,
@@ -340,6 +401,62 @@ def _local_admin_model_probe_output(
             "reason": assist.reason,
         },
     )
+
+
+def _hosted_model_probe_output(
+    assist,
+    settings: HostedModelSettings,
+) -> CapabilityRunOutput:
+    status = assist.status.value
+    gaps = _hosted_model_probe_gaps(assist.status, assist.reason)
+    return CapabilityRunOutput(
+        output_id=f"hosted_model_probe_{status}",
+        output_type="hosted_model_readiness",
+        title=f"Hosted Reasoning Model readiness: {status}",
+        summary=_hosted_model_probe_summary(status, assist.reason),
+        gaps=gaps,
+        recommended_destination="Capability Studio",
+        provenance={
+            "source_mode": "hosted_model_probe",
+            "provider": assist.provider,
+            "model_name": assist.model,
+            "purpose": assist.purpose.value,
+            "timeout_seconds": settings.timeout_seconds,
+            "temperature": settings.temperature,
+            "max_output_tokens": settings.max_output_tokens,
+            "model_status": status,
+            "used": assist.used,
+            "response_shape_valid": assist.status is HostedModelAssistStatus.USED,
+            "operator_enabled": settings.enabled,
+            "reason": assist.reason,
+            "trusted_downstream_writes": False,
+        },
+    )
+
+
+def _hosted_model_probe_summary(status: str, reason: str) -> str:
+    if status == HostedModelAssistStatus.USED.value:
+        return "Hosted Reasoning Model returned reviewable draft support."
+    if status == HostedModelAssistStatus.DISABLED.value:
+        return "Hosted Reasoning Model is configured but disabled for safe local use."
+    if status == HostedModelAssistStatus.MISSING_CREDENTIALS.value:
+        return "Hosted Reasoning Model enabled but provider credentials are missing."
+    return f"Hosted Reasoning Model is not ready: {reason}"
+
+
+def _hosted_model_probe_gaps(
+    status: HostedModelAssistStatus,
+    reason: str,
+) -> tuple[str, ...]:
+    if status is HostedModelAssistStatus.USED:
+        return ()
+    if status is HostedModelAssistStatus.DISABLED:
+        return ("Enable HOSTED_REASONING_MODEL_ENABLED before live hosted model runs.",)
+    if status is HostedModelAssistStatus.MISSING_CREDENTIALS:
+        return ("Add the provider API key to private .env before hosted model use.",)
+    if status is HostedModelAssistStatus.INVALID_RESPONSE:
+        return (f"Hosted Reasoning Model returned invalid response: {reason}",)
+    return (f"Hosted Reasoning Model unavailable: {reason}",)
 
 
 def _local_admin_model_probe_gaps(

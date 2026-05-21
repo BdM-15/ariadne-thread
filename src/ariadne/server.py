@@ -35,6 +35,7 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
     record_capability_run_output_review,
     run_capability_catalog_validation,
+    run_hosted_model_readiness_probe,
     run_local_admin_model_readiness_probe,
 )
 from ariadne.capture_research import (
@@ -138,6 +139,7 @@ from ariadne.knowledge_vault import (
     list_packet_data_element_page_status,
 )
 from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
+from ariadne.hosted_model import HostedModelClient
 from ariadne.mirror_update_proposals import (
     MirrorUpdateProposalReport,
     list_pending_mirror_update_proposals,
@@ -618,6 +620,7 @@ def create_app(
     sam_gov_attachment_fetcher: SamGovAttachmentFetcher | None = None,
     sam_gov_source_mode: SamGovSourceMode | None = None,
     local_admin_model_client: LocalAdminModelClient | None = None,
+    hosted_model_client: HostedModelClient | None = None,
     source_provider_adapter: ApprovedWebSourceCollectionAdapter | None = None,
     source_provider_smoke_runner: SourceProviderSmokeRunner | None = None,
 ) -> FastAPI:
@@ -1182,6 +1185,17 @@ def create_app(
                 settings=runtime_settings.local_admin_model,
                 store=store,
                 client=local_admin_model_client,
+            )
+        )
+
+    @app.post("/api/capability-runs/hosted-model-readiness-probe")
+    def hosted_model_readiness_probe() -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        return CapabilityRunResponse(
+            run=run_hosted_model_readiness_probe(
+                settings=runtime_settings.hosted_model,
+                store=store,
+                client=hosted_model_client,
             )
         )
 

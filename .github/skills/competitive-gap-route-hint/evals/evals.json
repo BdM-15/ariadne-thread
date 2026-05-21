@@ -1,0 +1,23 @@
+{
+  "skill_name": "competitive-gap-route-hint",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Turn this incumbent award-history signal and seller baseline into one competition packet implication. Review-gated only.",
+      "expected_output": "One Packet Field Answer candidate route hint with implication, recommended route, assumptions, gaps, source refs, and no trusted write.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "We have competitor pressure and a seller capability baseline. Recommend what packet route should get reviewed next.",
+      "expected_output": "A narrow competitive gap route hint, not a broad competitor dossier or live research result.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Seller baseline is missing. Can you still route the competitive gap signal?",
+      "expected_output": "A reviewable route hint that preserves missing-baseline gaps instead of inventing seller proof.",
+      "files": []
+    }
+  ]
+}

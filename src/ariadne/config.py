@@ -13,6 +13,19 @@ class LocalAdminModelSettings(BaseModel):
     timeout_seconds: int = 30
 
 
+class HostedModelSettings(BaseModel):
+    enabled: bool = False
+    provider: str = "xai"
+    reasoning_model: str = "grok-4.3"
+    daily_model: str | None = None
+    temperature: float = 0.2
+    max_output_tokens: int = 8192
+    timeout_seconds: int = 120
+    xai_api_key: str | None = Field(default=None, exclude=True)
+    openai_api_key: str | None = Field(default=None, exclude=True)
+    google_api_key: str | None = Field(default=None, exclude=True)
+
+
 class RuntimeSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 9622
@@ -61,6 +74,7 @@ class RuntimeSettings(BaseModel):
     local_admin_model: LocalAdminModelSettings = Field(
         default_factory=LocalAdminModelSettings
     )
+    hosted_model: HostedModelSettings = Field(default_factory=HostedModelSettings)
 
     @property
     def local_url(self) -> str:
@@ -208,6 +222,41 @@ class RuntimeSettings(BaseModel):
                         LocalAdminModelSettings.model_fields["timeout_seconds"].default,
                     )
                 ),
+            ),
+            hosted_model=HostedModelSettings(
+                enabled=_parse_bool(
+                    values.get("HOSTED_REASONING_MODEL_ENABLED", "false")
+                ),
+                provider=values.get(
+                    "DEFAULT_LLM_PROVIDER",
+                    HostedModelSettings.model_fields["provider"].default,
+                ),
+                reasoning_model=values.get(
+                    "REASONING_LLM_MODEL",
+                    HostedModelSettings.model_fields["reasoning_model"].default,
+                ),
+                daily_model=values.get("DAILY_LLM_MODEL") or None,
+                temperature=float(
+                    values.get(
+                        "LLM_MODEL_TEMPERATURE",
+                        HostedModelSettings.model_fields["temperature"].default,
+                    )
+                ),
+                max_output_tokens=int(
+                    values.get(
+                        "LLM_MAX_OUTPUT_TOKENS",
+                        HostedModelSettings.model_fields["max_output_tokens"].default,
+                    )
+                ),
+                timeout_seconds=int(
+                    values.get(
+                        "LLM_TIMEOUT_SECONDS",
+                        HostedModelSettings.model_fields["timeout_seconds"].default,
+                    )
+                ),
+                xai_api_key=values.get("XAI_API_KEY") or None,
+                openai_api_key=values.get("OPENAI_API_KEY") or None,
+                google_api_key=values.get("GOOGLE_API_KEY") or None,
             ),
         )
 

@@ -106,6 +106,38 @@ def test_activation_matrix_exposes_route_steps_and_approval_gates() -> None:
     )
 
 
+def test_activation_matrix_exposes_capability_routes_for_each_route_kind() -> None:
+    matrix = build_packet_field_action_matrix(
+        opportunity_id="opp-disa-cloud",
+        definitions=build_default_packet_field_definitions(),
+    )
+
+    routes_by_field = {
+        field.field_key: field.capability_routes[0]
+        for field in matrix.fields
+        if field.capability_routes
+    }
+
+    assert set(routes_by_field) == {
+        "customer",
+        "prime_name",
+        "rfp_release_date",
+        "total_contract_value",
+        "primary_scope",
+        "competition",
+        "pwin",
+        "evaluation_methodology",
+        "risks",
+        "approval_criteria",
+    }
+    assert routes_by_field["competition"].capability_type == "skill_chain"
+    assert routes_by_field["pwin"].capability_id == "hosted-packet-synthesis-model"
+    assert routes_by_field["pwin"].model_required is True
+    assert routes_by_field["total_contract_value"].capability_type == "source_profile_route"
+    assert routes_by_field["customer"].capability_id == "document-intake-source-backed-answer"
+    assert all(route.trusted_downstream_writes is False for route in routes_by_field.values())
+
+
 def test_activation_matrix_uses_vault_context_for_customer_route(tmp_path) -> None:
     vault_root = tmp_path / "vault"
     definitions = build_default_packet_field_definitions()

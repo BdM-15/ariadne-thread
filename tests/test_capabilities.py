@@ -201,6 +201,30 @@ def test_anomaly_route_recommender_skill_is_discoverable_through_mvp2_contract()
     assert entry.contract.fake_runner_supported is True
 
 
+def test_remaining_runnable_now_focused_skills_are_discoverable() -> None:
+    workspace_root = Path(__file__).resolve().parents[1]
+
+    catalog = discover_local_capability_catalog(workspace_root)
+    by_id = {entry.id: entry for entry in catalog.entries}
+
+    expected = {
+        "win-theme-synthesizer": "Capability Run Output",
+        "competitive-gap-route-hint": "Packet Field Answer candidate",
+        "subcontractor-assumption-list": "Call Plan signal",
+    }
+    for skill_id, review_destination in expected.items():
+        entry = by_id[skill_id]
+        assert entry.capability_type is CapabilityType.WORKSPACE_SKILL
+        assert entry.capability_status is CapabilityStatus.RUNNABLE
+        assert entry.validation_status is CapabilityValidationStatus.TESTED
+        assert entry.contract.review_destination == review_destination
+        assert entry.contract.autonomy_tier is (
+            CapabilityAutonomyTier.HUMAN_APPROVAL_REQUIRED
+        )
+        assert entry.contract.model_role is CapabilityModelRole.NONE
+        assert entry.contract.fake_runner_supported is True
+
+
 def test_incumbent_award_history_skill_is_discoverable_through_mvp2_contract() -> None:
     workspace_root = Path(__file__).resolve().parents[1]
 

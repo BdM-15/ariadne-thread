@@ -7,9 +7,10 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
     record_capability_run_output_review,
     run_capability_catalog_validation,
+    run_hosted_model_readiness_probe,
     run_local_admin_model_readiness_probe,
 )
-from ariadne.config import LocalAdminModelSettings
+from ariadne.config import HostedModelSettings, LocalAdminModelSettings
 
 
 def test_catalog_validation_run_persists_reviewable_gap_output(tmp_path) -> None:
@@ -167,6 +168,49 @@ def test_local_admin_model_readiness_probe_records_invalid_response_with_fake_cl
     assert "invalid JSON or schema" in run.outputs[0].gaps[0]
 
 
+def test_hosted_model_readiness_probe_records_disabled_without_network(tmp_path) -> None:
+    store = CapabilityRunStore(tmp_path / "capability-runs")
+
+    run = run_hosted_model_readiness_probe(
+        settings=HostedModelSettings(enabled=False),
+        store=store,
+        client=_FakeHostedModelClient("unused"),
+    )
+
+    assert run.status is CapabilityRunStatus.UNAVAILABLE
+    assert run.executor_kind.value == "hosted_model"
+    assert run.provenance["source_mode"] == "hosted_model_probe"
+    assert run.provenance["network_required"] is False
+    assert run.provenance["trusted_downstream_writes"] is False
+    assert run.outputs[0].output_type == "hosted_model_readiness"
+    assert "HOSTED_REASONING_MODEL_ENABLED" in run.outputs[0].gaps[0]
+
+
+def test_hosted_model_readiness_probe_records_success_with_fake_client(tmp_path) -> None:
+    store = CapabilityRunStore(tmp_path / "capability-runs")
+
+    run = run_hosted_model_readiness_probe(
+        settings=HostedModelSettings(
+            enabled=True,
+            provider="xai",
+            reasoning_model="grok-4.3",
+            daily_model="grok-mini",
+            xai_api_key="fake-key",
+        ),
+        store=store,
+        client=_FakeHostedModelClient("Probe ok."),
+    )
+
+    assert run.status is CapabilityRunStatus.NEEDS_REVIEW
+    assert run.provenance["model_status"] == "used"
+    assert run.provenance["provider"] == "xai"
+    assert run.provenance["model_name"] == "grok-mini"
+    assert run.provenance["network_required"] is True
+    assert run.outputs[0].gaps == ()
+    assert run.outputs[0].provenance["response_shape_valid"] is True
+    assert store.read(run.run_id) == run
+
+
 def _catalog_validation_run_with_gap(tmp_path):
     skill_dir = tmp_path / ".github" / "skills" / "review-skill"
     skill_dir.mkdir(parents=True)
@@ -193,3 +237,11 @@ class _FakeLocalAdminModelClient:
 class _UnavailableLocalAdminModelClient:
     def generate_json(self, **kwargs):
         raise TimeoutError("Ollama probe timed out")
+
+
+class _FakeHostedModelClient:
+    def __init__(self, response: str) -> None:
+        self.response = response
+
+    def generate_text(self, **kwargs):
+        return self.response

@@ -1,0 +1,23 @@
+{
+  "skill_name": "subcontractor-assumption-list",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Turn these teaming and partner scope gaps into assumptions and questions for a partner call. No SOW draft.",
+      "expected_output": "Reviewable assumptions and questions routed to Call Plan signal with source refs and no trusted downstream writes.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "We may need a subcontractor for transition staffing. Create follow-up assumptions only.",
+      "expected_output": "Pending-review partner assumptions/questions without legal, workshare, or SOW commitments.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "No partner scope gaps are defined yet. What should Ariadne ask before teaming work proceeds?",
+      "expected_output": "Reviewable fallback question list that asks which scope areas need partner confirmation.",
+      "files": []
+    }
+  ]
+}

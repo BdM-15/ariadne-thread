@@ -740,6 +740,15 @@ LOCAL_ADMIN_SOURCE_BACKED_CONTRACT = AssistedRouteModelRoleContract(
 )
 
 
+CAPTURE_NEED_ANALYSIS_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.LOCAL_ADMIN_MODEL,
+    allowed_uses=("capture need analysis", "route recommendation prep"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable capture-need summary with recommended capability routes.",
+    review_destination="Capability Run Output",
+)
+
+
 FRONTIER_SYNTHESIS_CONTRACT = AssistedRouteModelRoleContract(
     model_role=CapabilityModelRole.FRONTIER_REASONING_MODEL,
     allowed_uses=(
@@ -750,6 +759,74 @@ FRONTIER_SYNTHESIS_CONTRACT = AssistedRouteModelRoleContract(
     approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
     expected_output="Reviewable model-assisted packet synthesis draft.",
     review_destination="living_packet_review_queue",
+)
+
+
+PACKET_SYNTHESIS_SUPPORT_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.FRONTIER_REASONING_MODEL,
+    allowed_uses=("packet synthesis support", "assumption and gap surfacing"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable packet synthesis support with assumptions and source limits.",
+    review_destination="Packet Field Answer candidate",
+    live_provider_allowed=True,
+)
+
+
+CALL_ENGAGEMENT_PREP_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.LOCAL_ADMIN_MODEL,
+    allowed_uses=("call prep", "engagement question drafting"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable call-plan signal or question set.",
+    review_destination="Call Plan signal",
+)
+
+
+VALUE_PROPOSITION_MESSAGING_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.FRONTIER_REASONING_MODEL,
+    allowed_uses=("value proposition", "engagement messaging", "win theme framing"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable value-proposition or messaging candidate.",
+    review_destination="Artifact Content Block",
+    live_provider_allowed=True,
+)
+
+
+RESEARCH_BRIEF_CREATION_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.LOCAL_ADMIN_MODEL,
+    allowed_uses=("research brief creation", "source-target planning"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable capture research brief before source collection.",
+    review_destination="Capture Research candidate",
+)
+
+
+OUTPUT_REVIEW_SUMMARY_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.LOCAL_ADMIN_MODEL,
+    allowed_uses=("output review summaries", "review checklist prep"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable summary of output, assumptions, gaps, and next review action.",
+    review_destination="Capability Run Output",
+)
+
+
+ARTIFACT_BLOCK_DRAFTING_CONTRACT = AssistedRouteModelRoleContract(
+    model_role=CapabilityModelRole.FRONTIER_REASONING_MODEL,
+    allowed_uses=("artifact-block drafting", "reviewable narrative block prep"),
+    approval_requirement=AssistedCaptureAutonomyTier.HUMAN_APPROVAL_REQUIRED,
+    expected_output="Reviewable artifact content block draft with source limits.",
+    review_destination="Artifact Content Block",
+    live_provider_allowed=True,
+)
+
+
+MVP2_MODEL_ROLE_CONTRACTS = (
+    CAPTURE_NEED_ANALYSIS_CONTRACT,
+    PACKET_SYNTHESIS_SUPPORT_CONTRACT,
+    CALL_ENGAGEMENT_PREP_CONTRACT,
+    VALUE_PROPOSITION_MESSAGING_CONTRACT,
+    RESEARCH_BRIEF_CREATION_CONTRACT,
+    OUTPUT_REVIEW_SUMMARY_CONTRACT,
+    ARTIFACT_BLOCK_DRAFTING_CONTRACT,
 )
 
 

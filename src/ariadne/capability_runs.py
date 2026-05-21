@@ -18,6 +18,7 @@ from ariadne.local_admin_model import (
 
 class CapabilityRunCapabilityType(StrEnum):
     SKILL = "skill"
+    SKILL_CHAIN = "skill_chain"
     CLI_HARNESS = "cli_harness"
     MCP_TOOL = "mcp_tool"
     PARSER = "parser"

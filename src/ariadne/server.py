@@ -71,6 +71,7 @@ from ariadne.command_center import (
     render_sam_gov_enrichment_profile_shell,
 )
 from ariadne.config import RuntimeSettings
+from ariadne.data_table_profiler import DataTableProfileRequest
 from ariadne.opportunity_activation import (
     OpportunityActivationFieldReviewRequest,
     OpportunityActivationFieldReviewResponse,
@@ -80,6 +81,7 @@ from ariadne.opportunity_activation import (
     OpportunityActivationRunTrigger,
     record_opportunity_activation_field_review,
 )
+from ariadne.thin_orchestration_chains import run_data_table_profile_next_route_chain
 from ariadne.draft_promotion import (
     DraftPartPromotionDecision,
     discard_draft_part_promotion,
@@ -364,6 +366,16 @@ class CapabilityRunOutputReviewRequest(BaseModel):
     decision: CapabilityRunReviewDecisionType
     reviewer_rationale: str = ""
     routed_destination: str | None = None
+
+
+class DataTableProfileChainRunRequest(BaseModel):
+    table_label: str
+    source_ref: str
+    rows: tuple[dict[str, object], ...]
+    source_refs: tuple[str, ...] = ()
+    max_sample_values: int = Field(default=3, ge=1, le=10)
+    opportunity_id: str | None = None
+    approval_basis: str = "operator_approved_chain_run"
 
 
 class CaptureResearchRunCreateRequest(BaseModel):
@@ -1141,6 +1153,29 @@ def create_app(
                 client=local_admin_model_client,
             )
         )
+
+    @app.post("/api/skill-chains/data-table-profile-next-route")
+    def data_table_profile_next_route_chain(
+        request: DataTableProfileChainRunRequest,
+    ) -> CapabilityRunResponse:
+        store = CapabilityRunStore(runtime_settings.ariadne_capability_runs_dir)
+        try:
+            return CapabilityRunResponse(
+                run=run_data_table_profile_next_route_chain(
+                    request=DataTableProfileRequest(
+                        table_label=request.table_label,
+                        source_ref=request.source_ref,
+                        source_refs=request.source_refs,
+                        rows=request.rows,
+                        max_sample_values=request.max_sample_values,
+                    ),
+                    store=store,
+                    opportunity_id=request.opportunity_id,
+                    approval_basis=request.approval_basis,
+                )
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/capability-runs")
     def capability_runs() -> CapabilityRunListResponse:

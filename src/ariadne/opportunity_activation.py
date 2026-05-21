@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
@@ -64,6 +65,34 @@ class PacketFieldRouteKind(StrEnum):
     CUSTOMER_CALL_PLAN = "customer_call_plan"
 
 
+class OpportunityActivationCapabilityRouteStatus(StrEnum):
+    APPROVAL_REQUIRED = "approval_required"
+    SOURCE_LIMITED = "source_limited"
+    DEPENDENCY_GATED = "dependency_gated"
+    LIVE_PROVIDER_QUEUED = "live_provider_queued"
+    EXECUTED = "executed"
+
+
+class OpportunityActivationCapabilityRoute(BaseModel):
+    route_id: str
+    field_key: str
+    capability_id: str
+    capability_type: str
+    status: OpportunityActivationCapabilityRouteStatus
+    approval_required: bool = True
+    approval_gate: str | None = None
+    queued_reason: str | None = None
+    source_limitations: tuple[str, ...] = ()
+    review_destination: str = "Capability Run Output"
+    fake_runner_supported: bool = True
+    network_required: bool = False
+    model_required: bool = False
+    trusted_downstream_writes: bool = False
+    invoked_run_id: str | None = None
+    invoked_output_ids: tuple[str, ...] = ()
+    provenance: dict[str, Any] = Field(default_factory=dict)
+
+
 class PacketFieldVaultRouteContext(BaseModel):
     page_refs: tuple[str, ...]
     relationship_refs: tuple[str, ...]
@@ -77,6 +106,9 @@ class OpportunityActivationDigest(BaseModel):
     blocked_field_count: int
     recommended_skill_chains: tuple[str, ...]
     approval_required_routes: tuple[str, ...]
+    queued_approval_routes: tuple[str, ...] = ()
+    invoked_routes: tuple[str, ...] = ()
+    reviewable_outputs: tuple[str, ...] = ()
     source_limitations: tuple[str, ...]
     next_best_actions: tuple[str, ...]
 
@@ -103,6 +135,7 @@ class PacketFieldActionItem(BaseModel):
     source_refs: tuple[str, ...] = ()
     vault_context_refs: tuple[str, ...] = ()
     vault_relationship_refs: tuple[str, ...] = ()
+    capability_routes: tuple[OpportunityActivationCapabilityRoute, ...] = ()
     gap_summary: str | None = None
     current_value: str | None = None
 
@@ -152,6 +185,7 @@ class OpportunityActivationRunOutput(BaseModel):
     review_state: OpportunityActivationReviewState = (
         OpportunityActivationReviewState.PENDING_REVIEW
     )
+    provenance: dict[str, object] = Field(default_factory=dict)
 
 
 class OpportunityActivationFieldReviewRequest(BaseModel):
@@ -252,6 +286,9 @@ def run_opportunity_activation(
     run_id: str | None = None,
     current_milestone_gate: MilestoneGate | str = MilestoneGate.MILESTONE_1,
     vault_root: Path | str | None = None,
+    capability_run_store: Any | None = None,
+    approved_capability_route_ids: tuple[str, ...] = (),
+    capability_route_inputs: dict[str, object] | None = None,
 ) -> OpportunityActivationRun:
     milestone_gate = _coerce_milestone_gate(current_milestone_gate)
     completed_at = created_at or datetime.now(UTC)
@@ -262,14 +299,27 @@ def run_opportunity_activation(
         current_milestone_gate=milestone_gate,
         vault_root=vault_root,
     )
+    matrix = _matrix_with_activation_capability_route_status(
+        matrix=matrix,
+        opportunity_id=opportunity_id,
+        capability_run_store=capability_run_store,
+        approved_capability_route_ids=approved_capability_route_ids,
+        capability_route_inputs=capability_route_inputs or {},
+    )
+    capability_routes = _capability_routes(matrix)
     digest = build_activation_digest(
         matrix=matrix,
         initial_coverage=initial_coverage,
+        capability_routes=capability_routes,
     )
     outputs = tuple(
         _output_from_action_item(item)
         for item in matrix.fields
         if item.action_state is not PacketFieldActionState.ANSWERED
+    ) + tuple(
+        _output_from_capability_route(route)
+        for route in capability_routes
+        if route.status is OpportunityActivationCapabilityRouteStatus.EXECUTED
     )
     run = OpportunityActivationRun(
         run_id=run_id
@@ -292,6 +342,19 @@ def run_opportunity_activation(
             "network_required": False,
             "model_required": False,
             "trusted_downstream_writes": False,
+            "activation_capability_routes": [
+                route.model_dump(mode="json") for route in capability_routes
+            ],
+            "invoked_capability_run_ids": [
+                route.invoked_run_id
+                for route in capability_routes
+                if route.invoked_run_id is not None
+            ],
+            "queued_capability_routes": [
+                route.model_dump(mode="json")
+                for route in capability_routes
+                if route.status is not OpportunityActivationCapabilityRouteStatus.EXECUTED
+            ],
             "analyzed_at": completed_at.isoformat(),
         },
         created_at=completed_at,
@@ -439,6 +502,7 @@ def build_activation_digest(
     *,
     matrix: PacketFieldActionMatrix,
     initial_coverage: tuple[str, ...] = (),
+    capability_routes: tuple[OpportunityActivationCapabilityRoute, ...] = (),
 ) -> OpportunityActivationDigest:
     coverage = initial_coverage + (
         f"Analyzed {len(matrix.fields)} packet fields for answer paths.",
@@ -449,13 +513,26 @@ def build_activation_digest(
         coverage += (
             f"Found {matrix.review_ready_count} field candidates ready for review.",
         )
+    invoked_routes = _invoked_route_summaries(capability_routes)
+    queued_routes = _queued_route_summaries(capability_routes)
+    reviewable_outputs = _reviewable_route_output_summaries(capability_routes)
+    if invoked_routes:
+        coverage += (f"Invoked {len(invoked_routes)} approved low-risk route(s).",)
+    if queued_routes:
+        coverage += (f"Queued {len(queued_routes)} capability route(s) for approval or missing inputs.",)
     return OpportunityActivationDigest(
         coverage_gained=coverage,
         review_ready_count=matrix.review_ready_count,
         blocked_field_count=matrix.blocked_field_count,
         recommended_skill_chains=_recommended_skill_chains(matrix),
         approval_required_routes=_approval_required_routes(matrix),
-        source_limitations=_source_limitations(matrix),
+        queued_approval_routes=queued_routes,
+        invoked_routes=invoked_routes,
+        reviewable_outputs=reviewable_outputs,
+        source_limitations=_source_limitations(
+            matrix,
+            capability_routes=capability_routes,
+        ),
         next_best_actions=_next_best_actions(matrix),
     )
 
@@ -529,6 +606,8 @@ def _action_item_for_definition(
         vault_root=vault_root,
         definition=definition,
     )
+    route_kind = recommend_packet_field_route_kind(definition)
+    approval_required = _approval_required(definition)
     route_rationale = _route_rationale(definition)
     route_steps = _route_steps(definition)
     if vault_context is not None:
@@ -553,19 +632,24 @@ def _action_item_for_definition(
         answer_paths=answer_path_labels,
         required_milestone_gates=required_gates,
         current_gate_required=current_gate_required,
-        route_kind=recommend_packet_field_route_kind(definition),
+        route_kind=route_kind,
         recommended_route=recommend_packet_field_route(definition),
         route_rationale=route_rationale,
         route_steps=route_steps,
         approval_gate=_approval_gate(definition),
         requires_review=action_state is not PacketFieldActionState.ANSWERED,
-        approval_required=_approval_required(definition),
+        approval_required=approval_required,
         source_refs=answer.evidence_ids if answer is not None else (),
         vault_context_refs=(
             vault_context.page_refs if vault_context is not None else ()
         ),
         vault_relationship_refs=(
             vault_context.relationship_refs if vault_context is not None else ()
+        ),
+        capability_routes=_capability_routes_for_definition(
+            definition=definition,
+            route_kind=route_kind,
+            approval_required=approval_required,
         ),
         gap_summary=gap_summary,
         current_value=answer.value if answer is not None else None,
@@ -1132,6 +1216,184 @@ def _approval_required(definition: PacketFieldDefinition) -> bool:
     )
 
 
+def _capability_routes_for_definition(
+    *,
+    definition: PacketFieldDefinition,
+    route_kind: PacketFieldRouteKind,
+    approval_required: bool,
+) -> tuple[OpportunityActivationCapabilityRoute, ...]:
+    if route_kind is not PacketFieldRouteKind.RESEARCH_OR_MCP:
+        return ()
+    route_id = f"actroute_{definition.key}_data_table_profile_next_route_chain"
+    return (
+        OpportunityActivationCapabilityRoute(
+            route_id=route_id,
+            field_key=definition.key,
+            capability_id="data-table-profile-next-route-chain",
+            capability_type="skill_chain",
+            status=OpportunityActivationCapabilityRouteStatus.APPROVAL_REQUIRED,
+            approval_required=approval_required,
+            approval_gate=(
+                "Operator approval required before activation invokes this chain."
+            ),
+            queued_reason=(
+                "Approval required before activation can invoke this capability route."
+            ),
+            review_destination="Capability Run Output",
+            fake_runner_supported=True,
+            network_required=False,
+            model_required=False,
+            trusted_downstream_writes=False,
+            provenance={
+                "route_family": "packet_field_action_matrix",
+                "route_kind": route_kind.value,
+                "low_risk_when_approved": True,
+                "execution_mode": "deterministic_plan_map",
+            },
+        ),
+    )
+
+
+def _matrix_with_activation_capability_route_status(
+    *,
+    matrix: PacketFieldActionMatrix,
+    opportunity_id: str,
+    capability_run_store: Any | None,
+    approved_capability_route_ids: tuple[str, ...],
+    capability_route_inputs: dict[str, object],
+) -> PacketFieldActionMatrix:
+    if not any(item.capability_routes for item in matrix.fields):
+        return matrix
+    approved_routes = set(approved_capability_route_ids)
+    updated_fields = tuple(
+        item.model_copy(
+            update={
+                "capability_routes": tuple(
+                    _activation_capability_route_after_policy(
+                        route=route,
+                        opportunity_id=opportunity_id,
+                        capability_run_store=capability_run_store,
+                        approved_routes=approved_routes,
+                        capability_route_inputs=capability_route_inputs,
+                    )
+                    for route in item.capability_routes
+                )
+            }
+        )
+        if item.capability_routes
+        else item
+        for item in matrix.fields
+    )
+    return _matrix_with_fields(
+        opportunity_id=matrix.opportunity_id,
+        current_milestone_gate=matrix.current_milestone_gate,
+        fields=updated_fields,
+    )
+
+
+def _activation_capability_route_after_policy(
+    *,
+    route: OpportunityActivationCapabilityRoute,
+    opportunity_id: str,
+    capability_run_store: Any | None,
+    approved_routes: set[str],
+    capability_route_inputs: dict[str, object],
+) -> OpportunityActivationCapabilityRoute:
+    if route.route_id not in approved_routes:
+        return route
+    if capability_run_store is None:
+        return _source_limited_route(
+            route,
+            "Capability Run Store is required before activation can invoke this route.",
+        )
+    input_payload = capability_route_inputs.get(route.route_id)
+    if input_payload is None:
+        return _source_limited_route(
+            route,
+            "Approved chain route lacks required data-table profile inputs.",
+        )
+    if route.capability_id != "data-table-profile-next-route-chain":
+        return route.model_copy(
+            update={
+                "status": OpportunityActivationCapabilityRouteStatus.DEPENDENCY_GATED,
+                "queued_reason": "Capability route has no MVP-2 activation runner yet.",
+            }
+        )
+    return _execute_data_table_profile_chain_route(
+        route=route,
+        opportunity_id=opportunity_id,
+        capability_run_store=capability_run_store,
+        input_payload=input_payload,
+    )
+
+
+def _source_limited_route(
+    route: OpportunityActivationCapabilityRoute,
+    limitation: str,
+) -> OpportunityActivationCapabilityRoute:
+    return route.model_copy(
+        update={
+            "status": OpportunityActivationCapabilityRouteStatus.SOURCE_LIMITED,
+            "queued_reason": limitation,
+            "source_limitations": (limitation,),
+        }
+    )
+
+
+def _execute_data_table_profile_chain_route(
+    *,
+    route: OpportunityActivationCapabilityRoute,
+    opportunity_id: str,
+    capability_run_store: Any,
+    input_payload: object,
+) -> OpportunityActivationCapabilityRoute:
+    from ariadne.data_table_profiler import DataTableProfileRequest
+    from ariadne.thin_orchestration_chains import run_data_table_profile_next_route_chain
+
+    request = (
+        input_payload
+        if isinstance(input_payload, DataTableProfileRequest)
+        else DataTableProfileRequest.model_validate(input_payload)
+    )
+    capability_run = run_data_table_profile_next_route_chain(
+        request=request,
+        store=capability_run_store,
+        opportunity_id=opportunity_id,
+        approval_basis=f"activation_approved:{route.route_id}",
+    )
+    return route.model_copy(
+        update={
+            "status": OpportunityActivationCapabilityRouteStatus.EXECUTED,
+            "queued_reason": None,
+            "invoked_run_id": capability_run.run_id,
+            "invoked_output_ids": tuple(
+                output.output_id for output in capability_run.outputs
+            ),
+            "review_destination": "Capability Run Output",
+            "provenance": {
+                **route.provenance,
+                "capability_run_id": capability_run.run_id,
+                "capability_output_ids": [
+                    output.output_id for output in capability_run.outputs
+                ],
+                "network_required": False,
+                "model_required": False,
+                "trusted_downstream_writes": False,
+            },
+        }
+    )
+
+
+def _capability_routes(
+    matrix: PacketFieldActionMatrix,
+) -> tuple[OpportunityActivationCapabilityRoute, ...]:
+    return tuple(
+        route
+        for item in matrix.fields
+        for route in item.capability_routes
+    )
+
+
 def _output_from_action_item(
     item: PacketFieldActionItem,
 ) -> OpportunityActivationRunOutput:
@@ -1141,6 +1403,37 @@ def _output_from_action_item(
         title=f"Advance {item.label}",
         summary=f"{item.label}: {item.recommended_route}",
         recommended_route=item.recommended_route,
+        provenance={
+            "route_kind": item.route_kind.value,
+            "approval_required": item.approval_required,
+            "capability_route_ids": [
+                route.route_id for route in item.capability_routes
+            ],
+            "trusted_downstream_writes": False,
+        },
+    )
+
+
+def _output_from_capability_route(
+    route: OpportunityActivationCapabilityRoute,
+) -> OpportunityActivationRunOutput:
+    return OpportunityActivationRunOutput(
+        output_id=f"actout_capability_{route.route_id}",
+        field_key=route.field_key,
+        title=f"Review {route.capability_id}",
+        summary=(
+            f"Activation invoked {route.capability_id}; review Capability Run Output "
+            "before any trusted workflow use."
+        ),
+        recommended_destination=route.review_destination,
+        recommended_route=f"Review capability run {route.invoked_run_id}.",
+        provenance={
+            "route_id": route.route_id,
+            "capability_id": route.capability_id,
+            "capability_run_id": route.invoked_run_id,
+            "capability_output_ids": list(route.invoked_output_ids),
+            "trusted_downstream_writes": False,
+        },
     )
 
 
@@ -1178,7 +1471,42 @@ def _approval_required_routes(
     )
 
 
-def _source_limitations(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
+def _invoked_route_summaries(
+    capability_routes: tuple[OpportunityActivationCapabilityRoute, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        f"{route.route_id}: invoked {route.capability_id} as {route.invoked_run_id}."
+        for route in capability_routes
+        if route.status is OpportunityActivationCapabilityRouteStatus.EXECUTED
+    )
+
+
+def _queued_route_summaries(
+    capability_routes: tuple[OpportunityActivationCapabilityRoute, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        f"{route.route_id}: {route.queued_reason or route.status.value}."
+        for route in capability_routes
+        if route.status is not OpportunityActivationCapabilityRouteStatus.EXECUTED
+    )
+
+
+def _reviewable_route_output_summaries(
+    capability_routes: tuple[OpportunityActivationCapabilityRoute, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        f"{route.route_id}: {output_id} pending in {route.review_destination}."
+        for route in capability_routes
+        if route.status is OpportunityActivationCapabilityRouteStatus.EXECUTED
+        for output_id in route.invoked_output_ids
+    )
+
+
+def _source_limitations(
+    matrix: PacketFieldActionMatrix,
+    *,
+    capability_routes: tuple[OpportunityActivationCapabilityRoute, ...] = (),
+) -> tuple[str, ...]:
     limitations: list[str] = []
     if matrix.source_ref_count == 0:
         limitations.append(
@@ -1188,6 +1516,11 @@ def _source_limitations(matrix: PacketFieldActionMatrix) -> tuple[str, ...]:
         limitations.append(
             f"{matrix.current_gate_blocked_count} current-gate packet fields still need evidence, import, synthesis, or user input."
         )
+    limitations.extend(
+        limitation
+        for route in capability_routes
+        for limitation in route.source_limitations
+    )
     return tuple(limitations)
 
 

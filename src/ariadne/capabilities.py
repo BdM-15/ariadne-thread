@@ -12,8 +12,11 @@ CANONICAL_CAPABILITY_LOCATIONS = (".github/skills",)
 
 class CapabilityType(StrEnum):
     WORKSPACE_SKILL = "workspace_skill"
+    SKILL_CHAIN = "skill_chain"
     CLI_HARNESS = "cli_harness"
     MCP_TOOL = "mcp_tool"
+    SOURCE_PROVIDER = "source_provider"
+    SOURCE_PROFILE_ROUTE = "source_profile_route"
     PARSER = "parser"
     RENDERER = "renderer"
     MODEL_WORKFLOW = "model_workflow"
@@ -34,11 +37,49 @@ class CapabilityValidationStatus(StrEnum):
     DEPRECATED = "deprecated"
 
 
+class CapabilityStatus(StrEnum):
+    RUNNABLE = "runnable"
+    DEPENDENCY_GATED = "dependency_gated"
+    DEFERRED = "deferred"
+    UTILITY_META = "utility_meta"
+    INSPIRATION_ONLY = "inspiration_only"
+
+
+class CapabilityAutonomyTier(StrEnum):
+    AUTOMATIC = "automatic"
+    ASK_BEFORE_RUNNING = "ask_before_running"
+    HUMAN_APPROVAL_REQUIRED = "human_approval_required"
+
+
+class CapabilityModelRole(StrEnum):
+    NONE = "none"
+    LOCAL_ADMIN_MODEL = "local_admin_model"
+    FRONTIER_REASONING_MODEL = "frontier_reasoning_model"
+
+
+class CapabilityContract(BaseModel):
+    persona_fit: tuple[str, ...] = ()
+    source_family: str | None = None
+    input_expectations: tuple[str, ...] = ()
+    output_summary_shape: str = "Reviewable Capability Run Output summary."
+    quality_gate: str = "human_review_required"
+    review_destination: str = "Capability Studio"
+    autonomy_tier: CapabilityAutonomyTier = CapabilityAutonomyTier.HUMAN_APPROVAL_REQUIRED
+    model_role: CapabilityModelRole = CapabilityModelRole.NONE
+    fake_runner_supported: bool = False
+    provenance_requirements: tuple[str, ...] = (
+        "capability_id",
+        "source_path",
+        "input_refs",
+    )
+
+
 class CapabilityCatalogEntry(BaseModel):
     id: str
     name: str
     description: str
     capability_type: CapabilityType
+    capability_status: CapabilityStatus = CapabilityStatus.RUNNABLE
     source_path: str
     maturity: CapabilityMaturity = CapabilityMaturity.EXPERIMENTAL
     validation_status: CapabilityValidationStatus = (
@@ -47,6 +88,7 @@ class CapabilityCatalogEntry(BaseModel):
     lifecycle_fit: tuple[str, ...] = ()
     workstream_fit: tuple[str, ...] = ()
     product_workflow_fit: tuple[str, ...] = ()
+    contract: CapabilityContract = Field(default_factory=CapabilityContract)
     provenance_note: str = "Discovered from local skill metadata."
 
 
@@ -79,6 +121,9 @@ def _catalog_entry_from_skill_file(
         capability_type=CapabilityType(
             frontmatter.get("capability_type", CapabilityType.WORKSPACE_SKILL.value)
         ),
+        capability_status=CapabilityStatus(
+            frontmatter.get("capability_status", CapabilityStatus.RUNNABLE.value)
+        ),
         source_path=skill_file.relative_to(workspace_root).as_posix(),
         maturity=CapabilityMaturity(
             frontmatter.get("maturity", CapabilityMaturity.EXPERIMENTAL.value)
@@ -92,6 +137,41 @@ def _catalog_entry_from_skill_file(
         lifecycle_fit=_csv_values(frontmatter.get("lifecycle_fit", "")),
         workstream_fit=_csv_values(frontmatter.get("workstream_fit", "")),
         product_workflow_fit=_csv_values(frontmatter.get("product_workflow_fit", "")),
+        contract=CapabilityContract(
+            persona_fit=_csv_values(frontmatter.get("persona_fit", "")),
+            source_family=_optional_value(frontmatter.get("source_family", "")),
+            input_expectations=_csv_values(frontmatter.get("input_expectations", "")),
+            output_summary_shape=frontmatter.get(
+                "output_summary_shape",
+                CapabilityContract.model_fields["output_summary_shape"].default,
+            ),
+            quality_gate=frontmatter.get(
+                "quality_gate",
+                CapabilityContract.model_fields["quality_gate"].default,
+            ),
+            review_destination=frontmatter.get(
+                "review_destination",
+                CapabilityContract.model_fields["review_destination"].default,
+            ),
+            autonomy_tier=CapabilityAutonomyTier(
+                frontmatter.get(
+                    "autonomy_tier",
+                    CapabilityAutonomyTier.HUMAN_APPROVAL_REQUIRED.value,
+                )
+            ),
+            model_role=CapabilityModelRole(
+                frontmatter.get("model_role", CapabilityModelRole.NONE.value)
+            ),
+            fake_runner_supported=_bool_value(
+                frontmatter.get("fake_runner_supported", "false")
+            ),
+            provenance_requirements=_csv_values(
+                frontmatter.get(
+                    "provenance_requirements",
+                    "capability_id, source_path, input_refs",
+                )
+            ),
+        ),
     )
 
 
@@ -113,3 +193,14 @@ def _read_frontmatter(skill_file: Path) -> dict[str, str]:
 
 def _csv_values(value: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _optional_value(value: str) -> str | None:
+    stripped = value.strip()
+    if not stripped:
+        return None
+    return stripped
+
+
+def _bool_value(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}

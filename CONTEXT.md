@@ -163,6 +163,8 @@ Build one elegant, powerful capture command center that lets a single capture pr
 - Capability Provenance: the trace that explains which sources, tools, prompts, evidence, assumptions, and review decisions supported a Capability Run Output.
 - Capability Reasoning View: a user-facing inspection view that summarizes Capability Provenance, evidence strength, assumptions, logic, gaps, and review decisions behind a generated output.
 - Capability Catalog: the local inventory of available capability modules, their metadata, maturity, workflow fit, validation status, and run history.
+- Capability Contract: the typed declaration of a Capability Module's persona fit, workflow fit, source family, input expectations, reviewable output shape, quality gate, review destination, autonomy tier, model role, fake-runner support, and provenance requirements.
+- Capability Status: the readiness marker for a Capability Module or candidate, such as runnable, dependency-gated, deferred, utility/meta, or inspiration-only.
 - Guided Capture Mentor: AI assistance that helps execute capture work while explaining the capture reasoning, tradeoffs, and importance of each step.
 - Capture Action Plan: a dated sequence of actions tied to lifecycle states, decision gates, milestones, and opportunity deadlines.
 - Action Plan Item: a single actionable unit in a capture action plan, with rationale, owner, due date, status, autonomy tier, and links to the opportunity context it advances.

@@ -131,7 +131,7 @@ def migrate_project_ariadne_slice(
 
 
 def _target_source_summary_path(source_path: str) -> str:
-    return f"source-summaries/project-ariadne/{source_path}"
+    return f"source-summaries/{source_path}"
 
 
 def _source_summary_page(
@@ -285,12 +285,20 @@ def _write_native_pages_for_source(
 
 def _native_context_path(source_path: str, classification: str) -> str | None:
     if classification == "milestone_gate_reference":
-        return f"milestones/project-ariadne/{source_path}"
+        return f"milestones/{Path(source_path).name}"
     if classification == "seller_capability_or_entity":
-        return f"entities/project-ariadne/{source_path}"
+        return f"entities/capabilities/{Path(source_path).name}"
     if classification in _CAPTURE_CONCEPT_CLASSIFICATIONS:
-        return f"capture-concepts/project-ariadne/{source_path}"
+        return f"capture-concepts/{_capture_concept_path(source_path)}"
     return None
+
+
+def _capture_concept_path(source_path: str) -> str:
+    if source_path.startswith("global_wiki/"):
+        return source_path.removeprefix("global_wiki/").replace("_", "-")
+    if source_path.startswith("competitor_intel/"):
+        return f"competitive-intelligence/{Path(source_path).name}"
+    return Path(source_path).name
 
 
 _CAPTURE_CONCEPT_CLASSIFICATIONS = frozenset(
@@ -405,7 +413,7 @@ def _native_relationships(
 
 
 def _source_summary_ref(source_path: str) -> str:
-    return f"source-summaries/project-ariadne/{source_path.removesuffix('.md')}"
+    return f"source-summaries/{source_path.removesuffix('.md')}"
 
 
 def _milestone_gate_ref(source_path: str) -> str:
@@ -422,7 +430,23 @@ def _milestone_gate_ref(source_path: str) -> str:
 
 
 def _artifact_pattern_path(source_path: str) -> str:
-    return f"artifact-patterns/project-ariadne/{source_path}"
+    return f"artifact-patterns/{_artifact_pattern_context_path(source_path)}"
+
+
+def _artifact_pattern_context_path(source_path: str) -> str:
+    relative_path = source_path.removeprefix("pursuits/_template/")
+    phase_replacements = {
+        "01_capture/": "capture/",
+        "03_rfp/": "rfp/",
+        "04_proposal/": "proposal/",
+        "05_reviews/": "reviews/",
+        "06_submission/": "submission/",
+        "07_post_submission/": "post-submission/",
+    }
+    for prefix, replacement in phase_replacements.items():
+        if relative_path.startswith(prefix):
+            return relative_path.replace(prefix, replacement, 1)
+    return relative_path
 
 
 def _artifact_pattern_page(
@@ -574,7 +598,7 @@ def _relationship_refs_from_report(
 ) -> tuple[str, ...]:
     relationships: list[str] = [
         "derived_from:project-ariadne/knowledge",
-        "uses_source:source-summaries/project-ariadne",
+        "uses_source:source-summaries",
     ]
     for item in report.incorporated:
         if item.classification in _CAPTURE_CONCEPT_CLASSIFICATIONS:

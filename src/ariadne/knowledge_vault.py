@@ -106,6 +106,20 @@ class PacketDataElementPageReport(BaseModel):
     unconnected_count: int
 
 
+class ReferenceDataDictionaryFieldPageStatus(BaseModel):
+    dictionary_id: str
+    field_key: str
+    path: str
+    exists: bool
+
+
+class ReferenceDataDictionaryPageReport(BaseModel):
+    vault_root: str
+    pages: tuple[ReferenceDataDictionaryFieldPageStatus, ...]
+    field_count: int
+    created_count: int
+
+
 class KnowledgeVaultReadiness(BaseModel):
     vault_root: str
     ready: bool
@@ -177,22 +191,86 @@ PAGE_TYPES: tuple[KnowledgeVaultVocabularyItem, ...] = (
 )
 
 RELATIONSHIP_TYPES: tuple[KnowledgeVaultVocabularyItem, ...] = (
-    KnowledgeVaultVocabularyItem(id="supports", label="Supports", description="Source or concept supports target claim or page."),
-    KnowledgeVaultVocabularyItem(id="answers", label="Answers", description="Page helps answer target data element or question."),
-    KnowledgeVaultVocabularyItem(id="informs", label="Informs", description="Page provides context for target page or workflow."),
-    KnowledgeVaultVocabularyItem(id="blocks", label="Blocks", description="Gap or issue blocks target workflow or answer."),
-    KnowledgeVaultVocabularyItem(id="contradicts", label="Contradicts", description="Page conflicts with target claim or page."),
-    KnowledgeVaultVocabularyItem(id="derived_from", label="Derived From", description="Page was derived from target source or record."),
-    KnowledgeVaultVocabularyItem(id="evidence_for", label="Evidence For", description="Page provides evidence for target claim, page, or route."),
-    KnowledgeVaultVocabularyItem(id="fills_gap_in", label="Fills Gap In", description="Page fills gap in target data element or workflow."),
-    KnowledgeVaultVocabularyItem(id="suggests_route", label="Suggests Route", description="Page suggests target action, workflow, or capability route."),
-    KnowledgeVaultVocabularyItem(id="uses_capability", label="Uses Capability", description="Workflow or route uses target capability."),
-    KnowledgeVaultVocabularyItem(id="applies_to_gate", label="Applies To Gate", description="Page applies to target milestone gate."),
-    KnowledgeVaultVocabularyItem(id="produces_artifact_block", label="Produces Artifact Block", description="Workflow or source can produce target artifact block."),
-    KnowledgeVaultVocabularyItem(id="candidate_reusable_insight", label="Candidate Reusable Insight", description="Page may become or support target reusable insight."),
-    KnowledgeVaultVocabularyItem(id="expects_data_element", label="Expects Data Element", description="Artifact, template, or workflow expects target data element."),
-    KnowledgeVaultVocabularyItem(id="maps_to_artifact_block", label="Maps To Artifact Block", description="Pattern or data element maps to target artifact block."),
-    KnowledgeVaultVocabularyItem(id="uses_source", label="Uses Source", description="Page uses target source asset or source manifest."),
+    KnowledgeVaultVocabularyItem(
+        id="supports",
+        label="Supports",
+        description="Source or concept supports target claim or page.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="answers",
+        label="Answers",
+        description="Page helps answer target data element or question.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="informs",
+        label="Informs",
+        description="Page provides context for target page or workflow.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="blocks",
+        label="Blocks",
+        description="Gap or issue blocks target workflow or answer.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="contradicts",
+        label="Contradicts",
+        description="Page conflicts with target claim or page.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="derived_from",
+        label="Derived From",
+        description="Page was derived from target source or record.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="evidence_for",
+        label="Evidence For",
+        description="Page provides evidence for target claim, page, or route.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="fills_gap_in",
+        label="Fills Gap In",
+        description="Page fills gap in target data element or workflow.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="suggests_route",
+        label="Suggests Route",
+        description="Page suggests target action, workflow, or capability route.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="uses_capability",
+        label="Uses Capability",
+        description="Workflow or route uses target capability.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="applies_to_gate",
+        label="Applies To Gate",
+        description="Page applies to target milestone gate.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="produces_artifact_block",
+        label="Produces Artifact Block",
+        description="Workflow or source can produce target artifact block.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="candidate_reusable_insight",
+        label="Candidate Reusable Insight",
+        description="Page may become or support target reusable insight.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="expects_data_element",
+        label="Expects Data Element",
+        description="Artifact, template, or workflow expects target data element.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="maps_to_artifact_block",
+        label="Maps To Artifact Block",
+        description="Pattern or data element maps to target artifact block.",
+    ),
+    KnowledgeVaultVocabularyItem(
+        id="uses_source",
+        label="Uses Source",
+        description="Page uses target source asset or source manifest.",
+    ),
 )
 
 _PAGE_TYPE_IDS = frozenset(item.id for item in PAGE_TYPES)
@@ -227,7 +305,9 @@ def ensure_knowledge_vault_scaffold(vault_root: Path | str) -> KnowledgeVaultRea
     return inspect_knowledge_vault_readiness(root)
 
 
-def inspect_knowledge_vault_readiness(vault_root: Path | str) -> KnowledgeVaultReadiness:
+def inspect_knowledge_vault_readiness(
+    vault_root: Path | str,
+) -> KnowledgeVaultReadiness:
     root = Path(vault_root)
     present: list[str] = []
     missing: list[str] = []
@@ -278,6 +358,60 @@ def ensure_packet_data_element_pages(
     return status_report.model_copy(update={"created_count": created_count})
 
 
+def ensure_reference_data_dictionary_pages(
+    vault_root: Path | str,
+    reference_root: Path | str,
+) -> ReferenceDataDictionaryPageReport:
+    root = Path(vault_root)
+    ensure_knowledge_vault_scaffold(root)
+    dictionaries = _reference_data_dictionary_specs(Path(reference_root))
+    created_count = 0
+    pages: list[ReferenceDataDictionaryFieldPageStatus] = []
+
+    for dictionary in dictionaries:
+        for field in _reference_dictionary_fields(dictionary):
+            relative_path = _reference_dictionary_field_path(dictionary, field["key"])
+            path = root / relative_path
+            existed = path.exists()
+            _write_if_missing(
+                path,
+                _reference_dictionary_field_template(dictionary, field),
+            )
+            if not existed:
+                created_count += 1
+            pages.append(
+                ReferenceDataDictionaryFieldPageStatus(
+                    dictionary_id=dictionary["id"],
+                    field_key=field["key"],
+                    path=relative_path,
+                    exists=True,
+                )
+            )
+
+    index_path = root / "data-elements" / "dictionary-index.md"
+    index_existed = index_path.exists()
+    index_path.write_text(
+        _reference_dictionary_index_template(dictionaries, tuple(pages)),
+        encoding="utf-8",
+    )
+    if not index_existed:
+        created_count += 1
+    pages.append(
+        ReferenceDataDictionaryFieldPageStatus(
+            dictionary_id="reference_dictionary_index",
+            field_key="dictionary_index",
+            path="data-elements/dictionary-index.md",
+            exists=True,
+        )
+    )
+    return ReferenceDataDictionaryPageReport(
+        vault_root=str(root),
+        pages=tuple(pages),
+        field_count=len(pages) - 1,
+        created_count=created_count,
+    )
+
+
 def list_packet_data_element_page_status(
     vault_root: Path | str,
     definitions: tuple[PacketFieldDefinition, ...],
@@ -287,7 +421,9 @@ def list_packet_data_element_page_status(
     root = Path(vault_root)
     pages = tuple(
         _packet_data_element_status(root, definition)
-        for definition in _packet_definitions_for_gate(definitions, current_milestone_gate)
+        for definition in _packet_definitions_for_gate(
+            definitions, current_milestone_gate
+        )
     )
     return PacketDataElementPageReport(
         vault_root=str(root),
@@ -297,7 +433,9 @@ def list_packet_data_element_page_status(
         pages=pages,
         created_count=0,
         missing_count=sum(1 for page in pages if not page.exists),
-        unconnected_count=sum(1 for page in pages if page.exists and not page.connected),
+        unconnected_count=sum(
+            1 for page in pages if page.exists and not page.connected
+        ),
     )
 
 
@@ -335,7 +473,9 @@ def generate_knowledge_vault_health_report(
                 )
             )
 
-        if page_type == "global_data_element" and (not source_refs or not relationships):
+        if page_type == "global_data_element" and (
+            not source_refs or not relationships
+        ):
             issues.append(
                 KnowledgeVaultHealthIssue(
                     path=path,
@@ -391,7 +531,9 @@ def generate_knowledge_vault_health_report(
     return report
 
 
-def validate_knowledge_vault_pages(vault_root: Path | str) -> KnowledgeVaultValidationReport:
+def validate_knowledge_vault_pages(
+    vault_root: Path | str,
+) -> KnowledgeVaultValidationReport:
     root = Path(vault_root)
     issues: list[KnowledgeVaultValidationIssue] = []
 
@@ -480,7 +622,9 @@ def _packet_data_element_status(
     relative_path = _packet_data_element_relative_path(definition)
     path = root / relative_path
     frontmatter = _read_frontmatter(path) if path.exists() else None
-    source_refs = _frontmatter_list(frontmatter.get("source_refs") if frontmatter else None)
+    source_refs = _frontmatter_list(
+        frontmatter.get("source_refs") if frontmatter else None
+    )
     relationships = _frontmatter_list(
         frontmatter.get("relationships") if frontmatter else None
     )
@@ -600,11 +744,182 @@ def _packet_data_element_relationships(
     return gate_relationships + route_relationships
 
 
+def _reference_data_dictionary_specs(
+    reference_root: Path,
+) -> tuple[dict[str, str], ...]:
+    return (
+        {
+            "id": "risk_register",
+            "label": "Risk Register Data Dictionary",
+            "path": str(
+                reference_root / "risk_register" / "RISK_REGISTER_DATA_DICTIONARY.md"
+            ),
+            "workflow": "risk-register",
+            "artifact_block": "risk-register",
+        },
+        {
+            "id": "call_plan",
+            "label": "Call Plan Data Dictionary",
+            "path": str(reference_root / "call_plan" / "CALL_PLAN_DATA_DICTIONARY.md"),
+            "workflow": "call-plan",
+            "artifact_block": "call-plan",
+        },
+    )
+
+
+def _reference_dictionary_fields(
+    dictionary: dict[str, str],
+) -> tuple[dict[str, str], ...]:
+    path = Path(dictionary["path"])
+    if not path.exists():
+        return ()
+    fields: dict[str, dict[str, str]] = {}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        cells = _markdown_table_cells(line)
+        if not cells or cells[0].lower() != "field key":
+            continue
+        for row in lines[index + 2 :]:
+            row_cells = _markdown_table_cells(row)
+            if not row_cells:
+                break
+            key = _clean_markdown_cell(row_cells[0])
+            if not key or " " in key:
+                continue
+            fields.setdefault(
+                key,
+                {
+                    "key": key,
+                    "concept": row_cells[1] if len(row_cells) > 1 else key,
+                    "kind": row_cells[2] if len(row_cells) > 2 else "unknown",
+                    "likely_source": row_cells[3] if len(row_cells) > 3 else "unknown",
+                    "connected_packet_fields": row_cells[4]
+                    if len(row_cells) > 4
+                    else "none",
+                },
+            )
+    return tuple(fields[key] for key in sorted(fields))
+
+
+def _markdown_table_cells(line: str) -> tuple[str, ...]:
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
+        return ()
+    cells = tuple(cell.strip() for cell in stripped.strip("|").split("|"))
+    if all(set(cell) <= {"-", ":", " "} for cell in cells):
+        return ()
+    return cells
+
+
+def _clean_markdown_cell(value: str) -> str:
+    return value.strip().strip("`").strip()
+
+
+def _reference_dictionary_field_path(dictionary: dict[str, str], field_key: str) -> str:
+    return f"data-elements/{dictionary['workflow']}/{field_key}.md"
+
+
+def _reference_dictionary_field_template(
+    dictionary: dict[str, str],
+    field: dict[str, str],
+) -> str:
+    key = field["key"]
+    title = _dictionary_field_title(key, field["concept"])
+    relationships = (
+        f"derived_from:reference-data-dictionary/{dictionary['id']}",
+        f"suggests_route:workflow/{dictionary['workflow']}",
+        f"maps_to_artifact_block:artifact-block/{dictionary['artifact_block']}",
+    )
+    return f"""---
+page_type: global_data_element
+title: {title}
+source_refs: [reference-data-dictionary:{dictionary["id"]}]
+relationships: [{", ".join(relationships)}]
+dictionary_id: {dictionary["id"]}
+field_key: {key}
+---
+
+# {title}
+
+## Dictionary Role
+
+- Dictionary: {dictionary["label"]}
+- Field key: `{key}`
+- Source concept: {field["concept"]}
+- Value kind: {field["kind"]}
+- Likely source: {field["likely_source"]}
+
+## Connected Packet Fields
+
+{field["connected_packet_fields"]}
+
+## Boundary
+
+This is a global data element from a normalized reference data dictionary. It is
+not a trusted opportunity value, Risk Register Item, Call Plan output, or
+Briefing Packet answer until review promotes an opportunity-specific record.
+"""
+
+
+def _dictionary_field_title(field_key: str, concept: str) -> str:
+    cleaned = _clean_markdown_cell(concept)
+    if cleaned and cleaned.lower() != field_key.lower():
+        return cleaned
+    return field_key.replace("_", " ").replace("-", " ").title()
+
+
+def _reference_dictionary_index_template(
+    dictionaries: tuple[dict[str, str], ...],
+    pages: tuple[ReferenceDataDictionaryFieldPageStatus, ...],
+) -> str:
+    relationships = tuple(
+        dict.fromkeys(
+            f"answers:{page.path.removesuffix('.md')}"
+            for page in pages
+            if page.field_key != "dictionary_index"
+        )
+    )
+    dictionary_lines = "\n".join(
+        f"- {dictionary['label']}: `{Path(dictionary['path']).as_posix()}`"
+        for dictionary in dictionaries
+    )
+    page_lines = "\n".join(
+        f"- [[{page.path.removesuffix('.md')}|{page.field_key}]] ({page.dictionary_id})"
+        for page in pages
+        if page.field_key != "dictionary_index"
+    )
+    return f"""---
+page_type: source_manifest
+title: Reference Data Dictionary Index
+source_refs: [reference-data-dictionary:risk_register, reference-data-dictionary:call_plan]
+relationships: [{", ".join(relationships)}]
+---
+
+# Reference Data Dictionary Index
+
+## Source Dictionaries
+
+{dictionary_lines}
+
+## Data Elements
+
+{page_lines or "- None"}
+
+## Boundary
+
+Reference dictionary data elements describe reusable field expectations. Trusted
+opportunity values still live in Ariadne structured stores after review.
+"""
+
+
 def _health_pages(root: Path) -> tuple[dict[str, object], ...]:
     pages: list[dict[str, object]] = []
     for page_path in sorted(root.rglob("*.md")):
         relative_path = _relative_markdown_path(root, page_path)
-        if relative_path in _SCAFFOLD_MARKDOWN_PATHS or relative_path == "reports/vault-health.md":
+        if (
+            relative_path in _SCAFFOLD_MARKDOWN_PATHS
+            or relative_path == "reports/vault-health.md"
+        ):
             continue
         frontmatter = _read_frontmatter(page_path)
         if frontmatter is None:
@@ -643,7 +958,9 @@ def _relationship_target_path(relationship: str) -> str | None:
 
 def _normalize_link_target(target: str) -> str:
     normalized = target.split("|", 1)[0].split("#", 1)[0].strip().strip("/")
-    if not normalized or normalized.startswith(("workflow/", "capability/", "milestone_")):
+    if not normalized or normalized.startswith(
+        ("workflow/", "capability/", "milestone_")
+    ):
         return normalized
     if Path(normalized).suffix:
         return normalized

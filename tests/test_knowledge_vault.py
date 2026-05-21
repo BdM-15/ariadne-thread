@@ -1,6 +1,7 @@
 from ariadne.knowledge_vault import (
     ensure_knowledge_vault_scaffold,
     ensure_packet_data_element_pages,
+    ensure_reference_data_dictionary_pages,
     generate_knowledge_vault_health_report,
     validate_knowledge_vault_pages,
 )
@@ -139,7 +140,9 @@ def test_knowledge_vault_api_exposes_page_types_and_relationship_vocabulary(
         "mirror_update_proposal",
         "hermes_learning_proposal",
     }
-    assert {relationship_type["id"] for relationship_type in body["relationship_types"]} == {
+    assert {
+        relationship_type["id"] for relationship_type in body["relationship_types"]
+    } == {
         "supports",
         "answers",
         "informs",
@@ -274,6 +277,80 @@ def test_packet_data_element_api_reports_missing_and_connected_pages(
     assert all(page["connected"] for page in scaffold_body["pages"])
 
 
+def test_reference_data_dictionary_pages_group_fields_by_workflow_dictionary(
+    tmp_path,
+) -> None:
+    vault_root = tmp_path / "vault"
+    reference_root = tmp_path / "docs" / "reference"
+    risk_dictionary = (
+        reference_root / "risk_register" / "RISK_REGISTER_DATA_DICTIONARY.md"
+    )
+    call_dictionary = reference_root / "call_plan" / "CALL_PLAN_DATA_DICTIONARY.md"
+    risk_dictionary.parent.mkdir(parents=True)
+    call_dictionary.parent.mkdir(parents=True)
+    risk_dictionary.write_text(
+        """# Risk Register Data Dictionary Draft
+
+| Field key | Workbook concept | Kind | Likely source | Connected packet fields |
+| --------- | ---------------- | ---- | ------------- | ----------------------- |
+| `risk_short_title` | Risk Short Title | scalar/prose | human input | risk summary |
+| `risk_response` | Risk Response | prose | model draft | action plan |
+""",
+        encoding="utf-8",
+    )
+    call_dictionary.write_text(
+        """# Call Plan Data Dictionary Draft
+
+| Field key | Template concept | Kind | Likely source | Connected packet fields |
+| --------- | ---------------- | ---- | ------------- | ----------------------- |
+| `meeting_purpose` | Purpose of customer meeting | prose | human input | `opportunity_context` |
+| `customer_hot_buttons` | Hot Buttons | prose/list | notes | `customer_need_funding_status` |
+""",
+        encoding="utf-8",
+    )
+
+    report = ensure_reference_data_dictionary_pages(vault_root, reference_root)
+
+    assert report.created_count == 5
+    assert report.field_count == 4
+    assert {page.path for page in report.pages} == {
+        "data-elements/risk-register/risk_short_title.md",
+        "data-elements/risk-register/risk_response.md",
+        "data-elements/call-plan/meeting_purpose.md",
+        "data-elements/call-plan/customer_hot_buttons.md",
+        "data-elements/dictionary-index.md",
+    }
+
+    risk_text = (
+        vault_root / "data-elements" / "risk-register" / "risk_response.md"
+    ).read_text(encoding="utf-8")
+    call_text = (
+        vault_root / "data-elements" / "call-plan" / "customer_hot_buttons.md"
+    ).read_text(encoding="utf-8")
+    index_text = (vault_root / "data-elements" / "dictionary-index.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "page_type: global_data_element" in risk_text
+    assert "source_refs: [reference-data-dictionary:risk_register]" in risk_text
+    assert "suggests_route:workflow/risk-register" in risk_text
+    assert "maps_to_artifact_block:artifact-block/risk-register" in risk_text
+    assert "action plan" in risk_text
+
+    assert "source_refs: [reference-data-dictionary:call_plan]" in call_text
+    assert "suggests_route:workflow/call-plan" in call_text
+    assert "maps_to_artifact_block:artifact-block/call-plan" in call_text
+    assert "customer_need_funding_status" in call_text
+
+    assert "Risk Register Data Dictionary" in index_text
+    assert "Call Plan Data Dictionary" in index_text
+    assert "data-elements/risk-register/risk_response" in index_text
+    assert "data-elements/call-plan/customer_hot_buttons" in index_text
+
+    validation_report = validate_knowledge_vault_pages(vault_root)
+    assert validation_report.valid is True
+
+
 def test_knowledge_vault_health_report_passes_connected_fixture(tmp_path) -> None:
     vault_root = tmp_path / "vault"
     corpus_root = tmp_path / "project-ariadne" / "knowledge"
@@ -396,9 +473,7 @@ relationships: [supports:data-elements/customer]
     report = generate_knowledge_vault_health_report(vault_root)
 
     assert report.healthy is False
-    assert {
-        issue.code for issue in report.issues
-    } >= {
+    assert {issue.code for issue in report.issues} >= {
         "orphan_page",
         "weak_source_refs",
         "missing_source_refs",

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from ariadne.capabilities import (
     CapabilityAutonomyTier,
     CapabilityModelRole,
@@ -154,6 +156,27 @@ def test_capability_taxonomy_covers_mvp2_route_families() -> None:
         "utility_meta",
         "inspiration_only",
     }
+
+
+def test_data_table_profiler_skill_is_discoverable_through_mvp2_contract() -> None:
+    workspace_root = Path(__file__).resolve().parents[1]
+
+    catalog = discover_local_capability_catalog(workspace_root)
+
+    entry = next(entry for entry in catalog.entries if entry.id == "data-table-profiler")
+    assert entry.capability_type is CapabilityType.WORKSPACE_SKILL
+    assert entry.capability_status is CapabilityStatus.RUNNABLE
+    assert entry.validation_status is CapabilityValidationStatus.TESTED
+    assert entry.contract.source_family == "structured_table"
+    assert entry.contract.input_expectations == ("table_source_ref", "table_rows")
+    assert entry.contract.output_summary_shape == (
+        "Data table profile with shape, key fields, missing values, anomalies, "
+        "assumptions, gaps, and recommended next route."
+    )
+    assert entry.contract.quality_gate == "human_review_required_before_trusted_use"
+    assert entry.contract.review_destination == "Capability Run Output"
+    assert entry.contract.model_role is CapabilityModelRole.NONE
+    assert entry.contract.fake_runner_supported is True
 
 
 def test_catalog_is_read_only_and_reports_canonical_locations(tmp_path) -> None:

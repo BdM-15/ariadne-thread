@@ -44,6 +44,25 @@ def test_chain_plan_from_capture_goal_has_stable_stages_and_missing_input_prompt
     assert plan.missing_inputs[0].input_key == "piid_profile_ref"
 
 
+def test_data_table_profile_can_appear_in_chain_plan() -> None:
+    plan = build_skill_chain_plan_from_capture_goal(
+        capture_goal="data table profile -> next route",
+        available_inputs=("table_source_ref", "table_rows"),
+    )
+
+    assert plan.plan_id == "chain_plan_data_table_profile_next_route"
+    assert tuple(stage.capability_id for stage in plan.stages) == (
+        "data-table-profiler",
+        "data-profile-route-review",
+    )
+    assert plan.stages[0].input_expectations == ("table_source_ref", "table_rows")
+    assert plan.stages[0].produced_handoff_type == "Capability Run Output"
+    assert plan.stages[0].review_destination == "Capability Run Output"
+    assert plan.stages[1].depends_on == ("stage_1_data_table_profiler",)
+    assert plan.trusted_downstream_writes is False
+    assert plan.missing_inputs == ()
+
+
 def test_chain_plan_from_packet_field_route_can_be_persisted(tmp_path) -> None:
     item = PacketFieldActionItem(
         field_key="competition",

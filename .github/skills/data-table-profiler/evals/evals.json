@@ -1,0 +1,23 @@
+{
+  "skill_name": "data-table-profiler",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Profile this award-history table fixture before I use it in a recompete packet. I need shape, key fields, missing values, anomalies, assumptions, and the next Ariadne route, but do not create trusted packet answers.",
+      "expected_output": "A review-gated data-table profile with row/column shape, field profiles, missing/anomaly notes, provenance, no live model/network/file access, and a recommended next route.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I have normalized rows from a SAM.gov attachment table. Run the first-pass data skill and tell me whether this should go to packet review, research, or data-quality review. Keep it deterministic.",
+      "expected_output": "A deterministic Capability Run Output profile that identifies table quality issues and recommends a review route without external calls or trusted downstream writes.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "The document parser extracted a staffing table into rows. I only want the narrow profiler result, not workload analysis yet: field types, gaps, duplicate IDs, and provenance for review.",
+      "expected_output": "A narrow table profiler output that avoids broad workload analysis and preserves assumptions, gaps, provenance, and pending review state.",
+      "files": []
+    }
+  ]
+}

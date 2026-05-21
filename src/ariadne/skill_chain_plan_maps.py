@@ -167,6 +167,8 @@ def _missing_input_question(input_key: str) -> str:
         "seller_baseline_ref": "Which seller baseline should be used for the competitive comparison?",
         "packet_field_key": "Which packet field should receive the reviewable candidate?",
         "opportunity_id": "Which Opportunity should this chain plan use?",
+        "table_source_ref": "Which structured table or table-like source should be profiled?",
+        "table_rows": "Which normalized rows should the data-table profiler inspect?",
     }
     return labels.get(input_key, f"What {input_key.replace('_', ' ')} should this stage use?")
 
@@ -203,6 +205,29 @@ def _generic_goal_template(capture_goal: str) -> tuple[dict[str, object], ...]:
 
 
 _CAPTURE_GOAL_TEMPLATES: dict[str, tuple[dict[str, object], ...]] = {
+    "data_table_profile_next_route": (
+        {
+            "stage_id": "stage_1_data_table_profiler",
+            "title": "Data table profiler",
+            "capability_id": "data-table-profiler",
+            "input_expectations": ("table_source_ref", "table_rows"),
+            "produced_handoff_type": "Capability Run Output",
+            "search_retrieval_hints": ("structured table source", "table-like rows"),
+            "quality_gate": "human_review_required_before_trusted_use",
+            "review_destination": "Capability Run Output",
+        },
+        {
+            "stage_id": "stage_2_data_profile_route_review",
+            "title": "Data profile route review",
+            "capability_id": "data-profile-route-review",
+            "depends_on": ("stage_1_data_table_profiler",),
+            "input_expectations": (),
+            "produced_handoff_type": "Follow-Up Route",
+            "search_retrieval_hints": ("Capability Run Output", "Packet Field Action Matrix"),
+            "quality_gate": "review_before_packet_or_research_route",
+            "review_destination": "Follow-Up Route",
+        },
+    ),
     "award_history_competitive_gap_packet_implication": (
         {
             "stage_id": "stage_1_incumbent_award_history_brief",

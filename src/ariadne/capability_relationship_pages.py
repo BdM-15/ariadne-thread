@@ -4,8 +4,14 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from ariadne.capabilities import CapabilityCatalogEntry, discover_local_capability_catalog
-from ariadne.capture_research import SourceCollectionProviderManifest, list_source_provider_manifests
+from ariadne.capabilities import (
+    CapabilityCatalogEntry,
+    discover_local_capability_catalog,
+)
+from ariadne.capture_research import (
+    SourceCollectionProviderManifest,
+    list_source_provider_manifests,
+)
 from ariadne.knowledge_vault import ensure_knowledge_vault_scaffold
 
 
@@ -165,8 +171,16 @@ def _installed_skill_spec(skill: CapabilityCatalogEntry) -> dict[str, str]:
             maturity=skill.maturity.value,
             summary=skill.description or "Installed workspace skill.",
             likely_inputs=("Ariadne task context", "Workspace files", "User goal"),
-            destinations=("Capability Studio review", "Agent-native CLI harness", "Route recommendation"),
-            route_fit=("Repeatable tool-facing work", "Batchable validation", "Agent handoff support"),
+            destinations=(
+                "Capability Studio review",
+                "Agent-native CLI harness",
+                "Route recommendation",
+            ),
+            route_fit=(
+                "Repeatable tool-facing work",
+                "Batchable validation",
+                "Agent handoff support",
+            ),
             provenance=(skill.provenance_note, skill.source_path),
         ),
     }
@@ -191,10 +205,26 @@ def _document_intake_capability_spec() -> dict[str, str]:
             readiness="tested",
             maturity="foundation",
             summary="Turns uploaded source material into reviewable extraction and downstream candidates.",
-            likely_inputs=("Uploaded source material", "Opportunity ID", "Review decision"),
-            destinations=("Evidence review", "Packet field review", "Artifact source package"),
-            route_fit=("Source-backed packet gaps", "Parser-required intake", "Source appendix preparation"),
-            provenance=("Source material metadata", "Extraction bundle", "Review decision"),
+            likely_inputs=(
+                "Uploaded source material",
+                "Opportunity ID",
+                "Review decision",
+            ),
+            destinations=(
+                "Evidence review",
+                "Packet field review",
+                "Artifact source package",
+            ),
+            route_fit=(
+                "Source-backed packet gaps",
+                "Parser-required intake",
+                "Source appendix preparation",
+            ),
+            provenance=(
+                "Source material metadata",
+                "Extraction bundle",
+                "Review decision",
+            ),
         ),
     }
 
@@ -206,7 +236,7 @@ def _source_provider_spec(
     relationships = (
         f"uses_capability:source-provider/{manifest.id}",
         "suggests_route:workflow/capture-research",
-        "informs:data-elements/customer",
+        "informs:data-elements/briefing-packet/customer",
         "candidate_reusable_insight:reusable-insights/source-provider-selection",
     )
     slug = _slug(manifest.id.replace("_", "-"))
@@ -221,10 +251,26 @@ def _source_provider_spec(
             readiness=readiness,
             maturity="local_first",
             summary="Capture Research source collection provider metadata; no live collection is run by this page.",
-            likely_inputs=("Approved source target", "Collection scope", "Provider readiness"),
-            destinations=("Source Finding review", "Capture Research brief", "Packet field candidate"),
-            route_fit=("Public page extraction", "Research source collection", "Source limitation discovery"),
-            provenance=(manifest.source_mode.value, manifest.role.value, *manifest.source_limitations),
+            likely_inputs=(
+                "Approved source target",
+                "Collection scope",
+                "Provider readiness",
+            ),
+            destinations=(
+                "Source Finding review",
+                "Capture Research brief",
+                "Packet field candidate",
+            ),
+            route_fit=(
+                "Public page extraction",
+                "Research source collection",
+                "Source limitation discovery",
+            ),
+            provenance=(
+                manifest.source_mode.value,
+                manifest.role.value,
+                *manifest.source_limitations,
+            ),
         ),
     }
 
@@ -234,7 +280,7 @@ def _capture_research_workflow_spec() -> dict[str, str]:
         "uses_capability:capability/document-intake",
         "uses_capability:source-provider/crawl4ai_local",
         "suggests_route:workflow/packet-field-action-matrix",
-        "informs:data-elements/customer",
+        "informs:data-elements/briefing-packet/customer",
         "produces_artifact_block:artifact-block/research-summary",
         "candidate_reusable_insight:reusable-insights/capture-research-routing",
     )
@@ -249,9 +295,21 @@ def _capture_research_workflow_spec() -> dict[str, str]:
             readiness="tested",
             maturity="foundation",
             summary="Plans and reviews bounded source collection, findings, and capture lenses.",
-            likely_inputs=("Research trigger context", "Source profile", "Operator-approved provider"),
-            destinations=("Source findings", "Insight candidates", "Packet field review"),
-            route_fit=("Customer/competitor gaps", "Source-limited packet fields", "Public-source enrichment"),
+            likely_inputs=(
+                "Research trigger context",
+                "Source profile",
+                "Operator-approved provider",
+            ),
+            destinations=(
+                "Source findings",
+                "Insight candidates",
+                "Packet field review",
+            ),
+            route_fit=(
+                "Customer/competitor gaps",
+                "Source-limited packet fields",
+                "Public-source enrichment",
+            ),
             provenance=("Research brief", "Provider run metadata", "Review decision"),
         ),
     }
@@ -274,10 +332,26 @@ def _hermes_learning_role_spec() -> dict[str, str]:
             readiness="proposal_only",
             maturity="deferred_runtime",
             summary="Future Hermes role for proposing vault maintenance and reusable learning updates.",
-            likely_inputs=("Vault health report", "Mirror update proposals", "Migration coverage"),
-            destinations=("Human-reviewed improvement proposal", "Mirror Update Proposal", "Vault maintenance note"),
-            route_fit=("Knowledge hygiene", "Relationship gap detection", "Reusable insight candidate triage"),
-            provenance=("No direct trusted writes", "Human review required", "broad Hermes runtime behavior remains deferred"),
+            likely_inputs=(
+                "Vault health report",
+                "Mirror update proposals",
+                "Migration coverage",
+            ),
+            destinations=(
+                "Human-reviewed improvement proposal",
+                "Mirror Update Proposal",
+                "Vault maintenance note",
+            ),
+            route_fit=(
+                "Knowledge hygiene",
+                "Relationship gap detection",
+                "Reusable insight candidate triage",
+            ),
+            provenance=(
+                "No direct trusted writes",
+                "Human review required",
+                "broad Hermes runtime behavior remains deferred",
+            ),
         ),
     }
 

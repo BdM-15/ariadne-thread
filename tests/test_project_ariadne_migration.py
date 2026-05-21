@@ -83,7 +83,7 @@ Structured decision process for opportunity qualification.
         "derived_from:project-ariadne/global_wiki/capture/customer-hot-button-identification.md"
         in migrated_text
     )
-    assert "informs:data-elements/customer" in migrated_text
+    assert "informs:data-elements/briefing-packet/customer" in migrated_text
     assert (
         "candidate_reusable_insight:reusable-insights/customer-hot-button-identification"
         in migrated_text
@@ -192,8 +192,13 @@ decision makers, hot buttons, and customer needs.
         "artifact-patterns/capture/customer/profile.md",
     )
     assert "page_type: artifact_pattern" in artifact_text
-    assert "expects_data_element:data-elements/customer" in artifact_text
-    assert "expects_data_element:data-elements/customer_hot_buttons" in artifact_text
+    assert (
+        "expects_data_element:data-elements/briefing-packet/customer" in artifact_text
+    )
+    assert (
+        "expects_data_element:data-elements/call-plan/customer_hot_buttons"
+        in artifact_text
+    )
     assert "maps_to_artifact_block:artifact-block/customer-profile" in artifact_text
     assert "Private source formats remain local or ignored" in artifact_text
     assert "not an opportunity-specific Packet Field Answer" in artifact_text
@@ -227,8 +232,10 @@ Hot buttons can be detected from RFP language and validated by engagement.
     assert "page_type: workflow_capability" in theseus_text
     assert "Project Theseus Solicitation Parser" in theseus_text
     assert "uses_capability:capability/theseus-solicitation-parser" in theseus_text
-    assert "informs:data-elements/customer_hot_buttons" in theseus_text
-    assert "informs:data-elements/evaluation_factors" in theseus_text
+    assert "informs:data-elements/call-plan/customer_hot_buttons" in theseus_text
+    assert (
+        "informs:data-elements/briefing-packet/evaluation_methodology" in theseus_text
+    )
     assert "suggests_route:workflow/document-intake" in theseus_text
     assert "Extraction Bundle" in theseus_text
     assert "does not write trusted Ariadne records" in theseus_text
@@ -303,7 +310,7 @@ KBR capability baseline includes logistics, digital, cyber, and mission support 
     )
 
     assert "page_type: capture_concept" in concept_text
-    assert "informs:data-elements/customer_hot_buttons" in concept_text
+    assert "informs:data-elements/call-plan/customer_hot_buttons" in concept_text
     assert "suggests_route:workflow/capture-research" in concept_text
     assert (
         "uses_source:source-summaries/global_wiki/capture/customer-hot-button-identification"
@@ -312,7 +319,7 @@ KBR capability baseline includes logistics, digital, cyber, and mission support 
 
     assert "page_type: capture_concept" in milestone_text
     assert "applies_to_gate:milestone_1" in milestone_text
-    assert "informs:data-elements/approval_criteria" in milestone_text
+    assert "informs:data-elements/briefing-packet/approval_criteria" in milestone_text
     assert "suggests_route:workflow/opportunity-activation" in milestone_text
 
     assert "page_type: entity" in entity_text
@@ -356,8 +363,8 @@ Capture risk register expects risk owners, mitigations, gate decisions, and cust
     assert "Project Ariadne Native Relationship Map" in map_text
     assert "source summary pages" in map_text
     assert "native concept/entity/artifact pages" in map_text
-    assert "informs:data-elements/evaluation_factors" in map_text
-    assert "expects_data_element:data-elements/risks" in map_text
+    assert "informs:data-elements/briefing-packet/evaluation_methodology" in map_text
+    assert "expects_data_element:data-elements/briefing-packet/risks" in map_text
     assert "suggests_route:workflow/capture-research" in map_text
     assert "suggests_route:workflow/artifact-assembly" in map_text
 

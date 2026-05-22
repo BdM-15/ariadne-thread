@@ -398,6 +398,21 @@ class ArtifactDraftResponse(BaseModel):
     draft: ArtifactDraft
 
 
+class ArtifactDraftFreshnessStatus(BaseModel):
+    draft_id: str
+    source_package_id: str
+    source_package_created_at: str
+    latest_source_package_created_at: str | None = None
+    is_stale: bool = False
+
+
+class ArtifactContextStatusResponse(BaseModel):
+    opportunity_id: str
+    source_package: ArtifactSourcePackage | None = None
+    summary: ArtifactSourcePackageSummary | None = None
+    draft_freshness: ArtifactDraftFreshnessStatus | None = None
+
+
 class CapabilityRunOutputReviewRequest(BaseModel):
     decision: CapabilityRunReviewDecisionType
     reviewer_rationale: str = ""
@@ -771,6 +786,15 @@ def create_app(
     def production_command_center_renderer_readiness() -> RendererReadinessResponse:
         return build_renderer_readiness()
 
+    @app.get("/api/production-command-center/artifact-context-status")
+    def production_command_center_artifact_context_status(
+        opportunity_id: str,
+    ) -> ArtifactContextStatusResponse:
+        return _build_artifact_context_status(
+            opportunity_id=opportunity_id,
+            runtime_settings=runtime_settings,
+        )
+
     @app.get("/api/production-command-center/opportunities")
     def production_command_center_opportunities() -> (
         ProductionOpportunityPortfolioResponse
@@ -1114,7 +1138,7 @@ def create_app(
                     )
                 scaffold = opportunity_store.read_scaffold(delta.opportunity_id)
                 current_milestone_gate = MilestoneGate(scaffold.opportunity.gate_status)
-            return record_packet_work_product_delta_review(
+            review_response = record_packet_work_product_delta_review(
                 delta_store=delta_store,
                 answer_store=PacketFieldAnswerStore(
                     runtime_settings.ariadne_packet_field_answers_dir
@@ -1130,6 +1154,12 @@ def create_app(
                 current_milestone_gate=current_milestone_gate,
                 vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
+            if _should_refresh_artifact_context(delta=review_response.delta, request=request):
+                _refresh_artifact_context_from_delta(
+                    runtime_settings=runtime_settings,
+                    delta=review_response.delta,
+                )
+            return review_response
         except FileNotFoundError as error:
             raise HTTPException(
                 status_code=404, detail="Work Product Delta not found"
@@ -2632,6 +2662,83 @@ def _create_milestone_packet_draft(
         ) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+def _should_refresh_artifact_context(
+    *,
+    delta,
+    request: WorkProductDeltaReviewRequest,
+) -> bool:
+    if request.decision not in {"accept", "edit"}:
+        return False
+    return delta.destination in {
+        WorkProductDeltaDestination.LIVING_PACKET,
+        WorkProductDeltaDestination.ACTION_PLAN,
+    }
+
+
+def _refresh_artifact_context_from_delta(
+    *,
+    runtime_settings: RuntimeSettings,
+    delta,
+) -> None:
+    knowledge_context = build_command_center_knowledge_context(
+        runtime_settings,
+        workspace_root=Path.cwd(),
+    )
+    if delta.opportunity_id != knowledge_context.opportunity_id:
+        return
+    store = ArtifactAssemblyStore(
+        _resolve_runtime_path(runtime_settings.ariadne_artifact_assembly_dir)
+    )
+    trace_assumptions = (
+        f"artifact_context_refresh_from_delta:{delta.id}",
+        f"artifact_context_refresh_source_output:{delta.source_output_id}",
+        (
+            "artifact_context_refresh_source_capability_run:"
+            f"{delta.source_capability_run_id}"
+        ),
+    )
+    create_artifact_source_package_from_context(
+        context=knowledge_context.context,
+        store=store,
+        created_at=_utc_timestamp(),
+        assumptions=trace_assumptions,
+    )
+
+
+def _build_artifact_context_status(
+    *,
+    opportunity_id: str,
+    runtime_settings: RuntimeSettings,
+) -> ArtifactContextStatusResponse:
+    store = ArtifactAssemblyStore(
+        _resolve_runtime_path(runtime_settings.ariadne_artifact_assembly_dir)
+    )
+    packages = store.list_source_packages(opportunity_id=opportunity_id)
+    drafts = store.list_artifact_drafts(opportunity_id=opportunity_id)
+    package = packages[-1] if packages else None
+    draft = drafts[-1] if drafts else None
+    draft_freshness = None
+    if draft is not None:
+        latest_source_package_created_at = package.created_at if package else None
+        draft_freshness = ArtifactDraftFreshnessStatus(
+            draft_id=draft.draft_id,
+            source_package_id=draft.source_package_id,
+            source_package_created_at=draft.provenance.source_package_created_at,
+            latest_source_package_created_at=latest_source_package_created_at,
+            is_stale=(
+                latest_source_package_created_at is not None
+                and draft.provenance.source_package_created_at
+                != latest_source_package_created_at
+            ),
+        )
+    return ArtifactContextStatusResponse(
+        opportunity_id=opportunity_id,
+        source_package=package,
+        summary=(summarize_artifact_source_package(package) if package else None),
+        draft_freshness=draft_freshness,
+    )
 
 
 def _federal_data_env_for_manifest(

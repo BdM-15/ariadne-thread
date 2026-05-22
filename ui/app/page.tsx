@@ -143,6 +143,45 @@ type RendererReadinessResponse = {
   readiness: RendererReadiness;
 };
 
+type ArtifactDraftFreshness = {
+  draft_id: string;
+  source_package_id: string;
+  source_package_created_at: string;
+  latest_source_package_created_at: string | null;
+  is_stale: boolean;
+};
+
+type ArtifactSourcePackage = {
+  package_id: string;
+  opportunity_id: string;
+  source_context: string;
+  trusted_refs: { record_id: string }[];
+  reviewable_refs: { record_id: string }[];
+  gap_refs: { record_id: string }[];
+  assumptions: string[];
+  source_limitations: { record_id: string }[];
+  pending_review_refs: string[];
+  created_at: string;
+};
+
+type ArtifactSourcePackageSummary = {
+  package_id: string;
+  opportunity_id: string;
+  trusted_count: number;
+  reviewable_count: number;
+  gap_count: number;
+  assumption_count: number;
+  source_limitation_count: number;
+  pending_review_count: number;
+};
+
+type ArtifactContextStatus = {
+  opportunity_id: string;
+  source_package: ArtifactSourcePackage | null;
+  summary: ArtifactSourcePackageSummary | null;
+  draft_freshness: ArtifactDraftFreshness | null;
+};
+
 type WorkProductUpdateProjection = {
   id: string;
   source_output_id: string;
@@ -157,6 +196,64 @@ type WorkProductUpdateProjection = {
 type WorkProductUpdateListResponse = {
   updates: WorkProductUpdateProjection[];
   summary: Record<string, number>;
+};
+
+type WorkProductDelta = {
+  id: string;
+  opportunity_id: string;
+  destination: string;
+  title: string;
+  field_key: string | null;
+  source_capability_run_id: string;
+  source_output_id: string;
+  source_capability_id: string;
+  review_state: string;
+  before_summary: string;
+  after_summary: string;
+  source_refs: string[];
+  capability_output_refs: string[];
+  assumptions: string[];
+  gaps: string[];
+  review_decisions: WorkProductDeltaReviewDecision[];
+};
+
+type WorkProductDeltaReviewDecision = {
+  decision_id: string;
+  decision: string;
+  reviewer_rationale: string;
+  review_gate: string;
+  packet_field_answer_created: boolean;
+  routed_destination: string | null;
+  decided_at: string;
+};
+
+type WorkProductDeltaListResponse = {
+  deltas: WorkProductDelta[];
+  summary: Record<string, number>;
+};
+
+type ActionRecommendationProjection = {
+  id: string;
+  opportunity_id: string;
+  title: string;
+  description: string;
+  cause: string;
+  review_state: string;
+  generated_at: string;
+  capability_route: {
+    capability_id: string | null;
+    next_command_id: string;
+    next_command_label: string;
+    support: string;
+  };
+  context_snapshot: {
+    reviewable_refs: string[];
+    gap_refs: string[];
+  };
+};
+
+type ActionRecommendationListResponse = {
+  recommendations: ActionRecommendationProjection[];
 };
 
 type CaptureResearchProvider = {
@@ -572,6 +669,26 @@ async function loadRendererReadiness(): Promise<RendererReadiness | null> {
   }
 }
 
+async function loadArtifactContextStatus(
+  opportunityId: string,
+): Promise<ArtifactContextStatus | null> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/artifact-context-status`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    const response = await fetch(url, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as ArtifactContextStatus;
+  } catch {
+    return null;
+  }
+}
+
 async function loadLatestActivationRun(
   opportunityId: string,
 ): Promise<OpportunityActivationRun | null> {
@@ -614,6 +731,46 @@ async function loadWorkProductUpdates(
     }
     const body = (await response.json()) as WorkProductUpdateListResponse;
     return body.updates;
+  } catch {
+    return [];
+  }
+}
+
+async function loadWorkProductDeltas(
+  opportunityId: string,
+  destination: string,
+): Promise<WorkProductDelta[]> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/work-product-deltas`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    url.searchParams.set("destination", destination);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as WorkProductDeltaListResponse;
+    return body.deltas;
+  } catch {
+    return [];
+  }
+}
+
+async function loadActionRecommendations(
+  opportunityId: string,
+): Promise<ActionRecommendationProjection[]> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/next-action-recommendations`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as ActionRecommendationListResponse;
+    return body.recommendations;
   } catch {
     return [];
   }
@@ -815,7 +972,12 @@ export default async function CommandCenterPage({
   const [
     latestActivationRun,
     rendererReadiness,
+    artifactContextStatus,
+    packetDeltas,
     actionPlanUpdates,
+    actionPlanDeltas,
+    actionRecommendations,
+    engagementDeltas,
     callPlanUpdates,
     researchRuns,
     researchSourceRegistry,
@@ -833,9 +995,24 @@ export default async function CommandCenterPage({
     selectedModeId === "artifacts"
       ? loadRendererReadiness()
       : Promise.resolve<RendererReadiness | null>(null),
+    selectedModeId === "artifacts"
+      ? loadArtifactContextStatus(workspace.opportunity.id)
+      : Promise.resolve<ArtifactContextStatus | null>(null),
+    selectedModeId === "packet"
+      ? loadWorkProductDeltas(workspace.opportunity.id, "living_packet")
+      : Promise.resolve<WorkProductDelta[]>([]),
     selectedModeId === "actions"
       ? loadWorkProductUpdates(workspace.opportunity.id, "action_plan")
       : Promise.resolve<WorkProductUpdateProjection[]>([]),
+    selectedModeId === "actions"
+      ? loadWorkProductDeltas(workspace.opportunity.id, "action_plan")
+      : Promise.resolve<WorkProductDelta[]>([]),
+    selectedModeId === "actions"
+      ? loadActionRecommendations(workspace.opportunity.id)
+      : Promise.resolve<ActionRecommendationProjection[]>([]),
+    selectedModeId === "engagement"
+      ? loadWorkProductDeltas(workspace.opportunity.id, "call_plan")
+      : Promise.resolve<WorkProductDelta[]>([]),
     selectedModeId === "engagement"
       ? loadWorkProductUpdates(workspace.opportunity.id, "call_plan")
       : Promise.resolve<WorkProductUpdateProjection[]>([]),
@@ -1064,6 +1241,7 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "packet" ? (
             <PacketMode
+              deltas={packetDeltas}
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
               selectedOpportunityId={workspace.opportunity.id}
@@ -1092,7 +1270,9 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "actions" ? (
             <ActionPlanMode
+              deltas={actionPlanDeltas}
               latestActivationRun={latestActivationRun}
+              recommendations={actionRecommendations}
               selectedOpportunityId={workspace.opportunity.id}
               updates={actionPlanUpdates}
             />
@@ -1100,6 +1280,7 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "engagement" ? (
             <EngagementMode
+              deltas={engagementDeltas}
               latestActivationRun={latestActivationRun}
               selectedOpportunityId={workspace.opportunity.id}
               updates={callPlanUpdates}
@@ -1126,8 +1307,15 @@ export default async function CommandCenterPage({
             />
           ) : null}
 
-          {selectedModeId === "artifacts" && rendererReadiness !== null ? (
-            <RendererReadinessPanel readiness={rendererReadiness} />
+          {selectedModeId === "artifacts" ? (
+            <>
+              {artifactContextStatus !== null ? (
+                <ArtifactContextFreshnessPanel status={artifactContextStatus} />
+              ) : null}
+              {rendererReadiness !== null ? (
+                <RendererReadinessPanel readiness={rendererReadiness} />
+              ) : null}
+            </>
           ) : null}
 
           {selectedModeId === "capability_studio" ? (
@@ -1438,6 +1626,7 @@ function CommandCenterHome({
       </section>
 
       <PacketMode
+        deltas={[]}
         latestActivationRun={latestActivationRun}
         packetSignals={packetSignals}
         selectedOpportunityId={selectedOpportunityId}
@@ -1476,12 +1665,14 @@ function CommandCenterHome({
 
 function PacketMode({
   compact = false,
+  deltas,
   latestActivationRun,
   packetSignals,
   selectedOpportunityId,
   showDetail = false,
 }: {
   compact?: boolean;
+  deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
   selectedOpportunityId: string;
@@ -1536,6 +1727,28 @@ function PacketMode({
           ))}
         </div>
       </section>
+
+      {!compact && deltas.length > 0 ? (
+        <section
+          className="workspace-section"
+          aria-labelledby="packet-delta-title"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                Work Product Deltas
+              </p>
+              <h3 id="packet-delta-title">Pending packet changes</h3>
+            </div>
+            <Route className="text-ariadne-cyan" size={22} aria-hidden />
+          </div>
+          <div className="action-plan-card-stack mt-4">
+            {deltas.map((delta) => (
+              <WorkProductDeltaCard delta={delta} key={delta.id} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {!compact && matrix !== undefined && showDetail ? (
         <details className="packet-detail-disclosure" open>
@@ -2011,6 +2224,58 @@ function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
   );
 }
 
+function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
+  const latestDecision = delta.review_decisions.at(-1);
+  const deltaDetailHref = `/api/production-command-center/work-product-deltas/${encodeURIComponent(delta.id)}`;
+  const sourceRunHref = `/capability-studio/runs/${encodeURIComponent(delta.source_capability_run_id)}`;
+
+  return (
+    <article className="action-update-card">
+      <div className="action-update-card-head">
+        <span>{formatLabel(delta.destination)}</span>
+        <span>{formatLabel(delta.review_state)}</span>
+      </div>
+      <div>
+        <h4>{delta.title}</h4>
+        <p>{delta.after_summary}</p>
+      </div>
+      <div className="action-update-links">
+        <a href={deltaDetailHref}>Delta record</a>
+        <a href={sourceRunHref}>Source run</a>
+      </div>
+      <dl>
+        <div>
+          <dt>Before</dt>
+          <dd>{delta.before_summary}</dd>
+        </div>
+        <div>
+          <dt>Sources</dt>
+          <dd>
+            {delta.source_refs.length > 0
+              ? delta.source_refs.map(formatReferenceLabel).join(", ")
+              : "No source refs"}
+          </dd>
+        </div>
+        <div>
+          <dt>Capability output</dt>
+          <dd>
+            {formatReferenceLabel(delta.capability_output_refs[0] ?? delta.id)}
+          </dd>
+        </div>
+        {latestDecision !== undefined ? (
+          <div>
+            <dt>Decision</dt>
+            <dd>
+              {formatLabel(latestDecision.decision)} /{" "}
+              {formatLabel(latestDecision.review_gate)}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </article>
+  );
+}
+
 function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
   return (
     <section className="focused-mode-placeholder">
@@ -2025,11 +2290,15 @@ function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
 }
 
 function ActionPlanMode({
+  deltas,
   latestActivationRun,
+  recommendations,
   selectedOpportunityId,
   updates,
 }: {
+  deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
+  recommendations: ActionRecommendationProjection[];
   selectedOpportunityId: string;
   updates: WorkProductUpdateProjection[];
 }) {
@@ -2044,8 +2313,10 @@ function ActionPlanMode({
     currentGateActionFields.length > 0
       ? currentGateActionFields.slice(0, 4)
       : (actionFields ?? []).slice(0, 4);
-  const sourceCount = new Set(updates.flatMap((update) => update.source_refs))
-    .size;
+  const sourceCount = new Set([
+    ...updates.flatMap((update) => update.source_refs),
+    ...deltas.flatMap((delta) => delta.source_refs),
+  ]).size;
 
   return (
     <section className="action-plan-mode" aria-labelledby="action-plan-title">
@@ -2071,8 +2342,18 @@ function ActionPlanMode({
 
       <dl className="action-plan-metric-grid">
         <Metric
+          label="Pending deltas"
+          value={deltas.length.toString()}
+          tone="cyan"
+        />
+        <Metric
           label="Ready updates"
           value={updates.length.toString()}
+          tone="cyan"
+        />
+        <Metric
+          label="Recommendations"
+          value={recommendations.length.toString()}
           tone="cyan"
         />
         <Metric
@@ -2093,11 +2374,16 @@ function ActionPlanMode({
           aria-labelledby="route-updates-title"
         >
           <div className="action-plan-lane-heading">
-            <p>Review-ready updates</p>
-            <h4 id="route-updates-title">Accepted route outputs</h4>
+            <p>Review queue</p>
+            <h4 id="route-updates-title">
+              Pending deltas and accepted outputs
+            </h4>
           </div>
-          {updates.length > 0 ? (
+          {deltas.length > 0 || updates.length > 0 ? (
             <div className="action-plan-card-stack">
+              {deltas.map((delta) => (
+                <WorkProductDeltaCard delta={delta} key={delta.id} />
+              ))}
               {updates.map((update) => (
                 <article className="action-update-card" key={update.id}>
                   <div className="action-update-card-head">
@@ -2131,6 +2417,54 @@ function ActionPlanMode({
               <p>No Action Plan updates ready.</p>
               <span>
                 Run and accept an action route to stage follow-up work.
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section
+          className="action-plan-lane"
+          aria-labelledby="action-recs-title"
+        >
+          <div className="action-plan-lane-heading">
+            <p>Recommendation gate</p>
+            <h4 id="action-recs-title">Linked recommendations</h4>
+          </div>
+          {recommendations.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {recommendations.map((recommendation) => (
+                <article className="action-update-card" key={recommendation.id}>
+                  <div className="action-update-card-head">
+                    <span>Recommendation</span>
+                    <span>{formatLabel(recommendation.review_state)}</span>
+                  </div>
+                  <p>{recommendation.description}</p>
+                  <dl>
+                    <div>
+                      <dt>Title</dt>
+                      <dd>{recommendation.title}</dd>
+                    </div>
+                    <div>
+                      <dt>Linked implication</dt>
+                      <dd>{formatReferenceLabel(recommendation.cause)}</dd>
+                    </div>
+                    <div>
+                      <dt>Route</dt>
+                      <dd>
+                        {formatLabel(
+                          recommendation.capability_route.next_command_id,
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No linked recommendations yet.</p>
+              <span>
+                Accept/edit an Action Plan delta to queue recommendation.
               </span>
             </div>
           )}
@@ -2175,10 +2509,12 @@ function ActionPlanMode({
 }
 
 function EngagementMode({
+  deltas,
   latestActivationRun,
   selectedOpportunityId,
   updates,
 }: {
+  deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   selectedOpportunityId: string;
   updates: WorkProductUpdateProjection[];
@@ -2239,6 +2575,11 @@ function EngagementMode({
 
       <dl className="action-plan-metric-grid">
         <Metric
+          label="Engagement deltas"
+          value={deltas.length.toString()}
+          tone="cyan"
+        />
+        <Metric
           label="Call-plan outputs"
           value={updates.length.toString()}
           tone="cyan"
@@ -2256,6 +2597,31 @@ function EngagementMode({
       </dl>
 
       <div className="action-plan-lanes">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="engagement-deltas-title"
+        >
+          <div className="action-plan-lane-heading">
+            <p>Engagement-prep queue</p>
+            <h4 id="engagement-deltas-title">Pending engagement deltas</h4>
+          </div>
+          {deltas.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {deltas.map((delta) => (
+                <WorkProductDeltaCard delta={delta} key={delta.id} />
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No engagement deltas yet.</p>
+              <span>
+                Create engagement-prep delta from Action Plan link, packet gap,
+                or fallback route.
+              </span>
+            </div>
+          )}
+        </section>
+
         <section className="action-plan-lane" aria-labelledby="call-plan-title">
           <div className="action-plan-lane-heading">
             <p>Review-ready prep</p>
@@ -3314,6 +3680,109 @@ function RendererReadinessPanel({
           );
         })}
       </div>
+    </section>
+  );
+}
+
+function ArtifactContextFreshnessPanel({
+  status,
+}: {
+  status: ArtifactContextStatus;
+}) {
+  const summary = status.summary;
+  const freshness = status.draft_freshness;
+  const traceRefs =
+    status.source_package?.assumptions.filter((value) =>
+      value.startsWith("artifact_context_refresh_"),
+    ) ?? [];
+
+  return (
+    <section className="renderer-readiness">
+      <div className="flex flex-col gap-3 border-b border-ariadne-line pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-ariadne-cyan">
+            Artifact context freshness
+          </p>
+          <h3 className="mt-1 text-xl font-semibold">Source package snapshot</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+            Accepted packet and action deltas refresh source context without
+            invoking renderer export.
+          </p>
+        </div>
+        <Archive className="text-ariadne-copper" size={24} aria-hidden />
+      </div>
+
+      {summary !== null ? (
+        <dl className="action-plan-metric-grid mt-5">
+          <Metric label="Trusted refs" value={summary.trusted_count.toString()} tone="cyan" />
+          <Metric
+            label="Reviewable refs"
+            value={summary.reviewable_count.toString()}
+            tone="copper"
+          />
+          <Metric label="Gap refs" value={summary.gap_count.toString()} tone="rose" />
+          <Metric
+            label="Pending review refs"
+            value={summary.pending_review_count.toString()}
+            tone="signal"
+          />
+        </dl>
+      ) : (
+        <div className="action-plan-empty mt-4">
+          <p>No artifact source package yet.</p>
+          <span>Review packet/action deltas to refresh artifact context.</span>
+        </div>
+      )}
+
+      {freshness !== null ? (
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          <article className="action-update-card">
+            <div className="action-update-card-head">
+              <span>Draft source snapshot</span>
+              <span>{freshness.is_stale ? "Stale" : "Fresh"}</span>
+            </div>
+            <dl>
+              <div>
+                <dt>Draft source timestamp</dt>
+                <dd>{freshness.source_package_created_at}</dd>
+              </div>
+              <div>
+                <dt>Current source timestamp</dt>
+                <dd>{freshness.latest_source_package_created_at ?? "Unavailable"}</dd>
+              </div>
+              <div>
+                <dt>Draft ID</dt>
+                <dd>{freshness.draft_id}</dd>
+              </div>
+              <div>
+                <dt>Source package ID</dt>
+                <dd>{freshness.source_package_id}</dd>
+              </div>
+            </dl>
+          </article>
+          <article className="action-update-card">
+            <div className="action-update-card-head">
+              <span>Refresh trace refs</span>
+              <span>{traceRefs.length}</span>
+            </div>
+            <dl>
+              {traceRefs.length > 0 ? (
+                traceRefs.map((value) => (
+                  <div key={value}>
+                    <dt>Ref</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <dt>Ref</dt>
+                  <dd>None</dd>
+                </div>
+              )}
+            </dl>
+          </article>
+        </div>
+      ) : null}
     </section>
   );
 }

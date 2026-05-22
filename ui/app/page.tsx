@@ -738,14 +738,16 @@ async function loadWorkProductUpdates(
 
 async function loadWorkProductDeltas(
   opportunityId: string,
-  destination: string,
+  destination?: string,
 ): Promise<WorkProductDelta[]> {
   try {
     const url = new URL(
       `${apiBaseUrl}/api/production-command-center/work-product-deltas`,
     );
     url.searchParams.set("opportunity_id", opportunityId);
-    url.searchParams.set("destination", destination);
+    if (destination !== undefined) {
+      url.searchParams.set("destination", destination);
+    }
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
       return [];
@@ -974,6 +976,7 @@ export default async function CommandCenterPage({
     rendererReadiness,
     artifactContextStatus,
     packetDeltas,
+    packetRelatedDeltas,
     actionPlanUpdates,
     actionPlanDeltas,
     actionRecommendations,
@@ -1000,6 +1003,9 @@ export default async function CommandCenterPage({
       : Promise.resolve<ArtifactContextStatus | null>(null),
     selectedModeId === "packet"
       ? loadWorkProductDeltas(workspace.opportunity.id, "living_packet")
+      : Promise.resolve<WorkProductDelta[]>([]),
+    selectedModeId === "packet"
+      ? loadWorkProductDeltas(workspace.opportunity.id)
       : Promise.resolve<WorkProductDelta[]>([]),
     selectedModeId === "actions"
       ? loadWorkProductUpdates(workspace.opportunity.id, "action_plan")
@@ -1254,6 +1260,7 @@ export default async function CommandCenterPage({
                 workspace.work_modes,
                 "documents",
               )}
+              relatedDeltas={packetRelatedDeltas}
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
               researchPendingCount={pendingCountForMode(
@@ -1648,6 +1655,7 @@ function CommandCenterHome({
       <PacketMode
         deltas={[]}
         documentsPendingCount={documentsPendingCount}
+        relatedDeltas={[]}
         latestActivationRun={latestActivationRun}
         packetSignals={packetSignals}
         researchPendingCount={researchPendingCount}
@@ -1689,6 +1697,8 @@ function PacketMode({
   compact = false,
   deltas,
   documentsPendingCount,
+  relatedDeltas,
+  documentsPendingCount,
   latestActivationRun,
   packetSignals,
   researchPendingCount,
@@ -1698,6 +1708,8 @@ function PacketMode({
   compact?: boolean;
   deltas: WorkProductDelta[];
   documentsPendingCount: number;
+  relatedDeltas: WorkProductDelta[];
+  relatedDeltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
   researchPendingCount: number;
@@ -1772,7 +1784,11 @@ function PacketMode({
           </div>
           <div className="action-plan-card-stack mt-4">
             {deltas.map((delta) => (
-              <WorkProductDeltaCard delta={delta} key={delta.id} />
+              <WorkProductDeltaCard
+                delta={delta}
+                key={delta.id}
+                relatedDeltas={relatedDeltas}
+              />
             ))}
           </div>
         </section>
@@ -2314,10 +2330,25 @@ function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
   );
 }
 
-function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
+function WorkProductDeltaCard({
+  delta,
+  relatedDeltas,
+}: {
+  delta: WorkProductDelta;
+  relatedDeltas: WorkProductDelta[];
+}) {
   const latestDecision = delta.review_decisions.at(-1);
   const deltaDetailHref = `/api/production-command-center/work-product-deltas/${encodeURIComponent(delta.id)}`;
   const sourceRunHref = `/capability-studio/runs/${encodeURIComponent(delta.source_capability_run_id)}`;
+  const downstreamDestinations = [...new Set(
+    relatedDeltas
+      .filter(
+        (candidate) =>
+          candidate.source_output_id === delta.source_output_id &&
+          candidate.id !== delta.id,
+      )
+      .map((candidate) => candidate.destination),
+  )];
 
   return (
     <article className="action-update-card">
@@ -2330,7 +2361,7 @@ function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
         <p>{delta.after_summary}</p>
       </div>
       <div className="action-update-links">
-        <a href={deltaDetailHref}>Delta record</a>
+        <a href={deltaDetailHref}>Review delta</a>
         <a href={sourceRunHref}>Source run</a>
       </div>
       <dl>
@@ -2359,6 +2390,12 @@ function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
               {formatLabel(latestDecision.decision)} /{" "}
               {formatLabel(latestDecision.review_gate)}
             </dd>
+          </div>
+        ) : null}
+        {downstreamDestinations.length > 0 ? (
+          <div>
+            <dt>Downstream implications</dt>
+            <dd>{downstreamDestinations.map(formatLabel).join(", ")}</dd>
           </div>
         ) : null}
       </dl>
@@ -2472,7 +2509,11 @@ function ActionPlanMode({
           {deltas.length > 0 || updates.length > 0 ? (
             <div className="action-plan-card-stack">
               {deltas.map((delta) => (
-                <WorkProductDeltaCard delta={delta} key={delta.id} />
+                <WorkProductDeltaCard
+                  delta={delta}
+                  key={delta.id}
+                  relatedDeltas={deltas}
+                />
               ))}
               {updates.map((update) => (
                 <article className="action-update-card" key={update.id}>
@@ -2698,7 +2739,11 @@ function EngagementMode({
           {deltas.length > 0 ? (
             <div className="action-plan-card-stack">
               {deltas.map((delta) => (
-                <WorkProductDeltaCard delta={delta} key={delta.id} />
+                <WorkProductDeltaCard
+                  delta={delta}
+                  key={delta.id}
+                  relatedDeltas={deltas}
+                />
               ))}
             </div>
           ) : (

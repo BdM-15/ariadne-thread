@@ -1923,6 +1923,142 @@ def test_production_command_center_lists_next_action_recommendations(
     assert recommendations[0]["review_state"] == "pending"
 
 
+def test_engagement_prep_delta_can_be_created_from_action_plan_link(
+    tmp_path,
+) -> None:
+    settings = _command_center_settings(tmp_path)
+    client, action_delta = _seed_competitive_gap_delta_for_destination(
+        settings, "action_plan"
+    )
+    accepted_action = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Queue recommendation before trusted action write.",
+        },
+    )
+    assert accepted_action.status_code == 200, accepted_action.text
+
+    create_response = client.post(
+        "/api/production-command-center/work-product-deltas/engagement-prep",
+        json={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "source_preference": "action_plan_link",
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    body = create_response.json()
+    assert body["summary"] == {"call_plan": 1}
+    assert len(body["deltas"]) == 1
+    delta = body["deltas"][0]
+    assert delta["destination"] == "call_plan"
+    assert delta["review_state"] == "pending_review"
+    assert delta["provenance"]["source_mode"] == "action_plan_link"
+    assert delta["provenance"]["linked_recommendation_id"] is not None
+    assert delta["provenance"]["trusted_downstream_writes"] is False
+    assert "Engagement objective:" in delta["after_summary"]
+    assert "Suggested validation prompts:" in delta["after_summary"]
+
+
+def test_engagement_prep_delta_fallback_and_review_keeps_no_trusted_writes(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from ariadne.artifact_assembly import ArtifactAssemblyStore
+    from ariadne.next_action_recommendations import NextActionRecommendationStore
+    from ariadne.packet_knowledge import PacketFieldAnswerStore
+
+    settings = _command_center_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    create_response = client.post(
+        "/api/production-command-center/work-product-deltas/engagement-prep",
+        json={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "source_preference": "customer_call_plan_fallback",
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    created = create_response.json()["deltas"][0]
+    assert created["provenance"]["source_mode"] == "customer_call_plan_fallback"
+
+    accept_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{created['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Reviewed engagement prep candidate only.",
+        },
+    )
+    assert accept_response.status_code == 200, accept_response.text
+    accepted = accept_response.json()
+    assert accepted["delta"]["review_state"] == "accepted"
+    assert accepted["decision"]["review_gate"] == "work_product_delta_call_plan_acceptance"
+    assert accepted["packet_field_answer"] is None
+    assert accepted["next_action_recommendation"] is None
+    assert accepted["activation_run"] is None
+
+    route_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{created['id']}/review-decisions",
+        json={
+            "decision": "route",
+            "reviewer_rationale": "Route to research follow-up.",
+            "routed_destination": "research",
+        },
+    )
+    assert route_response.status_code == 400
+    assert route_response.json()["detail"] == "Work Product Delta already reviewed"
+
+    assert (
+        PacketFieldAnswerStore(settings.ariadne_packet_field_answers_dir).list(
+            opportunity_id="opp-aflcmc-recompete"
+        )
+        == ()
+    )
+    assert (
+        NextActionRecommendationStore(
+            settings.ariadne_next_action_recommendations_dir
+        ).list(opportunity_id="opp-aflcmc-recompete")
+        == []
+    )
+    assert (
+        ArtifactAssemblyStore(
+            settings.ariadne_artifact_assembly_dir
+        ).list_source_packages(opportunity_id="opp-aflcmc-recompete")
+        == []
+    )
+
+
+def test_engagement_prep_delta_can_be_created_from_packet_gap(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    settings = _command_center_settings(tmp_path)
+    client = TestClient(create_app(settings))
+    activation_response = client.post(
+        "/api/production-command-center/opportunities/opp-aflcmc-recompete/activation-runs"
+    )
+    assert activation_response.status_code == 200, activation_response.text
+
+    create_response = client.post(
+        "/api/production-command-center/work-product-deltas/engagement-prep",
+        json={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "source_preference": "packet_gap",
+        },
+    )
+    assert create_response.status_code == 200, create_response.text
+    delta = create_response.json()["deltas"][0]
+    assert delta["destination"] == "call_plan"
+    assert delta["provenance"]["source_mode"] == "packet_gap"
+    assert delta["field_key"] is not None
+    assert delta["source_capability_run_id"].startswith("actrun_")
+    assert "Suggested validation prompts:" in delta["after_summary"]
+
+
 def test_production_command_center_health_reports_hardened_contract(tmp_path) -> None:
     from fastapi.testclient import TestClient
 

@@ -917,6 +917,7 @@ export default async function CommandCenterPage({
     actionPlanUpdates,
     actionPlanDeltas,
     actionRecommendations,
+    engagementDeltas,
     callPlanUpdates,
     researchRuns,
     researchSourceRegistry,
@@ -946,6 +947,9 @@ export default async function CommandCenterPage({
     selectedModeId === "actions"
       ? loadActionRecommendations(workspace.opportunity.id)
       : Promise.resolve<ActionRecommendationProjection[]>([]),
+    selectedModeId === "engagement"
+      ? loadWorkProductDeltas(workspace.opportunity.id, "call_plan")
+      : Promise.resolve<WorkProductDelta[]>([]),
     selectedModeId === "engagement"
       ? loadWorkProductUpdates(workspace.opportunity.id, "call_plan")
       : Promise.resolve<WorkProductUpdateProjection[]>([]),
@@ -1213,6 +1217,7 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "engagement" ? (
             <EngagementMode
+              deltas={engagementDeltas}
               latestActivationRun={latestActivationRun}
               selectedOpportunityId={workspace.opportunity.id}
               updates={callPlanUpdates}
@@ -2434,10 +2439,12 @@ function ActionPlanMode({
 }
 
 function EngagementMode({
+  deltas,
   latestActivationRun,
   selectedOpportunityId,
   updates,
 }: {
+  deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   selectedOpportunityId: string;
   updates: WorkProductUpdateProjection[];
@@ -2498,6 +2505,11 @@ function EngagementMode({
 
       <dl className="action-plan-metric-grid">
         <Metric
+          label="Engagement deltas"
+          value={deltas.length.toString()}
+          tone="cyan"
+        />
+        <Metric
           label="Call-plan outputs"
           value={updates.length.toString()}
           tone="cyan"
@@ -2515,6 +2527,31 @@ function EngagementMode({
       </dl>
 
       <div className="action-plan-lanes">
+        <section
+          className="action-plan-lane"
+          aria-labelledby="engagement-deltas-title"
+        >
+          <div className="action-plan-lane-heading">
+            <p>Engagement-prep queue</p>
+            <h4 id="engagement-deltas-title">Pending engagement deltas</h4>
+          </div>
+          {deltas.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {deltas.map((delta) => (
+                <WorkProductDeltaCard delta={delta} key={delta.id} />
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No engagement deltas yet.</p>
+              <span>
+                Create engagement-prep delta from Action Plan link, packet gap,
+                or fallback route.
+              </span>
+            </div>
+          )}
+        </section>
+
         <section className="action-plan-lane" aria-labelledby="call-plan-title">
           <div className="action-plan-lane-heading">
             <p>Review-ready prep</p>

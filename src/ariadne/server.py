@@ -230,6 +230,7 @@ from ariadne.usaspending import (
     resolve_usaspending_piid,
 )
 from ariadne.work_product_deltas import (
+    EngagementPrepDeltaCreateRequest,
     WorkProductDeltaCreateFromCapabilityOutputRequest,
     WorkProductDeltaDestination,
     WorkProductDeltaDetailResponse,
@@ -237,6 +238,7 @@ from ariadne.work_product_deltas import (
     WorkProductDeltaReviewRequest,
     WorkProductDeltaReviewResponse,
     WorkProductDeltaStore,
+    create_engagement_prep_work_product_delta,
     create_work_product_deltas_from_capability_output,
     get_work_product_delta,
     list_work_product_deltas,
@@ -1033,6 +1035,27 @@ def create_app(
                 status_code=404,
                 detail="Capability Run Output not found",
             ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post("/api/production-command-center/work-product-deltas/engagement-prep")
+    def production_command_center_create_engagement_prep_delta(
+        request: EngagementPrepDeltaCreateRequest,
+    ) -> WorkProductDeltaListResponse:
+        try:
+            return create_engagement_prep_work_product_delta(
+                delta_store=WorkProductDeltaStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                    / "work-product-deltas"
+                ),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                recommendation_store=NextActionRecommendationStore(
+                    runtime_settings.ariadne_next_action_recommendations_dir
+                ),
+                request=request,
+            )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 

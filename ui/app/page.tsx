@@ -3956,7 +3956,7 @@ function normalizeCommandMode(
   ) {
     return requestedMode;
   }
-  return "pulse";
+  return "packet";
 }
 
 function modeHref(

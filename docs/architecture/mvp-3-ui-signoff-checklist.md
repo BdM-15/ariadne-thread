@@ -1,7 +1,7 @@
 # MVP-3 UI Sign-Off Checklist (Issue #107)
 
 Date: 2026-05-22
-Status: awaiting human review decision
+Status: approved by human review (chat sign-off)
 
 ## Purpose
 
@@ -100,12 +100,12 @@ Notes:
 
 ## Final sign-off
 
-- [ ] Human confirms MVP-3 shape good enough for current stage.
+- [x] Human confirms MVP-3 shape good enough for current stage.
 - [ ] Human rejects sign-off and requests concrete follow-up issues.
 
-Reviewer:
+Reviewer: user chat sign-off
 
-Date:
+Date: 2026-05-22
 
 ## If rejected: issue template
 

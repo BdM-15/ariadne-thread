@@ -914,7 +914,7 @@ Completion checkpoint:
   - `npm run typecheck` in `ui/` -> pass
   - `uv run ruff check src/ariadne/server.py tests/test_production_command_center.py` -> pass
 - Acceptance runbook documented in `docs/architecture/mvp-3-capture-work-product-loop-demo.md`.
-- Human-review follow-up issue recorded: `#107` to confirm MVP-3 UI/workflow shape or capture explicit UX follow-ups.
+- Human-review sign-off completed in issue `#107`; current MVP-3 UI/workflow shape accepted for this stage with no blocking UX follow-up issues.
 
 **MVP-4: Production Command Center UI/UX Hardening**
 

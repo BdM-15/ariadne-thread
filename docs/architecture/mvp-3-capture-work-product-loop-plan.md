@@ -104,7 +104,7 @@ No broad UI polish, new shell architecture, or final artifact editor belongs in 
 	- Engagement mode: call-plan/engagement delta candidates.
 	- Artifacts mode: refreshed artifact source-package status, draft freshness, refresh trace refs.
 - Review inspectability is present in API and UI for decision metadata, provenance, assumptions, gaps, and created/updated downstream record surfaces.
-- Explicit human-review follow-up issue recorded: `#107` (MVP-3 UI shape sign-off or follow-up backlog).
+- Human-review sign-off completed through issue `#107`; current MVP-3 UI/workflow shape accepted for this stage.
 - Boundaries remain enforced:
 	- No automatic trusted writes on route/discard.
 	- No renderer invocation or export execution in MVP-3 flow.

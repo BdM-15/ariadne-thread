@@ -1230,10 +1230,18 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "pulse" ? (
             <CommandCenterHome
+              documentsPendingCount={pendingCountForMode(
+                workspace.work_modes,
+                "documents",
+              )}
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
               portfolio={portfolio}
               pulseSignals={pulseSignals}
+              researchPendingCount={pendingCountForMode(
+                workspace.work_modes,
+                "research",
+              )}
               regions={workspace.layout_regions}
               selectedOpportunityId={workspace.opportunity.id}
             />
@@ -1242,8 +1250,16 @@ export default async function CommandCenterPage({
           {selectedModeId === "packet" ? (
             <PacketMode
               deltas={packetDeltas}
+              documentsPendingCount={pendingCountForMode(
+                workspace.work_modes,
+                "documents",
+              )}
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
+              researchPendingCount={pendingCountForMode(
+                workspace.work_modes,
+                "research",
+              )}
               selectedOpportunityId={workspace.opportunity.id}
               showDetail={showDetail}
             />
@@ -1453,17 +1469,21 @@ function OpportunityPortfolioSwitcher({
 }
 
 function CommandCenterHome({
+  documentsPendingCount,
   latestActivationRun,
   packetSignals,
   portfolio,
   pulseSignals,
+  researchPendingCount,
   regions,
   selectedOpportunityId,
 }: {
+  documentsPendingCount: number;
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
   portfolio: PortfolioOpportunity[];
   pulseSignals: PulseSignalModel[];
+  researchPendingCount: number;
   regions: LayoutRegion[];
   selectedOpportunityId: string;
 }) {
@@ -1627,8 +1647,10 @@ function CommandCenterHome({
 
       <PacketMode
         deltas={[]}
+        documentsPendingCount={documentsPendingCount}
         latestActivationRun={latestActivationRun}
         packetSignals={packetSignals}
+        researchPendingCount={researchPendingCount}
         selectedOpportunityId={selectedOpportunityId}
         compact
       />
@@ -1666,15 +1688,19 @@ function CommandCenterHome({
 function PacketMode({
   compact = false,
   deltas,
+  documentsPendingCount,
   latestActivationRun,
   packetSignals,
+  researchPendingCount,
   selectedOpportunityId,
   showDetail = false,
 }: {
   compact?: boolean;
   deltas: WorkProductDelta[];
+  documentsPendingCount: number;
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
+  researchPendingCount: number;
   selectedOpportunityId: string;
   showDetail?: boolean;
 }) {
@@ -1696,6 +1722,8 @@ function PacketMode({
   const needsActionFields = roadmapFields.filter((field) =>
     isRoadmapFieldActionable(field),
   );
+  const sourceLimitationsCount =
+    latestActivationRun?.activation_digest.source_limitations.length ?? 0;
 
   return (
     <>
@@ -1940,6 +1968,68 @@ function PacketMode({
             <Route size={16} aria-hidden />
             <span>Open field detail</span>
           </a>
+        </section>
+      ) : null}
+
+      {!compact ? (
+        <section className="workspace-section" aria-labelledby="packet-feeders-title">
+          <div className="section-heading">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                Feeder State
+              </p>
+              <h3 id="packet-feeders-title">Research and document intake readiness</h3>
+            </div>
+            <FileStack className="text-ariadne-cyan" size={22} aria-hidden />
+          </div>
+          <div className="action-plan-card-stack mt-4">
+            <article className="action-update-card">
+              <div className="action-update-card-head">
+                <span>Research</span>
+                <span>{researchPendingCount} pending</span>
+              </div>
+              <p>
+                Capture research queue for this opportunity. Source limits visible from latest
+                activation context.
+              </p>
+              <dl>
+                <div>
+                  <dt>Source limits</dt>
+                  <dd>{sourceLimitationsCount}</dd>
+                </div>
+                <div>
+                  <dt>Route</dt>
+                  <dd>Research mode</dd>
+                </div>
+              </dl>
+              <a className="packet-action-link" href={modeHref("research", selectedOpportunityId)}>
+                Open research feeder
+              </a>
+            </article>
+            <article className="action-update-card">
+              <div className="action-update-card-head">
+                <span>Documents</span>
+                <span>{documentsPendingCount} pending</span>
+              </div>
+              <p>
+                Document intake backlog and review candidates feeding packet answers and downstream
+                routes.
+              </p>
+              <dl>
+                <div>
+                  <dt>Queue</dt>
+                  <dd>{documentsPendingCount}</dd>
+                </div>
+                <div>
+                  <dt>Route</dt>
+                  <dd>Documents mode</dd>
+                </div>
+              </dl>
+              <a className="packet-action-link" href={modeHref("documents", selectedOpportunityId)}>
+                Open document feeder
+              </a>
+            </article>
+          </div>
         </section>
       ) : null}
 
@@ -3944,6 +4034,10 @@ function buildCommandModes(workModes: WorkMode[]): CommandMode[] {
         workModeDescriptions[mode.id] ?? "Focused Command Center work mode.",
     }));
   return [...orderedModes, ...extraModes];
+}
+
+function pendingCountForMode(workModes: WorkMode[], modeId: string): number {
+  return workModes.find((mode) => mode.id === modeId)?.pending_count ?? 0;
 }
 
 function normalizeCommandMode(

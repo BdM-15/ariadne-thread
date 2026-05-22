@@ -3703,7 +3703,9 @@ function ArtifactContextFreshnessPanel({
           <p className="text-xs uppercase tracking-[0.18em] text-ariadne-cyan">
             Artifact context freshness
           </p>
-          <h3 className="mt-1 text-xl font-semibold">Source package snapshot</h3>
+          <h3 className="mt-1 text-xl font-semibold">
+            Source package snapshot
+          </h3>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
             Accepted packet and action deltas refresh source context without
             invoking renderer export.
@@ -3714,13 +3716,21 @@ function ArtifactContextFreshnessPanel({
 
       {summary !== null ? (
         <dl className="action-plan-metric-grid mt-5">
-          <Metric label="Trusted refs" value={summary.trusted_count.toString()} tone="cyan" />
+          <Metric
+            label="Trusted refs"
+            value={summary.trusted_count.toString()}
+            tone="cyan"
+          />
           <Metric
             label="Reviewable refs"
             value={summary.reviewable_count.toString()}
             tone="copper"
           />
-          <Metric label="Gap refs" value={summary.gap_count.toString()} tone="rose" />
+          <Metric
+            label="Gap refs"
+            value={summary.gap_count.toString()}
+            tone="rose"
+          />
           <Metric
             label="Pending review refs"
             value={summary.pending_review_count.toString()}
@@ -3748,7 +3758,9 @@ function ArtifactContextFreshnessPanel({
               </div>
               <div>
                 <dt>Current source timestamp</dt>
-                <dd>{freshness.latest_source_package_created_at ?? "Unavailable"}</dd>
+                <dd>
+                  {freshness.latest_source_package_created_at ?? "Unavailable"}
+                </dd>
               </div>
               <div>
                 <dt>Draft ID</dt>

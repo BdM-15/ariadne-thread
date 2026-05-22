@@ -92,22 +92,22 @@ No broad UI polish, new shell architecture, or final artifact editor belongs in 
 ## Completion Evidence (2026-05-22)
 
 - Implementation issues completed and merged to MVP-3 epic branch:
-	- `#102` packet-delta apply + activation refresh
-	- `#103` action-plan implication review gate via recommendation queue
-	- `#104` engagement-prep delta creation/review path
-	- `#105` artifact context refresh from accepted packet/action deltas + freshness status UI/API
-	- `#106` acceptance demo/runbook + documentation closure
+  - `#102` packet-delta apply + activation refresh
+  - `#103` action-plan implication review gate via recommendation queue
+  - `#104` engagement-prep delta creation/review path
+  - `#105` artifact context refresh from accepted packet/action deltas + freshness status UI/API
+  - `#106` acceptance demo/runbook + documentation closure
 - Scripted acceptance runbook documented in `docs/architecture/mvp-3-capture-work-product-loop-demo.md`.
 - Focused Work Mode visibility is now present:
-	- Packet mode: living-packet deltas with before/after, refs, assumptions, gaps, review state.
-	- Actions mode: action deltas + linked recommendation projections.
-	- Engagement mode: call-plan/engagement delta candidates.
-	- Artifacts mode: refreshed artifact source-package status, draft freshness, refresh trace refs.
+  - Packet mode: living-packet deltas with before/after, refs, assumptions, gaps, review state.
+  - Actions mode: action deltas + linked recommendation projections.
+  - Engagement mode: call-plan/engagement delta candidates.
+  - Artifacts mode: refreshed artifact source-package status, draft freshness, refresh trace refs.
 - Review inspectability is present in API and UI for decision metadata, provenance, assumptions, gaps, and created/updated downstream record surfaces.
 - Human-review sign-off completed through issue `#107`; current MVP-3 UI/workflow shape accepted for this stage.
 - Boundaries remain enforced:
-	- No automatic trusted writes on route/discard.
-	- No renderer invocation or export execution in MVP-3 flow.
+  - No automatic trusted writes on route/discard.
+  - No renderer invocation or export execution in MVP-3 flow.
 
 ## Deferred
 

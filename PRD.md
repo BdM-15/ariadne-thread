@@ -91,6 +91,114 @@
 
 ---
 
+## 0A. Rapid Realignment PRD: Two-Tier Command Center Unification (Hours, Not Weeks)
+
+**Status:** Approved execution plan for immediate implementation  
+**Window:** Same-day sprint (target 6-10 hours of focused build time)  
+**Why this exists:** Ariadne already has strong modules. The current risk is fragmentation, not missing capability. This realignment composes what exists into one coherent operating model without losing the North Star, Shipley discipline, or completed MVP boundaries.
+
+### Problem Statement
+
+The product has mature capability surfaces (Activation, Assisted Capture, Work Product Deltas, Research, Documents, Actions, Capability Runs), but day-to-day execution can still feel distributed across modes instead of being centered on one living end-game map. This creates unnecessary context switching and reduces operator velocity.
+
+### Non-Negotiable Model
+
+- **Tier 1: Global Portfolio Pulse** stays a triage and routing cockpit.
+- **Tier 2: Living Milestone Decision Briefing Packet** is the primary workspace for one Opportunity.
+- Feeders (Activation, Research, Documents, Actions, Capability outputs) must appear and be actionable from the Packet workspace.
+- Preserve all existing review gates, provenance, and trusted-write boundaries.
+
+### Realignment Goals (Preserve Existing PRD Purpose)
+
+- Keep the North Star unchanged: one elegant Command Center where one operator can manage the full capture lifecycle with minimum friction.
+- Increase in-app execution concentration: 80-90% of daily capture work completed from the Packet-centered workspace.
+- Preserve deep modular seams and existing stores/contracts; change composition, not foundations.
+- Keep "maximum simplicity, minimum tool sprawl" as the primary implementation filter.
+
+### Scope (In)
+
+- Recompose current Next.js Command Center so Packet is the persistent center of gravity for selected Opportunity work.
+- Surface feeder states and actions in Packet context (cards, lanes, detail drawers, and direct route actions).
+- Prioritize existing integrations already in product contract: Activation matrix, Assisted Capture routes, Work Product Deltas, Capture Research signals, Document Intake signals, Action implications.
+- Keep portfolio pulse available as Tier 1 routing and attention management, not a competing workspace.
+
+### Scope (Out)
+
+- No new skills.
+- No new external integrations.
+- No new artifact renderer/export buildout.
+- No broad module rewrites or speculative architecture refactors.
+- No relaxation of review-gated or trusted-write boundaries.
+
+### Hour-Based Execution Plan
+
+#### Phase 1 (Hour 0-2): Lock IA and command surface contract
+
+- Freeze IA behavior:
+  - Portfolio Pulse = route and triage.
+  - Packet = operational workspace.
+- Define one canonical Packet workspace contract:
+  - Gate command row (priority field + next action).
+  - Live packet section coverage.
+  - Route cards for blockers/review-ready fields.
+  - Work Product Delta lane.
+  - Feeder detail surfaces from packet context.
+- Confirm no new backend contracts are required for this first pass.
+
+#### Phase 2 (Hour 2-5): Implement Packet-first composition
+
+- Make Packet the default selected workspace surface for an Opportunity.
+- Keep current modules intact, but mount feeder summaries and actions from Packet context first.
+- Ensure direct route links for packet-field actions (assisted capture and review paths).
+
+#### Phase 3 (Hour 5-8): Wire top feeders in Packet context
+
+- **Activation:** current-gate blockers and review-ready queue visible in Packet command row and route cards.
+- **Assisted Capture:** packet-gap goal and field-specific route actions visible in Packet.
+- **Work Product Deltas:** inline before/after cards with review path entry.
+- **Research/Documents:** source limits and pending review counts visible from Packet with direct route actions.
+- **Actions:** downstream implication lane from accepted packet/delta decisions.
+
+#### Phase 4 (Hour 8-10): Hardening and verification
+
+- Remove redundant navigation hops where Packet-context actions already exist.
+- Verify visual hierarchy: Packet primary, feeder surfaces secondary.
+- Run focused regression checks for production Command Center routes and review loops.
+
+### Acceptance Criteria (Same-Day)
+
+- Operator can perform the core daily loop mostly from Packet workspace:
+  - inspect gate blockers,
+  - launch route,
+  - review output,
+  - inspect packet delta,
+  - queue next action.
+- Global Portfolio Pulse remains fast for triage and route selection across Opportunities.
+- No regression of review gate/provenance/trusted-write boundaries.
+- No net increase in module sprawl or redundant UI surfaces.
+
+### Integration Order (First to Wire)
+
+1. Opportunity Activation (current gate command and field route state)
+2. Assisted Capture route recommendations/runs/provenance
+3. Work Product Delta review lane
+4. Document Intake pending/review signals
+5. Capture Research pending/source-limitation signals
+6. Action implications and recommendation routing
+
+### Risk Controls
+
+- **Risk:** UI over-composition creates another mega-scroll surface.  
+  **Control:** keep packet-center plus compact feeder lanes with explicit detail entry points.
+- **Risk:** accidental feature creep.  
+  **Control:** enforce out-of-scope list; reject net-new capability asks during this sprint.
+- **Risk:** breaking trusted boundaries while speeding integration.  
+  **Control:** keep all existing review decisions and trusted-write rules unchanged.
+
+### Definition of Done for This Realignment
+
+The Command Center behaves as one coherent two-tier system: Portfolio Pulse routes attention globally, and the Living Packet operates as the daily execution heart where feeder workflows are visible and actionable without forcing routine context switching.
+
 ## 1. North Star Vision & Core Guiding Principles (Non-Negotiable)
 
 **Vision**  

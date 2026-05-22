@@ -233,10 +233,13 @@ from ariadne.work_product_deltas import (
     WorkProductDeltaDestination,
     WorkProductDeltaDetailResponse,
     WorkProductDeltaListResponse,
+    WorkProductDeltaReviewRequest,
+    WorkProductDeltaReviewResponse,
     WorkProductDeltaStore,
     create_work_product_deltas_from_capability_output,
     get_work_product_delta,
     list_work_product_deltas,
+    record_packet_work_product_delta_review,
 )
 from ariadne.production_command_center import (
     AssistedCaptureWorkProduct,
@@ -247,6 +250,7 @@ from ariadne.production_command_center import (
     AssistedRouteProvenanceResponse,
     AssistedRouteRunRequest,
     AssistedRouteRunResponse,
+    DEMO_OPPORTUNITY_ID,
     ProductionCommandCenterWorkspace,
     ProductionCommandCenterHealthResponse,
     ProductionOpportunityCreateResponse,
@@ -1040,6 +1044,49 @@ def create_app(
                     / "work-product-deltas"
                 ),
                 delta_id=delta_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Work Product Delta not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.post(
+        "/api/production-command-center/work-product-deltas/{delta_id}/review-decisions"
+    )
+    def production_command_center_review_work_product_delta(
+        delta_id: str,
+        request: WorkProductDeltaReviewRequest,
+    ) -> WorkProductDeltaReviewResponse:
+        delta_store = WorkProductDeltaStore(
+            runtime_settings.ariadne_workflow_routing_dir / "work-product-deltas"
+        )
+        try:
+            delta = delta_store.read(delta_id)
+            opportunity_store = OpportunityScaffoldStore(
+                runtime_settings.ariadne_opportunities_dir
+            )
+            current_milestone_gate = MilestoneGate.MILESTONE_3
+            if delta.opportunity_id != DEMO_OPPORTUNITY_ID:
+                if not opportunity_store.has_scaffold(delta.opportunity_id):
+                    raise ValueError(
+                        f"Opportunity context not found: {delta.opportunity_id}"
+                    )
+                scaffold = opportunity_store.read_scaffold(delta.opportunity_id)
+                current_milestone_gate = MilestoneGate(scaffold.opportunity.gate_status)
+            return record_packet_work_product_delta_review(
+                delta_store=delta_store,
+                answer_store=PacketFieldAnswerStore(
+                    runtime_settings.ariadne_packet_field_answers_dir
+                ),
+                activation_store=OpportunityActivationRunStore(
+                    runtime_settings.ariadne_opportunity_activation_dir
+                ),
+                delta_id=delta_id,
+                request=request,
+                current_milestone_gate=current_milestone_gate,
+                vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except FileNotFoundError as error:
             raise HTTPException(

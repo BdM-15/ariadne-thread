@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +14,21 @@ from ariadne.capability_runs import (
     CapabilityRunStore,
 )
 from ariadne.focused_capture_skills import CompetitiveGapRouteHint
+from ariadne.opportunities import MilestoneGate
+from ariadne.opportunity_activation import (
+    OpportunityActivationRun,
+    OpportunityActivationRunStore,
+    OpportunityActivationRunTrigger,
+    run_opportunity_activation,
+)
+from ariadne.packet_knowledge import (
+    PacketFieldAnswer,
+    PacketFieldAnswerStatus,
+    PacketFieldAnswerStore,
+    build_default_packet_field_definitions,
+    create_packet_field_answer,
+)
+from ariadne.packets import EvidenceStatus
 
 
 class WorkProductDeltaDestination(StrEnum):
@@ -29,6 +46,24 @@ class WorkProductDeltaReviewState(StrEnum):
     EDITED = "edited"
     DISCARDED = "discarded"
     ROUTED = "routed"
+
+
+class WorkProductDeltaReviewDecisionType(StrEnum):
+    ACCEPT = "accept"
+    EDIT = "edit"
+    DISCARD = "discard"
+    ROUTE = "route"
+
+
+class WorkProductDeltaReviewDecision(BaseModel):
+    decision_id: str
+    delta_id: str
+    decision: WorkProductDeltaReviewDecisionType
+    reviewer_rationale: str
+    review_gate: str
+    packet_field_answer_created: bool = False
+    routed_destination: str | None = None
+    decided_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WorkProductDelta(BaseModel):
@@ -49,6 +84,7 @@ class WorkProductDelta(BaseModel):
     capability_output_refs: tuple[str, ...] = ()
     assumptions: tuple[str, ...] = ()
     gaps: tuple[str, ...] = ()
+    review_decisions: tuple[WorkProductDeltaReviewDecision, ...] = ()
     provenance: dict[str, object] = Field(default_factory=dict)
 
 
@@ -65,6 +101,20 @@ class WorkProductDeltaListResponse(BaseModel):
 
 class WorkProductDeltaDetailResponse(BaseModel):
     delta: WorkProductDelta
+
+
+class WorkProductDeltaReviewRequest(BaseModel):
+    decision: WorkProductDeltaReviewDecisionType
+    reviewer_rationale: str
+    edited_value: str | None = None
+    routed_destination: str | None = None
+
+
+class WorkProductDeltaReviewResponse(BaseModel):
+    delta: WorkProductDelta
+    decision: WorkProductDeltaReviewDecision
+    packet_field_answer: PacketFieldAnswer | None = None
+    activation_run: OpportunityActivationRun | None = None
 
 
 class WorkProductDeltaStore:
@@ -157,6 +207,69 @@ def get_work_product_delta(
     return WorkProductDeltaDetailResponse(delta=store.read(delta_id))
 
 
+def record_packet_work_product_delta_review(
+    *,
+    delta_store: WorkProductDeltaStore,
+    answer_store: PacketFieldAnswerStore,
+    activation_store: OpportunityActivationRunStore,
+    delta_id: str,
+    request: WorkProductDeltaReviewRequest,
+    current_milestone_gate: MilestoneGate = MilestoneGate.MILESTONE_3,
+    vault_root: Path | str | None = None,
+) -> WorkProductDeltaReviewResponse:
+    delta = delta_store.read(delta_id)
+    if delta.destination is not WorkProductDeltaDestination.LIVING_PACKET:
+        raise ValueError("Only Living Packet deltas can use packet review")
+    if delta.field_key is None:
+        raise ValueError("Packet delta is missing field_key")
+    if delta.review_state is not WorkProductDeltaReviewState.PENDING_REVIEW:
+        raise ValueError("Work Product Delta already reviewed")
+
+    packet_field_answer: PacketFieldAnswer | None = None
+    activation_run: OpportunityActivationRun | None = None
+    routed_destination = _validated_routed_destination(request)
+    accepted_value = _accepted_packet_value(delta=delta, request=request)
+    if accepted_value is not None:
+        packet_field_answer = _packet_field_answer_from_delta_review(
+            delta=delta,
+            request=request,
+            accepted_value=accepted_value,
+        )
+        answer_store.write(packet_field_answer)
+        activation_run = run_opportunity_activation(
+            opportunity_id=delta.opportunity_id,
+            definitions=build_default_packet_field_definitions(),
+            answers=answer_store.list(opportunity_id=delta.opportunity_id),
+            trigger=OpportunityActivationRunTrigger.MATERIAL_REFRESH,
+            store=activation_store,
+            current_milestone_gate=current_milestone_gate,
+            vault_root=vault_root,
+        )
+
+    decision = WorkProductDeltaReviewDecision(
+        decision_id=f"wpdreview_{uuid4().hex}",
+        delta_id=delta.id,
+        decision=request.decision,
+        reviewer_rationale=request.reviewer_rationale.strip(),
+        review_gate=_review_gate_for_delta_decision(request.decision),
+        packet_field_answer_created=packet_field_answer is not None,
+        routed_destination=routed_destination,
+    )
+    updated_delta = delta.model_copy(
+        update={
+            "review_state": _review_state_for_delta_decision(request.decision),
+            "after_summary": accepted_value or delta.after_summary,
+            "review_decisions": delta.review_decisions + (decision,),
+        }
+    )
+    return WorkProductDeltaReviewResponse(
+        delta=delta_store.write(updated_delta),
+        decision=decision,
+        packet_field_answer=packet_field_answer,
+        activation_run=activation_run,
+    )
+
+
 def build_competitive_gap_work_product_deltas(
     *,
     run: CapabilityRun,
@@ -231,6 +344,91 @@ def build_competitive_gap_work_product_deltas(
             **shared,
         ),
     )
+
+
+def _accepted_packet_value(
+    *,
+    delta: WorkProductDelta,
+    request: WorkProductDeltaReviewRequest,
+) -> str | None:
+    if request.decision is WorkProductDeltaReviewDecisionType.ACCEPT:
+        accepted_value = delta.after_summary.strip()
+    elif request.decision is WorkProductDeltaReviewDecisionType.EDIT:
+        accepted_value = request.edited_value.strip() if request.edited_value else ""
+    else:
+        return None
+    if not accepted_value:
+        raise ValueError("Accepted packet delta review requires value")
+    return accepted_value
+
+
+def _validated_routed_destination(
+    request: WorkProductDeltaReviewRequest,
+) -> str | None:
+    if request.decision is not WorkProductDeltaReviewDecisionType.ROUTE:
+        return None
+    if not request.routed_destination or not request.routed_destination.strip():
+        raise ValueError("Routed packet delta review requires destination")
+    return request.routed_destination.strip()
+
+
+def _packet_field_answer_from_delta_review(
+    *,
+    delta: WorkProductDelta,
+    request: WorkProductDeltaReviewRequest,
+    accepted_value: str,
+) -> PacketFieldAnswer:
+    evidence_status = EvidenceStatus.ASSUMPTION
+    rationale = request.reviewer_rationale.strip()
+    provenance_note = (
+        "Accepted from Work Product Delta "
+        f"{delta.id} / Capability Run Output {delta.source_output_id}: {rationale}"
+        if rationale
+        else (
+            "Accepted from Work Product Delta "
+            f"{delta.id} / Capability Run Output {delta.source_output_id}."
+        )
+    )
+    return create_packet_field_answer(
+        field_key=delta.field_key or "",
+        opportunity_id=delta.opportunity_id,
+        value=accepted_value,
+        status=PacketFieldAnswerStatus.ANSWERED,
+        evidence_status=evidence_status,
+        evidence_ids=delta.source_refs,
+        assumption="; ".join(delta.assumptions) if delta.assumptions else None,
+        confidence=0.6,
+        gap_summary="; ".join(delta.gaps) if delta.gaps else None,
+        provenance_note=provenance_note,
+        review_status=request.decision.value,
+        source_draft_id=delta.id,
+        review_edits=(
+            f"source_capability_run_id: {delta.source_capability_run_id}",
+            f"source_output_id: {delta.source_output_id}",
+        ),
+    )
+
+
+def _review_state_for_delta_decision(
+    decision: WorkProductDeltaReviewDecisionType,
+) -> WorkProductDeltaReviewState:
+    return {
+        WorkProductDeltaReviewDecisionType.ACCEPT: WorkProductDeltaReviewState.ACCEPTED,
+        WorkProductDeltaReviewDecisionType.EDIT: WorkProductDeltaReviewState.EDITED,
+        WorkProductDeltaReviewDecisionType.DISCARD: WorkProductDeltaReviewState.DISCARDED,
+        WorkProductDeltaReviewDecisionType.ROUTE: WorkProductDeltaReviewState.ROUTED,
+    }[decision]
+
+
+def _review_gate_for_delta_decision(
+    decision: WorkProductDeltaReviewDecisionType,
+) -> str:
+    return {
+        WorkProductDeltaReviewDecisionType.ACCEPT: "work_product_delta_packet_acceptance",
+        WorkProductDeltaReviewDecisionType.EDIT: "work_product_delta_packet_edit",
+        WorkProductDeltaReviewDecisionType.DISCARD: "work_product_delta_packet_discard",
+        WorkProductDeltaReviewDecisionType.ROUTE: "work_product_delta_packet_route",
+    }[decision]
 
 
 def _find_run_output(run: CapabilityRun, output_id: str) -> CapabilityRunOutput:

@@ -175,6 +175,17 @@ type WorkProductDelta = {
   capability_output_refs: string[];
   assumptions: string[];
   gaps: string[];
+  review_decisions: WorkProductDeltaReviewDecision[];
+};
+
+type WorkProductDeltaReviewDecision = {
+  decision_id: string;
+  decision: string;
+  reviewer_rationale: string;
+  review_gate: string;
+  packet_field_answer_created: boolean;
+  routed_destination: string | null;
+  decided_at: string;
 };
 
 type WorkProductDeltaListResponse = {
@@ -2091,6 +2102,10 @@ function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
 }
 
 function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
+  const latestDecision = delta.review_decisions.at(-1);
+  const deltaDetailHref = `/api/production-command-center/work-product-deltas/${encodeURIComponent(delta.id)}`;
+  const sourceRunHref = `/capability-studio/runs/${encodeURIComponent(delta.source_capability_run_id)}`;
+
   return (
     <article className="action-update-card">
       <div className="action-update-card-head">
@@ -2100,6 +2115,10 @@ function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
       <div>
         <h4>{delta.title}</h4>
         <p>{delta.after_summary}</p>
+      </div>
+      <div className="action-update-links">
+        <a href={deltaDetailHref}>Delta record</a>
+        <a href={sourceRunHref}>Source run</a>
       </div>
       <dl>
         <div>
@@ -2120,6 +2139,15 @@ function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
             {formatReferenceLabel(delta.capability_output_refs[0] ?? delta.id)}
           </dd>
         </div>
+        {latestDecision !== undefined ? (
+          <div>
+            <dt>Decision</dt>
+            <dd>
+              {formatLabel(latestDecision.decision)} /{" "}
+              {formatLabel(latestDecision.review_gate)}
+            </dd>
+          </div>
+        ) : null}
       </dl>
     </article>
   );
@@ -2217,7 +2245,9 @@ function ActionPlanMode({
         >
           <div className="action-plan-lane-heading">
             <p>Review queue</p>
-            <h4 id="route-updates-title">Pending deltas and accepted outputs</h4>
+            <h4 id="route-updates-title">
+              Pending deltas and accepted outputs
+            </h4>
           </div>
           {deltas.length > 0 || updates.length > 0 ? (
             <div className="action-plan-card-stack">

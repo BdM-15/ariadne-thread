@@ -769,6 +769,30 @@ button {
   margin: 10px 0 0;
 }
 
+.action-update-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.action-update-links a {
+  border: 1px solid rgba(216, 224, 232, 0.18);
+  border-radius: 8px;
+  color: #d8e0e8;
+  font-size: 12px;
+  line-height: 1;
+  min-height: 32px;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.action-update-links a:focus-visible,
+.action-update-links a:hover {
+  border-color: rgba(77, 216, 207, 0.6);
+  color: #9ae7e2;
+}
+
 .action-update-card dl {
   display: grid;
   gap: 10px;

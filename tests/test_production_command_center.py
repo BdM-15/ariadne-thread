@@ -22,6 +22,43 @@ def _command_center_settings(tmp_path):
     )
 
 
+def _seed_competitive_gap_packet_delta(settings: RuntimeSettings):
+    from fastapi.testclient import TestClient
+
+    from ariadne.capability_runs import CapabilityRunStore
+    from ariadne.focused_capture_skills import (
+        CompetitiveGapRouteHintRequest,
+        run_competitive_gap_route_hint_capability,
+    )
+
+    run = run_competitive_gap_route_hint_capability(
+        request=CompetitiveGapRouteHintRequest(
+            opportunity_id="opp-aflcmc-recompete",
+            incumbent_signals=("Incumbent owns transition proof.",),
+            seller_baseline_summary="Seller has cleared staff and onboarding proof.",
+            source_refs=("source://incumbent-profile",),
+            field_key="competition",
+        ),
+        store=CapabilityRunStore(settings.ariadne_capability_runs_dir),
+    )
+    client = TestClient(create_app(settings))
+    intake_response = client.post(
+        "/api/production-command-center/work-product-deltas/from-capability-output",
+        json={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "capability_run_id": run.run_id,
+            "output_id": run.outputs[0].output_id,
+        },
+    )
+    assert intake_response.status_code == 200, intake_response.text
+    packet_delta = next(
+        delta
+        for delta in intake_response.json()["deltas"]
+        if delta["destination"] == "living_packet"
+    )
+    return client, packet_delta
+
+
 def test_production_command_center_workspace_api_exposes_opportunity_context(
     tmp_path,
 ) -> None:
@@ -1495,6 +1532,173 @@ def test_work_product_delta_intake_from_competitive_gap_output_creates_reviewabl
         ).list_source_packages(opportunity_id="opp-aflcmc-recompete")
         == []
     )
+
+
+def test_packet_delta_acceptance_creates_packet_answer_and_activation_refresh(
+    tmp_path,
+) -> None:
+    from ariadne.artifact_assembly import ArtifactAssemblyStore
+    from ariadne.next_action_recommendations import NextActionRecommendationStore
+    from ariadne.packet_knowledge import PacketFieldAnswerStore
+
+    settings = _command_center_settings(tmp_path)
+    client, packet_delta = _seed_competitive_gap_packet_delta(settings)
+
+    review_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{packet_delta['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Competition answer is good enough for gate refresh.",
+        },
+    )
+
+    assert review_response.status_code == 200, review_response.text
+    body = review_response.json()
+    assert body["decision"]["decision"] == "accept"
+    assert body["decision"]["reviewer_rationale"] == (
+        "Competition answer is good enough for gate refresh."
+    )
+    assert body["decision"]["packet_field_answer_created"] is True
+    assert body["delta"]["review_state"] == "accepted"
+    assert body["delta"]["review_decisions"][0]["decision"] == "accept"
+    assert body["delta"]["review_decisions"][0]["review_gate"] == (
+        "work_product_delta_packet_acceptance"
+    )
+    answer = body["packet_field_answer"]
+    assert answer["opportunity_id"] == "opp-aflcmc-recompete"
+    assert answer["field_key"] == "competition"
+    assert answer["value"] == packet_delta["after_summary"]
+    assert answer["status"] == "answered"
+    assert answer["evidence_status"] == "assumption"
+    assert answer["evidence_ids"] == ["source://incumbent-profile"]
+    assert answer["review_status"] == "accept"
+    assert answer["source_draft_id"] == packet_delta["id"]
+    assert packet_delta["source_output_id"] in answer["provenance_note"]
+    assert body["activation_run"]["trigger"] == "material_refresh"
+    competition_field = next(
+        field
+        for field in body["activation_run"]["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "competition"
+    )
+    assert competition_field["action_state"] == "answered"
+    assert competition_field["current_value"] == packet_delta["after_summary"]
+    assert competition_field["source_refs"] == ["source://incumbent-profile"]
+
+    stored_answer = PacketFieldAnswerStore(
+        settings.ariadne_packet_field_answers_dir
+    ).read(opportunity_id="opp-aflcmc-recompete", field_key="competition")
+    assert stored_answer.value == packet_delta["after_summary"]
+    assert NextActionRecommendationStore(
+        settings.ariadne_next_action_recommendations_dir
+    ).list(opportunity_id="opp-aflcmc-recompete") == []
+    assert ArtifactAssemblyStore(
+        settings.ariadne_artifact_assembly_dir
+    ).list_source_packages(opportunity_id="opp-aflcmc-recompete") == []
+
+
+def test_packet_delta_edit_creates_edited_packet_answer_and_activation_refresh(
+    tmp_path,
+) -> None:
+    from ariadne.packet_knowledge import PacketFieldAnswerStore
+
+    settings = _command_center_settings(tmp_path)
+    client, packet_delta = _seed_competitive_gap_packet_delta(settings)
+    edited_value = (
+        "Edited competition answer: seller can offset incumbent transition proof "
+        "with named onboarding evidence."
+    )
+
+    review_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{packet_delta['id']}/review-decisions",
+        json={
+            "decision": "edit",
+            "reviewer_rationale": "Tightened before applying to packet.",
+            "edited_value": edited_value,
+        },
+    )
+
+    assert review_response.status_code == 200, review_response.text
+    body = review_response.json()
+    assert body["decision"]["decision"] == "edit"
+    assert body["decision"]["packet_field_answer_created"] is True
+    assert body["delta"]["review_state"] == "edited"
+    assert body["delta"]["after_summary"] == edited_value
+    assert body["delta"]["review_decisions"][0]["review_gate"] == (
+        "work_product_delta_packet_edit"
+    )
+    assert body["packet_field_answer"]["value"] == edited_value
+    assert body["packet_field_answer"]["review_status"] == "edit"
+    assert body["activation_run"]["trigger"] == "material_refresh"
+    competition_field = next(
+        field
+        for field in body["activation_run"]["packet_field_action_matrix"]["fields"]
+        if field["field_key"] == "competition"
+    )
+    assert competition_field["action_state"] == "answered"
+    assert competition_field["current_value"] == edited_value
+
+    stored_answer = PacketFieldAnswerStore(
+        settings.ariadne_packet_field_answers_dir
+    ).read(opportunity_id="opp-aflcmc-recompete", field_key="competition")
+    assert stored_answer.value == edited_value
+
+
+def test_packet_delta_discard_and_route_do_not_write_trusted_records(
+    tmp_path,
+) -> None:
+    from ariadne.opportunity_activation import OpportunityActivationRunStore
+    from ariadne.packet_knowledge import PacketFieldAnswerStore
+
+    cases = (
+        (
+            "discard",
+            {"decision": "discard", "reviewer_rationale": "Not enough support yet."},
+            "discarded",
+            None,
+            "work_product_delta_packet_discard",
+        ),
+        (
+            "route",
+            {
+                "decision": "route",
+                "reviewer_rationale": "Needs BD follow-up before packet write.",
+                "routed_destination": "customer-call-plan",
+            },
+            "routed",
+            "customer-call-plan",
+            "work_product_delta_packet_route",
+        ),
+    )
+    for case_name, payload, expected_state, routed_destination, review_gate in cases:
+        settings = _command_center_settings(tmp_path / case_name)
+        client, packet_delta = _seed_competitive_gap_packet_delta(settings)
+
+        review_response = client.post(
+            "/api/production-command-center/work-product-deltas/"
+            f"{packet_delta['id']}/review-decisions",
+            json=payload,
+        )
+
+        assert review_response.status_code == 200, review_response.text
+        body = review_response.json()
+        assert body["delta"]["review_state"] == expected_state
+        assert body["delta"]["review_decisions"][0]["decision"] == payload["decision"]
+        assert body["delta"]["review_decisions"][0]["review_gate"] == review_gate
+        assert (
+            body["delta"]["review_decisions"][0]["routed_destination"]
+            == routed_destination
+        )
+        assert body["decision"]["packet_field_answer_created"] is False
+        assert body["packet_field_answer"] is None
+        assert body["activation_run"] is None
+        assert PacketFieldAnswerStore(
+            settings.ariadne_packet_field_answers_dir
+        ).list(opportunity_id="opp-aflcmc-recompete") == ()
+        assert OpportunityActivationRunStore(
+            settings.ariadne_opportunity_activation_dir
+        ).list(opportunity_id="opp-aflcmc-recompete") == ()
 
 
 def test_production_command_center_health_reports_hardened_contract(tmp_path) -> None:

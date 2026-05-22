@@ -1986,13 +1986,18 @@ function PacketMode({
       ) : null}
 
       {!compact ? (
-        <section className="workspace-section" aria-labelledby="packet-feeders-title">
+        <section
+          className="workspace-section"
+          aria-labelledby="packet-feeders-title"
+        >
           <div className="section-heading">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                 Feeder State
               </p>
-              <h3 id="packet-feeders-title">Research and document intake readiness</h3>
+              <h3 id="packet-feeders-title">
+                Research and document intake readiness
+              </h3>
             </div>
             <FileStack className="text-ariadne-cyan" size={22} aria-hidden />
           </div>
@@ -2003,8 +2008,8 @@ function PacketMode({
                 <span>{researchPendingCount} pending</span>
               </div>
               <p>
-                Capture research queue for this opportunity. Source limits visible from latest
-                activation context.
+                Capture research queue for this opportunity. Source limits
+                visible from latest activation context.
               </p>
               <dl>
                 <div>
@@ -2016,7 +2021,10 @@ function PacketMode({
                   <dd>Research mode</dd>
                 </div>
               </dl>
-              <a className="packet-action-link" href={modeHref("research", selectedOpportunityId)}>
+              <a
+                className="packet-action-link"
+                href={modeHref("research", selectedOpportunityId)}
+              >
                 Open research feeder
               </a>
             </article>
@@ -2026,8 +2034,8 @@ function PacketMode({
                 <span>{documentsPendingCount} pending</span>
               </div>
               <p>
-                Document intake backlog and review candidates feeding packet answers and downstream
-                routes.
+                Document intake backlog and review candidates feeding packet
+                answers and downstream routes.
               </p>
               <dl>
                 <div>
@@ -2039,7 +2047,10 @@ function PacketMode({
                   <dd>Documents mode</dd>
                 </div>
               </dl>
-              <a className="packet-action-link" href={modeHref("documents", selectedOpportunityId)}>
+              <a
+                className="packet-action-link"
+                href={modeHref("documents", selectedOpportunityId)}
+              >
                 Open document feeder
               </a>
             </article>
@@ -2338,15 +2349,17 @@ function WorkProductDeltaCard({
   const latestDecision = delta.review_decisions.at(-1);
   const deltaDetailHref = `/api/production-command-center/work-product-deltas/${encodeURIComponent(delta.id)}`;
   const sourceRunHref = `/capability-studio/runs/${encodeURIComponent(delta.source_capability_run_id)}`;
-  const downstreamDestinations = [...new Set(
-    relatedDeltas
-      .filter(
-        (candidate) =>
-          candidate.source_output_id === delta.source_output_id &&
-          candidate.id !== delta.id,
-      )
-      .map((candidate) => candidate.destination),
-  )];
+  const downstreamDestinations = [
+    ...new Set(
+      relatedDeltas
+        .filter(
+          (candidate) =>
+            candidate.source_output_id === delta.source_output_id &&
+            candidate.id !== delta.id,
+        )
+        .map((candidate) => candidate.destination),
+    ),
+  ];
 
   return (
     <article className="action-update-card">

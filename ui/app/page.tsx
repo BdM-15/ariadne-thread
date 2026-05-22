@@ -1698,7 +1698,6 @@ function PacketMode({
   deltas,
   documentsPendingCount,
   relatedDeltas,
-  documentsPendingCount,
   latestActivationRun,
   packetSignals,
   researchPendingCount,
@@ -1708,7 +1707,6 @@ function PacketMode({
   compact?: boolean;
   deltas: WorkProductDelta[];
   documentsPendingCount: number;
-  relatedDeltas: WorkProductDelta[];
   relatedDeltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];

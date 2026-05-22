@@ -143,6 +143,45 @@ type RendererReadinessResponse = {
   readiness: RendererReadiness;
 };
 
+type ArtifactDraftFreshness = {
+  draft_id: string;
+  source_package_id: string;
+  source_package_created_at: string;
+  latest_source_package_created_at: string | null;
+  is_stale: boolean;
+};
+
+type ArtifactSourcePackage = {
+  package_id: string;
+  opportunity_id: string;
+  source_context: string;
+  trusted_refs: { record_id: string }[];
+  reviewable_refs: { record_id: string }[];
+  gap_refs: { record_id: string }[];
+  assumptions: string[];
+  source_limitations: { record_id: string }[];
+  pending_review_refs: string[];
+  created_at: string;
+};
+
+type ArtifactSourcePackageSummary = {
+  package_id: string;
+  opportunity_id: string;
+  trusted_count: number;
+  reviewable_count: number;
+  gap_count: number;
+  assumption_count: number;
+  source_limitation_count: number;
+  pending_review_count: number;
+};
+
+type ArtifactContextStatus = {
+  opportunity_id: string;
+  source_package: ArtifactSourcePackage | null;
+  summary: ArtifactSourcePackageSummary | null;
+  draft_freshness: ArtifactDraftFreshness | null;
+};
+
 type WorkProductUpdateProjection = {
   id: string;
   source_output_id: string;
@@ -630,6 +669,26 @@ async function loadRendererReadiness(): Promise<RendererReadiness | null> {
   }
 }
 
+async function loadArtifactContextStatus(
+  opportunityId: string,
+): Promise<ArtifactContextStatus | null> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/artifact-context-status`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    const response = await fetch(url, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as ArtifactContextStatus;
+  } catch {
+    return null;
+  }
+}
+
 async function loadLatestActivationRun(
   opportunityId: string,
 ): Promise<OpportunityActivationRun | null> {
@@ -913,6 +972,7 @@ export default async function CommandCenterPage({
   const [
     latestActivationRun,
     rendererReadiness,
+    artifactContextStatus,
     packetDeltas,
     actionPlanUpdates,
     actionPlanDeltas,
@@ -935,6 +995,9 @@ export default async function CommandCenterPage({
     selectedModeId === "artifacts"
       ? loadRendererReadiness()
       : Promise.resolve<RendererReadiness | null>(null),
+    selectedModeId === "artifacts"
+      ? loadArtifactContextStatus(workspace.opportunity.id)
+      : Promise.resolve<ArtifactContextStatus | null>(null),
     selectedModeId === "packet"
       ? loadWorkProductDeltas(workspace.opportunity.id, "living_packet")
       : Promise.resolve<WorkProductDelta[]>([]),
@@ -1244,8 +1307,15 @@ export default async function CommandCenterPage({
             />
           ) : null}
 
-          {selectedModeId === "artifacts" && rendererReadiness !== null ? (
-            <RendererReadinessPanel readiness={rendererReadiness} />
+          {selectedModeId === "artifacts" ? (
+            <>
+              {artifactContextStatus !== null ? (
+                <ArtifactContextFreshnessPanel status={artifactContextStatus} />
+              ) : null}
+              {rendererReadiness !== null ? (
+                <RendererReadinessPanel readiness={rendererReadiness} />
+              ) : null}
+            </>
           ) : null}
 
           {selectedModeId === "capability_studio" ? (
@@ -3610,6 +3680,109 @@ function RendererReadinessPanel({
           );
         })}
       </div>
+    </section>
+  );
+}
+
+function ArtifactContextFreshnessPanel({
+  status,
+}: {
+  status: ArtifactContextStatus;
+}) {
+  const summary = status.summary;
+  const freshness = status.draft_freshness;
+  const traceRefs =
+    status.source_package?.assumptions.filter((value) =>
+      value.startsWith("artifact_context_refresh_"),
+    ) ?? [];
+
+  return (
+    <section className="renderer-readiness">
+      <div className="flex flex-col gap-3 border-b border-ariadne-line pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-ariadne-cyan">
+            Artifact context freshness
+          </p>
+          <h3 className="mt-1 text-xl font-semibold">Source package snapshot</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+            Accepted packet and action deltas refresh source context without
+            invoking renderer export.
+          </p>
+        </div>
+        <Archive className="text-ariadne-copper" size={24} aria-hidden />
+      </div>
+
+      {summary !== null ? (
+        <dl className="action-plan-metric-grid mt-5">
+          <Metric label="Trusted refs" value={summary.trusted_count.toString()} tone="cyan" />
+          <Metric
+            label="Reviewable refs"
+            value={summary.reviewable_count.toString()}
+            tone="copper"
+          />
+          <Metric label="Gap refs" value={summary.gap_count.toString()} tone="rose" />
+          <Metric
+            label="Pending review refs"
+            value={summary.pending_review_count.toString()}
+            tone="signal"
+          />
+        </dl>
+      ) : (
+        <div className="action-plan-empty mt-4">
+          <p>No artifact source package yet.</p>
+          <span>Review packet/action deltas to refresh artifact context.</span>
+        </div>
+      )}
+
+      {freshness !== null ? (
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          <article className="action-update-card">
+            <div className="action-update-card-head">
+              <span>Draft source snapshot</span>
+              <span>{freshness.is_stale ? "Stale" : "Fresh"}</span>
+            </div>
+            <dl>
+              <div>
+                <dt>Draft source timestamp</dt>
+                <dd>{freshness.source_package_created_at}</dd>
+              </div>
+              <div>
+                <dt>Current source timestamp</dt>
+                <dd>{freshness.latest_source_package_created_at ?? "Unavailable"}</dd>
+              </div>
+              <div>
+                <dt>Draft ID</dt>
+                <dd>{freshness.draft_id}</dd>
+              </div>
+              <div>
+                <dt>Source package ID</dt>
+                <dd>{freshness.source_package_id}</dd>
+              </div>
+            </dl>
+          </article>
+          <article className="action-update-card">
+            <div className="action-update-card-head">
+              <span>Refresh trace refs</span>
+              <span>{traceRefs.length}</span>
+            </div>
+            <dl>
+              {traceRefs.length > 0 ? (
+                traceRefs.map((value) => (
+                  <div key={value}>
+                    <dt>Ref</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))
+              ) : (
+                <div>
+                  <dt>Ref</dt>
+                  <dd>None</dd>
+                </div>
+              )}
+            </dl>
+          </article>
+        </div>
+      ) : null}
     </section>
   );
 }

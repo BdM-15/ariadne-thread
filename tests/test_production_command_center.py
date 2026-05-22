@@ -1610,9 +1610,18 @@ def test_packet_delta_acceptance_creates_packet_answer_and_activation_refresh(
     assert NextActionRecommendationStore(
         settings.ariadne_next_action_recommendations_dir
     ).list(opportunity_id="opp-aflcmc-recompete") == []
-    assert ArtifactAssemblyStore(
+    source_packages = ArtifactAssemblyStore(
         settings.ariadne_artifact_assembly_dir
-    ).list_source_packages(opportunity_id="opp-aflcmc-recompete") == []
+    ).list_source_packages(opportunity_id="opp-aflcmc-recompete")
+    assert len(source_packages) == 1
+    assert (
+        f"artifact_context_refresh_from_delta:{packet_delta['id']}"
+        in source_packages[0].assumptions
+    )
+    assert (
+        f"artifact_context_refresh_source_output:{packet_delta['source_output_id']}"
+        in source_packages[0].assumptions
+    )
 
 
 def test_packet_delta_edit_creates_edited_packet_answer_and_activation_refresh(
@@ -1776,6 +1785,8 @@ def test_action_plan_delta_accept_creates_recommendation_not_action_plan_item(
 def test_action_plan_delta_edit_creates_edited_recommendation(
     tmp_path,
 ) -> None:
+    from ariadne.artifact_assembly import ArtifactAssemblyStore
+
     from ariadne.next_action_recommendations import NextActionRecommendationStore
 
     settings = _command_center_settings(tmp_path)
@@ -1807,6 +1818,77 @@ def test_action_plan_delta_edit_creates_edited_recommendation(
         settings.ariadne_next_action_recommendations_dir
     ).read(body["next_action_recommendation"]["id"])
     assert stored.description == edited_summary
+    source_packages = ArtifactAssemblyStore(
+        settings.ariadne_artifact_assembly_dir
+    ).list_source_packages(opportunity_id="opp-aflcmc-recompete")
+    assert len(source_packages) == 1
+    assert (
+        f"artifact_context_refresh_from_delta:{action_delta['id']}"
+        in source_packages[0].assumptions
+    )
+
+
+def test_artifact_context_status_reports_stale_draft_after_delta_refresh(
+    tmp_path,
+) -> None:
+    from ariadne.artifact_assembly import (
+        ArtifactAssemblyStore,
+        assemble_milestone_packet_draft,
+        create_artifact_source_package_from_context,
+    )
+    from ariadne.command_center import build_command_center_knowledge_context
+
+    settings = _command_center_settings(tmp_path)
+    artifact_store = ArtifactAssemblyStore(settings.ariadne_artifact_assembly_dir)
+    base_context = build_command_center_knowledge_context(
+        settings,
+        workspace_root=tmp_path,
+    ).context
+    base_package = create_artifact_source_package_from_context(
+        context=base_context,
+        store=artifact_store,
+        created_at="2026-01-01T00:00:00Z",
+    )
+    base_draft = assemble_milestone_packet_draft(
+        source_package_id=base_package.package_id,
+        store=artifact_store,
+        assembled_at="2026-01-02T00:00:00Z",
+    )
+
+    client, action_delta = _seed_competitive_gap_delta_for_destination(
+        settings, "action_plan"
+    )
+    review_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Queue action recommendation and refresh artifact context.",
+        },
+    )
+    assert review_response.status_code == 200, review_response.text
+
+    status_response = client.get(
+        "/api/production-command-center/artifact-context-status",
+        params={"opportunity_id": "opp-aflcmc-recompete"},
+    )
+    assert status_response.status_code == 200, status_response.text
+    status = status_response.json()
+    assert status["opportunity_id"] == "opp-aflcmc-recompete"
+    assert status["source_package"]["package_id"] == base_package.package_id
+    assert status["source_package"]["created_at"] != "2026-01-01T00:00:00Z"
+    assert (
+        f"artifact_context_refresh_from_delta:{action_delta['id']}"
+        in status["source_package"]["assumptions"]
+    )
+    assert status["draft_freshness"]["draft_id"] == base_draft.draft_id
+    assert status["draft_freshness"]["is_stale"] is True
+    assert status["draft_freshness"]["source_package_created_at"] == (
+        "2026-01-01T00:00:00Z"
+    )
+    assert status["draft_freshness"]["latest_source_package_created_at"] == (
+        status["source_package"]["created_at"]
+    )
 
 
 def test_action_plan_delta_discard_and_route_preserve_provenance_only(

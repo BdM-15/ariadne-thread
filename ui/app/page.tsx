@@ -193,6 +193,30 @@ type WorkProductDeltaListResponse = {
   summary: Record<string, number>;
 };
 
+type ActionRecommendationProjection = {
+  id: string;
+  opportunity_id: string;
+  title: string;
+  description: string;
+  cause: string;
+  review_state: string;
+  generated_at: string;
+  capability_route: {
+    capability_id: string | null;
+    next_command_id: string;
+    next_command_label: string;
+    support: string;
+  };
+  context_snapshot: {
+    reviewable_refs: string[];
+    gap_refs: string[];
+  };
+};
+
+type ActionRecommendationListResponse = {
+  recommendations: ActionRecommendationProjection[];
+};
+
 type CaptureResearchProvider = {
   provider_id: string;
   provider_name: string;
@@ -674,6 +698,25 @@ async function loadWorkProductDeltas(
   }
 }
 
+async function loadActionRecommendations(
+  opportunityId: string,
+): Promise<ActionRecommendationProjection[]> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/next-action-recommendations`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as ActionRecommendationListResponse;
+    return body.recommendations;
+  } catch {
+    return [];
+  }
+}
+
 async function loadCaptureResearchRuns(
   opportunityId: string,
 ): Promise<CaptureResearchRun[]> {
@@ -873,6 +916,7 @@ export default async function CommandCenterPage({
     packetDeltas,
     actionPlanUpdates,
     actionPlanDeltas,
+    actionRecommendations,
     callPlanUpdates,
     researchRuns,
     researchSourceRegistry,
@@ -899,6 +943,9 @@ export default async function CommandCenterPage({
     selectedModeId === "actions"
       ? loadWorkProductDeltas(workspace.opportunity.id, "action_plan")
       : Promise.resolve<WorkProductDelta[]>([]),
+    selectedModeId === "actions"
+      ? loadActionRecommendations(workspace.opportunity.id)
+      : Promise.resolve<ActionRecommendationProjection[]>([]),
     selectedModeId === "engagement"
       ? loadWorkProductUpdates(workspace.opportunity.id, "call_plan")
       : Promise.resolve<WorkProductUpdateProjection[]>([]),
@@ -1158,6 +1205,7 @@ export default async function CommandCenterPage({
             <ActionPlanMode
               deltas={actionPlanDeltas}
               latestActivationRun={latestActivationRun}
+              recommendations={actionRecommendations}
               selectedOpportunityId={workspace.opportunity.id}
               updates={actionPlanUpdates}
             />
@@ -2169,11 +2217,13 @@ function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
 function ActionPlanMode({
   deltas,
   latestActivationRun,
+  recommendations,
   selectedOpportunityId,
   updates,
 }: {
   deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
+  recommendations: ActionRecommendationProjection[];
   selectedOpportunityId: string;
   updates: WorkProductUpdateProjection[];
 }) {
@@ -2224,6 +2274,11 @@ function ActionPlanMode({
         <Metric
           label="Ready updates"
           value={updates.length.toString()}
+          tone="cyan"
+        />
+        <Metric
+          label="Recommendations"
+          value={recommendations.length.toString()}
           tone="cyan"
         />
         <Metric
@@ -2287,6 +2342,54 @@ function ActionPlanMode({
               <p>No Action Plan updates ready.</p>
               <span>
                 Run and accept an action route to stage follow-up work.
+              </span>
+            </div>
+          )}
+        </section>
+
+        <section
+          className="action-plan-lane"
+          aria-labelledby="action-recs-title"
+        >
+          <div className="action-plan-lane-heading">
+            <p>Recommendation gate</p>
+            <h4 id="action-recs-title">Linked recommendations</h4>
+          </div>
+          {recommendations.length > 0 ? (
+            <div className="action-plan-card-stack">
+              {recommendations.map((recommendation) => (
+                <article className="action-update-card" key={recommendation.id}>
+                  <div className="action-update-card-head">
+                    <span>Recommendation</span>
+                    <span>{formatLabel(recommendation.review_state)}</span>
+                  </div>
+                  <p>{recommendation.description}</p>
+                  <dl>
+                    <div>
+                      <dt>Title</dt>
+                      <dd>{recommendation.title}</dd>
+                    </div>
+                    <div>
+                      <dt>Linked implication</dt>
+                      <dd>{formatReferenceLabel(recommendation.cause)}</dd>
+                    </div>
+                    <div>
+                      <dt>Route</dt>
+                      <dd>
+                        {formatLabel(
+                          recommendation.capability_route.next_command_id,
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="action-plan-empty">
+              <p>No linked recommendations yet.</p>
+              <span>
+                Accept/edit an Action Plan delta to queue recommendation.
               </span>
             </div>
           )}

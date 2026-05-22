@@ -149,6 +149,7 @@ from ariadne.mirror_update_proposals import (
     scan_vault_for_mirror_update_proposals,
 )
 from ariadne.next_action_recommendations import (
+    NextActionRecommendation,
     NextActionRecommendationStore,
     accept_next_action_recommendation,
     recommend_next_capture_actions,
@@ -325,6 +326,10 @@ class QuickCaptureUploadResponse(BaseModel):
     raw_item: RawCaptureItem | None = None
     review: CaptureReview | None = None
     intake_candidate: DocumentIntakeCandidate | None = None
+
+
+class NextActionRecommendationListResponse(BaseModel):
+    recommendations: tuple[NextActionRecommendation, ...]
 
 
 class DocumentIntakeUploadResponse(BaseModel):
@@ -832,6 +837,17 @@ def create_app(
             ).list(opportunity_id=opportunity_id)
         )
 
+    @app.get("/api/production-command-center/next-action-recommendations")
+    def production_command_center_next_action_recommendations(
+        opportunity_id: str | None = None,
+    ) -> NextActionRecommendationListResponse:
+        recommendations = NextActionRecommendationStore(
+            runtime_settings.ariadne_next_action_recommendations_dir
+        ).list(opportunity_id=opportunity_id)
+        return NextActionRecommendationListResponse(
+            recommendations=tuple(recommendations)
+        )
+
     @app.post(
         "/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
     )
@@ -1079,6 +1095,9 @@ def create_app(
                 delta_store=delta_store,
                 answer_store=PacketFieldAnswerStore(
                     runtime_settings.ariadne_packet_field_answers_dir
+                ),
+                recommendation_store=NextActionRecommendationStore(
+                    runtime_settings.ariadne_next_action_recommendations_dir
                 ),
                 activation_store=OpportunityActivationRunStore(
                     runtime_settings.ariadne_opportunity_activation_dir

@@ -59,6 +59,24 @@ def _seed_competitive_gap_packet_delta(settings: RuntimeSettings):
     return client, packet_delta
 
 
+def _seed_competitive_gap_delta_for_destination(
+    settings: RuntimeSettings,
+    destination: str,
+):
+    client, _ = _seed_competitive_gap_packet_delta(settings)
+    deltas_response = client.get(
+        "/api/production-command-center/work-product-deltas",
+        params={"opportunity_id": "opp-aflcmc-recompete"},
+    )
+    assert deltas_response.status_code == 200, deltas_response.text
+    target_delta = next(
+        delta
+        for delta in deltas_response.json()["deltas"]
+        if delta["destination"] == destination
+    )
+    return client, target_delta
+
+
 def test_production_command_center_workspace_api_exposes_opportunity_context(
     tmp_path,
 ) -> None:
@@ -1699,6 +1717,210 @@ def test_packet_delta_discard_and_route_do_not_write_trusted_records(
         assert OpportunityActivationRunStore(
             settings.ariadne_opportunity_activation_dir
         ).list(opportunity_id="opp-aflcmc-recompete") == ()
+
+
+def test_action_plan_delta_accept_creates_recommendation_not_action_plan_item(
+    tmp_path,
+) -> None:
+    from ariadne.next_action_recommendations import NextActionRecommendationStore
+
+    settings = _command_center_settings(tmp_path)
+    client, action_delta = _seed_competitive_gap_delta_for_destination(
+        settings, "action_plan"
+    )
+
+    review_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Queue this implication as recommendation first.",
+        },
+    )
+
+    assert review_response.status_code == 200, review_response.text
+    body = review_response.json()
+    assert body["delta"]["review_state"] == "accepted"
+    recommendation = body["next_action_recommendation"]
+    assert recommendation["opportunity_id"] == "opp-aflcmc-recompete"
+    assert recommendation["review_state"] == "pending"
+    assert recommendation["created_action_plan_item_ids"] == []
+    assert action_delta["id"] in recommendation["cause"]
+    assert recommendation["context_snapshot"]["recommendation_cause"] == (
+        recommendation["cause"]
+    )
+    assert recommendation["context_snapshot"]["trusted_refs"] == []
+    assert recommendation["context_snapshot"]["reviewable_refs"] == (
+        action_delta["source_refs"] + action_delta["capability_output_refs"]
+    )
+    assert recommendation["context_snapshot"]["gap_refs"] == action_delta["gaps"]
+    assert recommendation["context_snapshot"]["capability_route_id"] == (
+        action_delta["source_capability_id"]
+    )
+    assert recommendation["capability_route"]["capability_id"] == (
+        action_delta["source_capability_id"]
+    )
+    assert recommendation["capability_route"]["next_command_id"] == (
+        "review_action_plan_recommendation"
+    )
+    assert body["packet_field_answer"] is None
+    assert body["activation_run"] is None
+    assert body["decision"]["next_action_recommendation_created"] is True
+
+    stored = NextActionRecommendationStore(
+        settings.ariadne_next_action_recommendations_dir
+    ).read(recommendation["id"])
+    assert stored.created_action_plan_item_ids == ()
+
+
+def test_action_plan_delta_edit_creates_edited_recommendation(
+    tmp_path,
+) -> None:
+    from ariadne.next_action_recommendations import NextActionRecommendationStore
+
+    settings = _command_center_settings(tmp_path)
+    client, action_delta = _seed_competitive_gap_delta_for_destination(
+        settings, "action_plan"
+    )
+    edited_summary = "Edited recommendation summary for operator review queue."
+
+    review_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "edit",
+            "reviewer_rationale": "Sharper phrasing before recommendation gate.",
+            "edited_value": edited_summary,
+        },
+    )
+
+    assert review_response.status_code == 200, review_response.text
+    body = review_response.json()
+    assert body["delta"]["review_state"] == "edited"
+    assert body["delta"]["after_summary"] == edited_summary
+    assert body["delta"]["review_decisions"][0]["review_gate"] == (
+        "work_product_delta_action_plan_edit"
+    )
+    assert body["next_action_recommendation"]["description"] == edited_summary
+    assert body["decision"]["next_action_recommendation_created"] is True
+    stored = NextActionRecommendationStore(
+        settings.ariadne_next_action_recommendations_dir
+    ).read(body["next_action_recommendation"]["id"])
+    assert stored.description == edited_summary
+
+
+def test_action_plan_delta_discard_and_route_preserve_provenance_only(
+    tmp_path,
+) -> None:
+    from ariadne.next_action_recommendations import NextActionRecommendationStore
+
+    cases = (
+        (
+            "discard",
+            {"decision": "discard", "reviewer_rationale": "No action yet."},
+            "discarded",
+            None,
+            "work_product_delta_action_plan_discard",
+        ),
+        (
+            "route",
+            {
+                "decision": "route",
+                "reviewer_rationale": "Route to call-plan queue.",
+                "routed_destination": "call_plan",
+            },
+            "routed",
+            "call_plan",
+            "work_product_delta_action_plan_route",
+        ),
+    )
+    for case_name, payload, expected_state, routed_destination, review_gate in cases:
+        settings = _command_center_settings(tmp_path / case_name)
+        client, action_delta = _seed_competitive_gap_delta_for_destination(
+            settings, "action_plan"
+        )
+
+        review_response = client.post(
+            "/api/production-command-center/work-product-deltas/"
+            f"{action_delta['id']}/review-decisions",
+            json=payload,
+        )
+
+        assert review_response.status_code == 200, review_response.text
+        body = review_response.json()
+        assert body["delta"]["review_state"] == expected_state
+        assert body["delta"]["review_decisions"][0]["review_gate"] == review_gate
+        assert (
+            body["delta"]["review_decisions"][0]["routed_destination"]
+            == routed_destination
+        )
+        assert body["packet_field_answer"] is None
+        assert body["next_action_recommendation"] is None
+        assert body["activation_run"] is None
+        assert body["decision"]["next_action_recommendation_created"] is False
+        assert NextActionRecommendationStore(
+            settings.ariadne_next_action_recommendations_dir
+        ).list(opportunity_id="opp-aflcmc-recompete") == []
+
+
+def test_action_plan_delta_cannot_be_reviewed_twice(
+    tmp_path,
+) -> None:
+    settings = _command_center_settings(tmp_path)
+    client, action_delta = _seed_competitive_gap_delta_for_destination(
+        settings, "action_plan"
+    )
+
+    first_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "First pass accepted into recommendation queue.",
+        },
+    )
+    assert first_response.status_code == 200, first_response.text
+
+    second_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "edit",
+            "reviewer_rationale": "Attempt duplicate review.",
+            "edited_value": "Should fail",
+        },
+    )
+    assert second_response.status_code == 400
+    assert second_response.json()["detail"] == "Work Product Delta already reviewed"
+
+
+def test_production_command_center_lists_next_action_recommendations(
+    tmp_path,
+) -> None:
+    settings = _command_center_settings(tmp_path)
+    client, action_delta = _seed_competitive_gap_delta_for_destination(
+        settings, "action_plan"
+    )
+    review_response = client.post(
+        "/api/production-command-center/work-product-deltas/"
+        f"{action_delta['id']}/review-decisions",
+        json={
+            "decision": "accept",
+            "reviewer_rationale": "Queue recommendation for action plan gate.",
+        },
+    )
+    assert review_response.status_code == 200, review_response.text
+    recommendation_id = review_response.json()["next_action_recommendation"]["id"]
+
+    list_response = client.get(
+        "/api/production-command-center/next-action-recommendations",
+        params={"opportunity_id": "opp-aflcmc-recompete"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    recommendations = list_response.json()["recommendations"]
+    assert len(recommendations) == 1
+    assert recommendations[0]["id"] == recommendation_id
+    assert recommendations[0]["review_state"] == "pending"
 
 
 def test_production_command_center_health_reports_hardened_contract(tmp_path) -> None:

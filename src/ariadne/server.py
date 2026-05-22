@@ -138,7 +138,10 @@ from ariadne.knowledge_vault import (
     inspect_knowledge_vault_readiness,
     list_packet_data_element_page_status,
 )
-from ariadne.local_admin_model import LocalAdminModelClient, request_local_admin_draft_assist
+from ariadne.local_admin_model import (
+    LocalAdminModelClient,
+    request_local_admin_draft_assist,
+)
 from ariadne.hosted_model import HostedModelClient
 from ariadne.mirror_update_proposals import (
     MirrorUpdateProposalReport,
@@ -224,6 +227,16 @@ from ariadne.usaspending import (
     create_usaspending_lookup_runner,
     fetch_usaspending_award_history,
     resolve_usaspending_piid,
+)
+from ariadne.work_product_deltas import (
+    WorkProductDeltaCreateFromCapabilityOutputRequest,
+    WorkProductDeltaDestination,
+    WorkProductDeltaDetailResponse,
+    WorkProductDeltaListResponse,
+    WorkProductDeltaStore,
+    create_work_product_deltas_from_capability_output,
+    get_work_product_delta,
+    list_work_product_deltas,
 )
 from ariadne.production_command_center import (
     AssistedCaptureWorkProduct,
@@ -707,7 +720,9 @@ def create_app(
         )
 
     @app.post("/api/knowledge-vault/capability-relationships")
-    def knowledge_vault_capability_relationship_scaffold() -> CapabilityRelationshipPageReport:
+    def knowledge_vault_capability_relationship_scaffold() -> (
+        CapabilityRelationshipPageReport
+    ):
         return ensure_capability_relationship_pages(
             runtime_settings.ariadne_obsidian_vault_dir,
             workspace_root=resolved_workspace_root,
@@ -736,7 +751,9 @@ def create_app(
         return ProductionCommandCenterWorkspaceResponse(workspace=workspace)
 
     @app.get("/api/production-command-center/health")
-    def production_command_center_health_status() -> ProductionCommandCenterHealthResponse:
+    def production_command_center_health_status() -> (
+        ProductionCommandCenterHealthResponse
+    ):
         return production_command_center_health()
 
     @app.get("/api/production-command-center/renderer-readiness")
@@ -744,7 +761,9 @@ def create_app(
         return build_renderer_readiness()
 
     @app.get("/api/production-command-center/opportunities")
-    def production_command_center_opportunities() -> ProductionOpportunityPortfolioResponse:
+    def production_command_center_opportunities() -> (
+        ProductionOpportunityPortfolioResponse
+    ):
         return list_production_opportunity_portfolio(
             store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
             activation_store=OpportunityActivationRunStore(
@@ -763,7 +782,9 @@ def create_app(
         try:
             scaffold = create_standard_opportunity_scaffold(
                 request=request,
-                store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+                store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
                 activation_store=OpportunityActivationRunStore(
                     runtime_settings.ariadne_opportunity_activation_dir
                 ),
@@ -782,7 +803,9 @@ def create_app(
             return update_production_opportunity_portfolio_state(
                 opportunity_id=opportunity_id,
                 request=request,
-                store=OpportunityScaffoldStore(runtime_settings.ariadne_opportunities_dir),
+                store=OpportunityScaffoldStore(
+                    runtime_settings.ariadne_opportunities_dir
+                ),
                 activation_store=OpportunityActivationRunStore(
                     runtime_settings.ariadne_opportunity_activation_dir
                 ),
@@ -794,8 +817,7 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.get(
-        "/api/production-command-center/opportunities/{opportunity_id}/"
-        "activation-runs"
+        "/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
     )
     def production_command_center_activation_runs(
         opportunity_id: str,
@@ -807,8 +829,7 @@ def create_app(
         )
 
     @app.post(
-        "/api/production-command-center/opportunities/{opportunity_id}/"
-        "activation-runs"
+        "/api/production-command-center/opportunities/{opportunity_id}/activation-runs"
     )
     def production_command_center_run_activation(
         opportunity_id: str,
@@ -853,7 +874,9 @@ def create_app(
                 request=request,
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Activation run not found") from error
+            raise HTTPException(
+                status_code=404, detail="Activation run not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -875,7 +898,9 @@ def create_app(
                 opportunity_id=opportunity_id,
                 goal_id=request.goal_id,
                 packet_field_key=request.packet_field_key,
-                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                store=WorkflowRoutingStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                ),
             )
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
@@ -887,14 +912,18 @@ def create_app(
     ) -> AssistedRouteRunResponse:
         try:
             run = execute_assisted_capture_route(
-                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                store=WorkflowRoutingStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                ),
                 recommendation_id=recommendation_id,
                 approved=request.approved,
                 approval_basis=request.approval_basis,
                 operator_rationale=request.operator_rationale,
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Route recommendation not found") from error
+            raise HTTPException(
+                status_code=404, detail="Route recommendation not found"
+            ) from error
         except PermissionError as error:
             raise HTTPException(status_code=403, detail=str(error)) from error
         except ValueError as error:
@@ -910,7 +939,9 @@ def create_app(
     ) -> AssistedRouteOutputReviewResponse:
         try:
             return review_assisted_route_output(
-                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                store=WorkflowRoutingStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                ),
                 answer_store=PacketFieldAnswerStore(
                     runtime_settings.ariadne_packet_field_answers_dir
                 ),
@@ -925,7 +956,9 @@ def create_app(
                 vault_root=runtime_settings.ariadne_obsidian_vault_dir,
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Route output not found") from error
+            raise HTTPException(
+                status_code=404, detail="Route output not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -935,11 +968,15 @@ def create_app(
     ) -> AssistedRouteProvenanceResponse:
         try:
             return get_assisted_route_provenance(
-                store=WorkflowRoutingStore(runtime_settings.ariadne_workflow_routing_dir),
+                store=WorkflowRoutingStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                ),
                 recommendation_id=recommendation_id,
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Route recommendation not found") from error
+            raise HTTPException(
+                status_code=404, detail="Route recommendation not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -954,6 +991,63 @@ def create_app(
             destination=destination,
         )
 
+    @app.post(
+        "/api/production-command-center/work-product-deltas/from-capability-output"
+    )
+    def production_command_center_create_work_product_deltas(
+        request: WorkProductDeltaCreateFromCapabilityOutputRequest,
+    ) -> WorkProductDeltaListResponse:
+        try:
+            return create_work_product_deltas_from_capability_output(
+                capability_store=CapabilityRunStore(
+                    runtime_settings.ariadne_capability_runs_dir
+                ),
+                delta_store=WorkProductDeltaStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                    / "work-product-deltas"
+                ),
+                request=request,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Capability Run Output not found",
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/production-command-center/work-product-deltas")
+    def production_command_center_work_product_deltas(
+        opportunity_id: str | None = None,
+        destination: WorkProductDeltaDestination | None = None,
+    ) -> WorkProductDeltaListResponse:
+        return list_work_product_deltas(
+            store=WorkProductDeltaStore(
+                runtime_settings.ariadne_workflow_routing_dir / "work-product-deltas"
+            ),
+            opportunity_id=opportunity_id,
+            destination=destination,
+        )
+
+    @app.get("/api/production-command-center/work-product-deltas/{delta_id}")
+    def production_command_center_work_product_delta_detail(
+        delta_id: str,
+    ) -> WorkProductDeltaDetailResponse:
+        try:
+            return get_work_product_delta(
+                store=WorkProductDeltaStore(
+                    runtime_settings.ariadne_workflow_routing_dir
+                    / "work-product-deltas"
+                ),
+                delta_id=delta_id,
+            )
+        except FileNotFoundError as error:
+            raise HTTPException(
+                status_code=404, detail="Work Product Delta not found"
+            ) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
     @app.get("/", response_class=HTMLResponse)
     def command_center_status() -> str:
         return render_command_center_shell(runtime_settings)
@@ -967,13 +1061,17 @@ def create_app(
         try:
             return render_capability_studio_shell(runtime_settings, run_id=run_id)
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+            raise HTTPException(
+                status_code=404, detail="Capability Run not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/mvp-2/skills-review", response_class=HTMLResponse)
     def mvp2_skills_review() -> str:
-        return render_mvp2_skills_review_shell(runtime_settings, workspace_root=Path.cwd())
+        return render_mvp2_skills_review_shell(
+            runtime_settings, workspace_root=Path.cwd()
+        )
 
     @app.post("/mvp-2/skills-review/actions/demo-run")
     def mvp2_skills_review_demo_action() -> RedirectResponse:
@@ -1012,7 +1110,9 @@ def create_app(
         if opportunity_id != knowledge_context.opportunity_id:
             raise HTTPException(status_code=404, detail="Opportunity context not found")
         store = NextActionRecommendationStore(
-            _resolve_runtime_path(runtime_settings.ariadne_next_action_recommendations_dir)
+            _resolve_runtime_path(
+                runtime_settings.ariadne_next_action_recommendations_dir
+            )
         )
         recommend_next_capture_actions(
             context=knowledge_context.context,
@@ -1027,7 +1127,9 @@ def create_app(
         recommendation_id: str,
     ) -> RedirectResponse:
         store = NextActionRecommendationStore(
-            _resolve_runtime_path(runtime_settings.ariadne_next_action_recommendations_dir)
+            _resolve_runtime_path(
+                runtime_settings.ariadne_next_action_recommendations_dir
+            )
         )
         try:
             recommendation = store.read(recommendation_id)
@@ -1048,7 +1150,9 @@ def create_app(
                 decided_at=_utc_timestamp(),
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Recommendation not found") from error
+            raise HTTPException(
+                status_code=404, detail="Recommendation not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return RedirectResponse(url="/#knowledge-context", status_code=303)
@@ -1060,9 +1164,7 @@ def create_app(
         _create_artifact_source_package(opportunity_id, runtime_settings)
         return RedirectResponse(url="/#artifact-assembly", status_code=303)
 
-    @app.post(
-        "/api/artifact-assembly/opportunities/{opportunity_id}/source-package"
-    )
+    @app.post("/api/artifact-assembly/opportunities/{opportunity_id}/source-package")
     def artifact_assembly_create_source_package(
         opportunity_id: str,
     ) -> ArtifactSourcePackageResponse:
@@ -1094,7 +1196,9 @@ def create_app(
         try:
             return render_artifact_draft_shell(runtime_settings, draft_id)
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Artifact draft not found") from error
+            raise HTTPException(
+                status_code=404, detail="Artifact draft not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -1122,7 +1226,9 @@ def create_app(
                 routed_destination=routed_destination,
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Artifact draft not found") from error
+            raise HTTPException(
+                status_code=404, detail="Artifact draft not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return RedirectResponse(
@@ -1233,7 +1339,9 @@ def create_app(
         try:
             return CapabilityRunResponse(run=store.read(run_id))
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+            raise HTTPException(
+                status_code=404, detail="Capability Run not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -1256,7 +1364,9 @@ def create_app(
                 )
             )
         except FileNotFoundError as error:
-            raise HTTPException(status_code=404, detail="Capability Run not found") from error
+            raise HTTPException(
+                status_code=404, detail="Capability Run not found"
+            ) from error
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -1289,7 +1399,7 @@ def create_app(
                     source_limits=request.source_limits,
                     evidence_goals=request.evidence_goals,
                     known_pivots=request.known_pivots,
-            )
+                )
             return CaptureResearchRunResponse(run=store.write(run))
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error

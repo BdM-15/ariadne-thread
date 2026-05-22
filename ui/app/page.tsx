@@ -159,6 +159,29 @@ type WorkProductUpdateListResponse = {
   summary: Record<string, number>;
 };
 
+type WorkProductDelta = {
+  id: string;
+  opportunity_id: string;
+  destination: string;
+  title: string;
+  field_key: string | null;
+  source_capability_run_id: string;
+  source_output_id: string;
+  source_capability_id: string;
+  review_state: string;
+  before_summary: string;
+  after_summary: string;
+  source_refs: string[];
+  capability_output_refs: string[];
+  assumptions: string[];
+  gaps: string[];
+};
+
+type WorkProductDeltaListResponse = {
+  deltas: WorkProductDelta[];
+  summary: Record<string, number>;
+};
+
 type CaptureResearchProvider = {
   provider_id: string;
   provider_name: string;
@@ -619,6 +642,27 @@ async function loadWorkProductUpdates(
   }
 }
 
+async function loadWorkProductDeltas(
+  opportunityId: string,
+  destination: string,
+): Promise<WorkProductDelta[]> {
+  try {
+    const url = new URL(
+      `${apiBaseUrl}/api/production-command-center/work-product-deltas`,
+    );
+    url.searchParams.set("opportunity_id", opportunityId);
+    url.searchParams.set("destination", destination);
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const body = (await response.json()) as WorkProductDeltaListResponse;
+    return body.deltas;
+  } catch {
+    return [];
+  }
+}
+
 async function loadCaptureResearchRuns(
   opportunityId: string,
 ): Promise<CaptureResearchRun[]> {
@@ -815,7 +859,9 @@ export default async function CommandCenterPage({
   const [
     latestActivationRun,
     rendererReadiness,
+    packetDeltas,
     actionPlanUpdates,
+    actionPlanDeltas,
     callPlanUpdates,
     researchRuns,
     researchSourceRegistry,
@@ -833,9 +879,15 @@ export default async function CommandCenterPage({
     selectedModeId === "artifacts"
       ? loadRendererReadiness()
       : Promise.resolve<RendererReadiness | null>(null),
+    selectedModeId === "packet"
+      ? loadWorkProductDeltas(workspace.opportunity.id, "living_packet")
+      : Promise.resolve<WorkProductDelta[]>([]),
     selectedModeId === "actions"
       ? loadWorkProductUpdates(workspace.opportunity.id, "action_plan")
       : Promise.resolve<WorkProductUpdateProjection[]>([]),
+    selectedModeId === "actions"
+      ? loadWorkProductDeltas(workspace.opportunity.id, "action_plan")
+      : Promise.resolve<WorkProductDelta[]>([]),
     selectedModeId === "engagement"
       ? loadWorkProductUpdates(workspace.opportunity.id, "call_plan")
       : Promise.resolve<WorkProductUpdateProjection[]>([]),
@@ -1064,6 +1116,7 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "packet" ? (
             <PacketMode
+              deltas={packetDeltas}
               latestActivationRun={latestActivationRun}
               packetSignals={packetSignals}
               selectedOpportunityId={workspace.opportunity.id}
@@ -1092,6 +1145,7 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "actions" ? (
             <ActionPlanMode
+              deltas={actionPlanDeltas}
               latestActivationRun={latestActivationRun}
               selectedOpportunityId={workspace.opportunity.id}
               updates={actionPlanUpdates}
@@ -1438,6 +1492,7 @@ function CommandCenterHome({
       </section>
 
       <PacketMode
+        deltas={[]}
         latestActivationRun={latestActivationRun}
         packetSignals={packetSignals}
         selectedOpportunityId={selectedOpportunityId}
@@ -1476,12 +1531,14 @@ function CommandCenterHome({
 
 function PacketMode({
   compact = false,
+  deltas,
   latestActivationRun,
   packetSignals,
   selectedOpportunityId,
   showDetail = false,
 }: {
   compact?: boolean;
+  deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   packetSignals: PulseSignalModel[];
   selectedOpportunityId: string;
@@ -1536,6 +1593,28 @@ function PacketMode({
           ))}
         </div>
       </section>
+
+      {!compact && deltas.length > 0 ? (
+        <section
+          className="workspace-section"
+          aria-labelledby="packet-delta-title"
+        >
+          <div className="section-heading">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                Work Product Deltas
+              </p>
+              <h3 id="packet-delta-title">Pending packet changes</h3>
+            </div>
+            <Route className="text-ariadne-cyan" size={22} aria-hidden />
+          </div>
+          <div className="action-plan-card-stack mt-4">
+            {deltas.map((delta) => (
+              <WorkProductDeltaCard delta={delta} key={delta.id} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {!compact && matrix !== undefined && showDetail ? (
         <details className="packet-detail-disclosure" open>
@@ -2011,6 +2090,41 @@ function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
   );
 }
 
+function WorkProductDeltaCard({ delta }: { delta: WorkProductDelta }) {
+  return (
+    <article className="action-update-card">
+      <div className="action-update-card-head">
+        <span>{formatLabel(delta.destination)}</span>
+        <span>{formatLabel(delta.review_state)}</span>
+      </div>
+      <div>
+        <h4>{delta.title}</h4>
+        <p>{delta.after_summary}</p>
+      </div>
+      <dl>
+        <div>
+          <dt>Before</dt>
+          <dd>{delta.before_summary}</dd>
+        </div>
+        <div>
+          <dt>Sources</dt>
+          <dd>
+            {delta.source_refs.length > 0
+              ? delta.source_refs.map(formatReferenceLabel).join(", ")
+              : "No source refs"}
+          </dd>
+        </div>
+        <div>
+          <dt>Capability output</dt>
+          <dd>
+            {formatReferenceLabel(delta.capability_output_refs[0] ?? delta.id)}
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
   return (
     <section className="focused-mode-placeholder">
@@ -2025,10 +2139,12 @@ function FocusedModePlaceholder({ mode }: { mode: CommandMode }) {
 }
 
 function ActionPlanMode({
+  deltas,
   latestActivationRun,
   selectedOpportunityId,
   updates,
 }: {
+  deltas: WorkProductDelta[];
   latestActivationRun: OpportunityActivationRun | null;
   selectedOpportunityId: string;
   updates: WorkProductUpdateProjection[];
@@ -2044,8 +2160,10 @@ function ActionPlanMode({
     currentGateActionFields.length > 0
       ? currentGateActionFields.slice(0, 4)
       : (actionFields ?? []).slice(0, 4);
-  const sourceCount = new Set(updates.flatMap((update) => update.source_refs))
-    .size;
+  const sourceCount = new Set([
+    ...updates.flatMap((update) => update.source_refs),
+    ...deltas.flatMap((delta) => delta.source_refs),
+  ]).size;
 
   return (
     <section className="action-plan-mode" aria-labelledby="action-plan-title">
@@ -2071,6 +2189,11 @@ function ActionPlanMode({
 
       <dl className="action-plan-metric-grid">
         <Metric
+          label="Pending deltas"
+          value={deltas.length.toString()}
+          tone="cyan"
+        />
+        <Metric
           label="Ready updates"
           value={updates.length.toString()}
           tone="cyan"
@@ -2093,11 +2216,14 @@ function ActionPlanMode({
           aria-labelledby="route-updates-title"
         >
           <div className="action-plan-lane-heading">
-            <p>Review-ready updates</p>
-            <h4 id="route-updates-title">Accepted route outputs</h4>
+            <p>Review queue</p>
+            <h4 id="route-updates-title">Pending deltas and accepted outputs</h4>
           </div>
-          {updates.length > 0 ? (
+          {deltas.length > 0 || updates.length > 0 ? (
             <div className="action-plan-card-stack">
+              {deltas.map((delta) => (
+                <WorkProductDeltaCard delta={delta} key={delta.id} />
+              ))}
               {updates.map((update) => (
                 <article className="action-update-card" key={update.id}>
                   <div className="action-update-card-head">

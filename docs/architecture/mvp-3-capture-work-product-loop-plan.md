@@ -1,7 +1,7 @@
 # MVP-3 Capture Work Product Loop Plan
 
-Date: 2026-05-21  
-Status: selected through `grill-with-docs`; implementation not started
+Date: 2026-05-22  
+Status: implementation complete for first tracer (`#102`-`#106`); MVP-4 polish deferred
 
 ## Selected First Tracer
 
@@ -88,6 +88,26 @@ No broad UI polish, new shell architecture, or final artifact editor belongs in 
 7. The linked Action Plan implication remains reviewable until explicitly accepted through the action-plan/recommendation gate.
 8. Artifact Source Package or draft freshness reflects the improved context, but no DOCX, XLSX, presentation, huashu-design, or final export runs.
 9. Rejecting or routing any delta creates no trusted downstream record.
+
+## Completion Evidence (2026-05-22)
+
+- Implementation issues completed and merged to MVP-3 epic branch:
+	- `#102` packet-delta apply + activation refresh
+	- `#103` action-plan implication review gate via recommendation queue
+	- `#104` engagement-prep delta creation/review path
+	- `#105` artifact context refresh from accepted packet/action deltas + freshness status UI/API
+	- `#106` acceptance demo/runbook + documentation closure
+- Scripted acceptance runbook documented in `docs/architecture/mvp-3-capture-work-product-loop-demo.md`.
+- Focused Work Mode visibility is now present:
+	- Packet mode: living-packet deltas with before/after, refs, assumptions, gaps, review state.
+	- Actions mode: action deltas + linked recommendation projections.
+	- Engagement mode: call-plan/engagement delta candidates.
+	- Artifacts mode: refreshed artifact source-package status, draft freshness, refresh trace refs.
+- Review inspectability is present in API and UI for decision metadata, provenance, assumptions, gaps, and created/updated downstream record surfaces.
+- Explicit human-review follow-up issue recorded: `#107` (MVP-3 UI shape sign-off or follow-up backlog).
+- Boundaries remain enforced:
+	- No automatic trusted writes on route/discard.
+	- No renderer invocation or export execution in MVP-3 flow.
 
 ## Deferred
 

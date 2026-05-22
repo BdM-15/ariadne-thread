@@ -8,13 +8,12 @@ def _command_center_settings(tmp_path):
             "ARIADNE_EVIDENCE_DIR": str(tmp_path / "evidence"),
             "ARIADNE_DOCUMENT_INTAKE_DIR": str(tmp_path / "document-intake"),
             "ARIADNE_CAPABILITY_RUNS_DIR": str(tmp_path / "capability-runs"),
+            "ARIADNE_ARTIFACT_ASSEMBLY_DIR": str(tmp_path / "artifact-assembly"),
             "ARIADNE_NEXT_ACTION_RECOMMENDATIONS_DIR": str(
                 tmp_path / "next-action-recommendations"
             ),
             "ARIADNE_OPPORTUNITIES_DIR": str(tmp_path / "opportunities"),
-            "ARIADNE_PACKET_FIELD_ANSWERS_DIR": str(
-                tmp_path / "packet-field-answers"
-            ),
+            "ARIADNE_PACKET_FIELD_ANSWERS_DIR": str(tmp_path / "packet-field-answers"),
             "ARIADNE_OPPORTUNITY_ACTIVATION_DIR": str(
                 tmp_path / "opportunity-activation"
             ),
@@ -95,9 +94,7 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
 
     assert response.status_code == 200
     scaffold = response.json()["scaffold"]
-    assert scaffold["opportunity"]["id"].startswith(
-        "opp-disa-cloud-sustainment-watch-"
-    )
+    assert scaffold["opportunity"]["id"].startswith("opp-disa-cloud-sustainment-watch-")
     assert scaffold["opportunity"]["name"] == "DISA cloud sustainment watch"
     assert scaffold["opportunity"]["lifecycle_state"] == "identified"
     assert scaffold["opportunity"]["gate_status"] == "milestone_1"
@@ -119,7 +116,9 @@ def test_production_command_center_can_create_standard_opportunity_scaffold(
         field for field in scaffold["packet_fields"] if field["current_gate_required"]
     ]
     future_gate_fields = [
-        field for field in scaffold["packet_fields"] if not field["current_gate_required"]
+        field
+        for field in scaffold["packet_fields"]
+        if not field["current_gate_required"]
     ]
     assert 0 < len(current_gate_fields) < len(scaffold["packet_fields"])
     assert {field["key"] for field in future_gate_fields} >= {
@@ -382,9 +381,10 @@ def test_created_opportunity_stores_initial_activation_run(tmp_path) -> None:
         create_response.json()["scaffold"]["packet_fields"]
     )
     assert run["packet_field_action_matrix"]["current_milestone_gate"] == "milestone_1"
-    assert run["packet_field_gaps"] == run["packet_field_action_matrix"][
-        "current_gate_blocked_count"
-    ]
+    assert (
+        run["packet_field_gaps"]
+        == run["packet_field_action_matrix"]["current_gate_blocked_count"]
+    )
     assert run["provenance"]["trusted_downstream_writes"] is False
 
 
@@ -548,7 +548,9 @@ def test_activation_field_acceptance_with_evidence_ids_is_source_backed(
     assert portfolio_item["source_freshness_label"] == "source_limited"
 
 
-def test_production_command_center_routes_activation_field_without_answer(tmp_path) -> None:
+def test_production_command_center_routes_activation_field_without_answer(
+    tmp_path,
+) -> None:
     from fastapi.testclient import TestClient
 
     client = TestClient(create_app(_command_center_settings(tmp_path)))
@@ -578,7 +580,9 @@ def test_production_command_center_routes_activation_field_without_answer(tmp_pa
     assert body["decision"]["decision"] == "route"
     assert body["decision"]["routed_destination"] == "capture_research"
     output = next(
-        output for output in body["run"]["outputs"] if output["field_key"] == "competition"
+        output
+        for output in body["run"]["outputs"]
+        if output["field_key"] == "competition"
     )
     assert output["review_state"] == "routed"
 
@@ -627,9 +631,9 @@ def test_packet_field_card_can_request_field_specific_route(tmp_path) -> None:
     assert recommendation["route_kind"] == "research_or_mcp"
     assert recommendation["route_label"] == "Close packet gap: Competition"
     assert "packet_field.competition" in recommendation["input_refs"]
-    assert "capture_research_enrichment" in recommendation[
-        "recommended_capability_chain"
-    ]
+    assert (
+        "capture_research_enrichment" in recommendation["recommended_capability_chain"]
+    )
     assert "Recommended route:" in recommendation["reasoning"][2]
 
 
@@ -790,10 +794,7 @@ def test_workspace_work_mode_badges_reflect_review_queues(tmp_path) -> None:
     assert document_response.status_code == 200, document_response.text
     assert capability_response.status_code == 200, capability_response.text
     assert response.status_code == 200, response.text
-    modes = {
-        mode["id"]: mode
-        for mode in response.json()["workspace"]["work_modes"]
-    }
+    modes = {mode["id"]: mode for mode in response.json()["workspace"]["work_modes"]}
     assert modes["documents"]["pending_count"] >= 1
     assert modes["capability_studio"]["pending_count"] == 1
 
@@ -808,6 +809,7 @@ def test_workspace_api_rejects_unknown_selected_opportunity(tmp_path) -> None:
     )
 
     assert response.status_code == 404
+
 
 def test_assisted_capture_goal_selection_returns_reviewable_routes(tmp_path) -> None:
     from fastapi.testclient import TestClient
@@ -970,9 +972,7 @@ def test_field_route_execution_reflects_packet_route_kind(tmp_path) -> None:
         assert output["title"] == expectation["title"]
         assert expectation["summary"] in output["summary"]
         assert any(expectation["gap"] in gap for gap in output["gaps"])
-        assert run["provenance"]["approval_basis"] == (
-            "operator_reviewed_route_kind"
-        )
+        assert run["provenance"]["approval_basis"] == ("operator_reviewed_route_kind")
         assert run["provenance"]["operator_rationale"] == (
             "Reviewed route kind before execution."
         )
@@ -1003,17 +1003,23 @@ def test_packet_field_routes_expose_model_role_contracts(tmp_path) -> None:
     source_route = source_response.json()["recommendations"][0]
     synthesis_route = synthesis_response.json()["recommendations"][0]
     assert source_route["model_role_contract"]["model_role"] == "local_admin_model"
-    assert "source-backed draft prep" in source_route["model_role_contract"]["allowed_uses"]
+    assert (
+        "source-backed draft prep"
+        in source_route["model_role_contract"]["allowed_uses"]
+    )
     assert source_route["model_role_contract"]["approval_requirement"] == (
         "human_approval_required"
     )
-    assert source_route["capability_route_card"]["model_role_contract"] == (
-        source_route["model_role_contract"]
+    assert (
+        source_route["capability_route_card"]["model_role_contract"]
+        == (source_route["model_role_contract"])
     )
     assert synthesis_route["model_role_contract"]["model_role"] == (
         "frontier_reasoning_model"
     )
-    assert "strategy synthesis" in synthesis_route["model_role_contract"]["allowed_uses"]
+    assert (
+        "strategy synthesis" in synthesis_route["model_role_contract"]["allowed_uses"]
+    )
     assert synthesis_route["model_role_contract"]["expected_output"] == (
         "Reviewable model-assisted packet synthesis draft."
     )
@@ -1022,7 +1028,9 @@ def test_packet_field_routes_expose_model_role_contracts(tmp_path) -> None:
     )
 
 
-def test_model_synthesis_route_uses_fake_runner_and_stays_review_gated(tmp_path) -> None:
+def test_model_synthesis_route_uses_fake_runner_and_stays_review_gated(
+    tmp_path,
+) -> None:
     from fastapi.testclient import TestClient
 
     client = TestClient(create_app(_command_center_settings(tmp_path)))
@@ -1096,8 +1104,7 @@ def test_assisted_capture_route_output_acceptance_projects_work_updates(
         "action_plan",
     ]
     assert all(
-        update["state"] == "ready_for_apply"
-        for update in body["accepted_updates"]
+        update["state"] == "ready_for_apply" for update in body["accepted_updates"]
     )
     assert body["accepted_updates"][0]["source_output_id"] == output_id
     assert "Accepted for call prep" in body["decision"]["reviewer_rationale"]
@@ -1265,9 +1272,9 @@ def test_assisted_capture_route_provenance_includes_reasoning_and_review_trace(
     provenance = response.json()["provenance"]
     assert provenance["recommendation"]["id"] == recommendation["id"]
     assert provenance["input_refs"] == recommendation["input_refs"]
-    assert provenance["capability_chain"] == recommendation[
-        "recommended_capability_chain"
-    ]
+    assert (
+        provenance["capability_chain"] == recommendation["recommended_capability_chain"]
+    )
     assert "Customer context gap" in provenance["reasoning"][0]
     assert provenance["run"]["id"] == run["id"]
     assert provenance["run"]["network_required"] is False
@@ -1353,9 +1360,9 @@ def test_work_product_updates_api_lists_before_after_projection_surfaces(
     assert updates_by_destination["call_plan"]["before_summary"].startswith(
         "No accepted call-plan draft"
     )
-    assert "Draft call objective" in updates_by_destination["call_plan"][
-        "after_summary"
-    ]
+    assert (
+        "Draft call objective" in updates_by_destination["call_plan"]["after_summary"]
+    )
     assert updates_by_destination["living_packet"]["state"] == "ready_for_apply"
 
     action_response = client.get(
@@ -1392,6 +1399,104 @@ def test_work_product_updates_api_lists_before_after_projection_surfaces(
     assert other_opportunity_response.json() == {"updates": [], "summary": {}}
 
 
+def test_work_product_delta_intake_from_competitive_gap_output_creates_reviewable_deltas_only(
+    tmp_path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from ariadne.artifact_assembly import ArtifactAssemblyStore
+    from ariadne.capability_runs import CapabilityRunStore
+    from ariadne.focused_capture_skills import (
+        CompetitiveGapRouteHintRequest,
+        run_competitive_gap_route_hint_capability,
+    )
+    from ariadne.next_action_recommendations import NextActionRecommendationStore
+    from ariadne.packet_knowledge import PacketFieldAnswerStore
+
+    settings = _command_center_settings(tmp_path)
+    capability_store = CapabilityRunStore(settings.ariadne_capability_runs_dir)
+    run = run_competitive_gap_route_hint_capability(
+        request=CompetitiveGapRouteHintRequest(
+            opportunity_id="opp-aflcmc-recompete",
+            incumbent_signals=("Incumbent likely has transition proof advantage.",),
+            seller_baseline_summary="Seller has cleared staff and rapid onboarding proof.",
+            source_refs=("source://incumbent-profile", "source://seller-baseline"),
+            field_key="competition",
+        ),
+        store=capability_store,
+    )
+    output = run.outputs[0]
+
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/production-command-center/work-product-deltas/from-capability-output",
+        json={
+            "opportunity_id": "opp-aflcmc-recompete",
+            "capability_run_id": run.run_id,
+            "output_id": output.output_id,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["summary"] == {"living_packet": 1, "action_plan": 1}
+    deltas_by_destination = {delta["destination"]: delta for delta in body["deltas"]}
+    packet_delta = deltas_by_destination["living_packet"]
+    assert packet_delta["opportunity_id"] == "opp-aflcmc-recompete"
+    assert packet_delta["field_key"] == "competition"
+    assert packet_delta["source_capability_run_id"] == run.run_id
+    assert packet_delta["source_output_id"] == output.output_id
+    assert packet_delta["review_state"] == "pending_review"
+    assert packet_delta["source_refs"] == [
+        "source://incumbent-profile",
+        "source://seller-baseline",
+    ]
+    assert packet_delta["capability_output_refs"] == [
+        f"capability-run://{run.run_id}/outputs/{output.output_id}"
+    ]
+    assert packet_delta["before_summary"].startswith("Competition field")
+    assert "rapid onboarding proof" in packet_delta["after_summary"]
+    assert packet_delta["assumptions"] == [
+        "Input signals are reviewable; no live competitor research was run."
+    ]
+    assert "Reviewer must decide" in packet_delta["gaps"][-1]
+    assert deltas_by_destination["action_plan"]["after_summary"].startswith(
+        "Review proof gaps and customer-validation follow-up"
+    )
+
+    list_response = client.get(
+        "/api/production-command-center/work-product-deltas",
+        params={"opportunity_id": "opp-aflcmc-recompete"},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert list_response.json()["summary"] == {"living_packet": 1, "action_plan": 1}
+
+    detail_response = client.get(
+        f"/api/production-command-center/work-product-deltas/{packet_delta['id']}"
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json()["delta"] == packet_delta
+
+    assert (
+        PacketFieldAnswerStore(settings.ariadne_packet_field_answers_dir).list(
+            opportunity_id="opp-aflcmc-recompete"
+        )
+        == ()
+    )
+    assert (
+        NextActionRecommendationStore(
+            settings.ariadne_next_action_recommendations_dir
+        ).list(opportunity_id="opp-aflcmc-recompete")
+        == []
+    )
+    assert (
+        ArtifactAssemblyStore(
+            settings.ariadne_artifact_assembly_dir
+        ).list_source_packages(opportunity_id="opp-aflcmc-recompete")
+        == []
+    )
+
+
 def test_production_command_center_health_reports_hardened_contract(tmp_path) -> None:
     from fastapi.testclient import TestClient
 
@@ -1421,9 +1526,7 @@ def test_renderer_readiness_api_selects_living_packet_export_paths(tmp_path) -> 
 
     assert response.status_code == 200
     readiness = response.json()["readiness"]
-    assert readiness["target_artifact"] == (
-        "living_milestone_decision_briefing_packet"
-    )
+    assert readiness["target_artifact"] == ("living_milestone_decision_briefing_packet")
     assert readiness["target_label"] == "Living Milestone Decision Briefing Packet"
     assert [renderer["id"] for renderer in readiness["renderers"]] == [
         "huashu_design_pptx",

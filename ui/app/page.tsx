@@ -1255,6 +1255,14 @@ export default async function CommandCenterPage({
 
           {selectedModeId === "packet" ? (
             <PacketMode
+              actionsPendingCount={pendingCountForMode(
+                workspace.work_modes,
+                "actions",
+              )}
+              capabilityPendingCount={pendingCountForMode(
+                workspace.work_modes,
+                "capability_studio",
+              )}
               deltas={packetDeltas}
               documentsPendingCount={pendingCountForMode(
                 workspace.work_modes,
@@ -1694,6 +1702,8 @@ function CommandCenterHome({
 }
 
 function PacketMode({
+  actionsPendingCount = 0,
+  capabilityPendingCount = 0,
   compact = false,
   deltas,
   documentsPendingCount,
@@ -1704,6 +1714,8 @@ function PacketMode({
   selectedOpportunityId,
   showDetail = false,
 }: {
+  actionsPendingCount?: number;
+  capabilityPendingCount?: number;
   compact?: boolean;
   deltas: WorkProductDelta[];
   documentsPendingCount: number;
@@ -1927,6 +1939,7 @@ function PacketMode({
                     <SupportedPacketFieldCard
                       field={field}
                       key={field.field_key}
+                      selectedOpportunityId={selectedOpportunityId}
                     />
                   ))}
                 </div>
@@ -1996,7 +2009,7 @@ function PacketMode({
                 Feeder State
               </p>
               <h3 id="packet-feeders-title">
-                Research and document intake readiness
+                Feeder readiness and review queues
               </h3>
             </div>
             <FileStack className="text-ariadne-cyan" size={22} aria-hidden />
@@ -2054,6 +2067,58 @@ function PacketMode({
                 Open document feeder
               </a>
             </article>
+            <article className="action-update-card">
+              <div className="action-update-card-head">
+                <span>Actions</span>
+                <span>{actionsPendingCount} pending</span>
+              </div>
+              <p>
+                Action Plan implications and recommendation-gated next work
+                created from packet and route decisions.
+              </p>
+              <dl>
+                <div>
+                  <dt>Review queue</dt>
+                  <dd>{actionsPendingCount}</dd>
+                </div>
+                <div>
+                  <dt>Route</dt>
+                  <dd>Actions mode</dd>
+                </div>
+              </dl>
+              <a
+                className="packet-action-link"
+                href={modeHref("actions", selectedOpportunityId)}
+              >
+                Open action feeder
+              </a>
+            </article>
+            <article className="action-update-card">
+              <div className="action-update-card-head">
+                <span>Capability outputs</span>
+                <span>{capabilityPendingCount} pending</span>
+              </div>
+              <p>
+                Capability Run Outputs, validation gaps, and provenance remain
+                secondary to packet workflow until reviewed.
+              </p>
+              <dl>
+                <div>
+                  <dt>Review queue</dt>
+                  <dd>{capabilityPendingCount}</dd>
+                </div>
+                <div>
+                  <dt>Route</dt>
+                  <dd>Capability Studio</dd>
+                </div>
+              </dl>
+              <a
+                className="packet-action-link"
+                href={modeHref("capability_studio", selectedOpportunityId)}
+              >
+                Open capability feeder
+              </a>
+            </article>
           </div>
         </section>
       ) : null}
@@ -2099,7 +2164,7 @@ function GatePacketCommandPanel({
   const primaryHref =
     priorityField === null
       ? modeHref("activation", selectedOpportunityId)
-      : packetFieldRouteHref(priorityField, selectedOpportunityId);
+      : packetFieldActionHref(priorityField, selectedOpportunityId);
   const primaryLabel =
     priorityField === null
       ? hasActivationRun
@@ -2182,7 +2247,10 @@ function PacketRoadmapFieldCard({
   field: PacketRoadmapField;
   selectedOpportunityId: string;
 }) {
-  const routeHref = packetFieldRouteHref(field, selectedOpportunityId);
+  const actionHref = packetFieldActionHref(field, selectedOpportunityId);
+  const actionLabel = isRoadmapFieldReviewReady(field)
+    ? "Review output"
+    : "Start route";
   return (
     <article className={`packet-field-card ${packetFieldToneClass(field)}`}>
       <div className="packet-field-card-heading">
@@ -2212,8 +2280,8 @@ function PacketRoadmapFieldCard({
       </p>
       <div className="packet-field-route-row">
         <span>{field.recommended_route}</span>
-        <a className="packet-action-link" href={routeHref}>
-          Start route
+        <a className="packet-action-link" href={actionHref}>
+          {actionLabel}
         </a>
       </div>
     </article>
@@ -2297,7 +2365,7 @@ function LivingPacketLiveView({
                     <span>{formatLabel(field.route_kind ?? "route")}</span>
                     <a
                       className="live-packet-route-link"
-                      href={packetFieldRouteHref(field, selectedOpportunityId)}
+                      href={packetFieldActionHref(field, selectedOpportunityId)}
                     >
                       {isRoadmapFieldAnswered(field) ? "Review" : "Start route"}
                     </a>
@@ -2312,7 +2380,13 @@ function LivingPacketLiveView({
   );
 }
 
-function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
+function SupportedPacketFieldCard({
+  field,
+  selectedOpportunityId,
+}: {
+  field: PacketRoadmapField;
+  selectedOpportunityId: string;
+}) {
   return (
     <article className="packet-field-card packet-field-card-supported">
       <div className="packet-field-card-heading">
@@ -2335,6 +2409,12 @@ function SupportedPacketFieldCard({ field }: { field: PacketRoadmapField }) {
         ) : null}
       </div>
       <p className="packet-field-gap">Review source support before gate use.</p>
+      <a
+        className="packet-action-link"
+        href={activationFieldReviewHref(field.field_key, selectedOpportunityId)}
+      >
+        Review support
+      </a>
     </article>
   );
 }
@@ -4484,6 +4564,27 @@ function packetFieldRouteHref(
     packet_field_key: field.field_key,
     route_goal: "close_packet_gap",
   });
+}
+
+function packetFieldActionHref(
+  field: PacketRoadmapField,
+  selectedOpportunityId: string,
+): string {
+  if (isRoadmapFieldReviewReady(field) || isRoadmapFieldAnswered(field)) {
+    return activationFieldReviewHref(field.field_key, selectedOpportunityId);
+  }
+  return packetFieldRouteHref(field, selectedOpportunityId);
+}
+
+function activationFieldReviewHref(
+  fieldKey: string,
+  selectedOpportunityId: string,
+): string {
+  return `${modeHref("activation", selectedOpportunityId, { detail: "1" })}#${activationFieldAnchorId(fieldKey)}`;
+}
+
+function activationFieldAnchorId(fieldKey: string): string {
+  return `activation-field-${fieldKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
 function modeForPacketRoute(route: string): string {

@@ -592,6 +592,7 @@ function ActivationFieldCard({
   return (
     <article
       className={`activation-field-card ${actionStateClass(field.action_state)}`}
+      id={activationFieldAnchorId(field.field_key)}
     >
       <div className="activation-field-header">
         <div>
@@ -747,6 +748,10 @@ function activationDetailHref(opportunityId: string): string {
   });
 
   return `/?${params.toString()}`;
+}
+
+function activationFieldAnchorId(fieldKey: string): string {
+  return `activation-field-${fieldKey.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
 function ActivationMetric({

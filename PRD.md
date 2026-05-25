@@ -93,7 +93,7 @@
 
 ## 0A. Rapid Realignment PRD: Two-Tier Command Center Unification (Hours, Not Weeks)
 
-**Status:** Approved execution plan for immediate implementation  
+**Status:** Implemented on `89-build/packet-command-center-realignment`; focused validation passing  
 **Window:** Same-day sprint (target 6-10 hours of focused build time)  
 **Why this exists:** Ariadne already has strong modules. The current risk is fragmentation, not missing capability. This realignment composes what exists into one coherent operating model without losing the North Star, Shipley discipline, or completed MVP boundaries.
 
@@ -198,6 +198,15 @@ The product has mature capability surfaces (Activation, Assisted Capture, Work P
 ### Definition of Done for This Realignment
 
 The Command Center behaves as one coherent two-tier system: Portfolio Pulse routes attention globally, and the Living Packet operates as the daily execution heart where feeder workflows are visible and actionable without forcing routine context switching.
+
+### Implementation Checkpoint (2026-05-25)
+
+- Packet is the default selected workspace for one Opportunity, while Portfolio Pulse remains the Tier 1 triage/routing cockpit.
+- Packet now carries the daily execution path: gate command row, live packet/detail view, packet field route cards, Work Product Delta review lane, supported answers, and feeder readiness/actions.
+- Packet field actions are review-aware: blocked fields launch field-specific Assisted Capture, while review-ready or supported fields deep-link to Activation field review anchors instead of restarting route work.
+- Required feeders are visible and actionable from Packet context: Activation, Assisted Capture, Work Product Deltas, Capture Research, Document Intake, Actions, and Capability outputs.
+- Scope controls held: no new skills, no new external integrations, no renderer/export buildout, no broad module rewrite, and no trusted-write boundary relaxation.
+- Focused validation: `npm run typecheck` and `uv run pytest tests/test_production_command_center.py tests/test_opportunity_activation.py -q` pass.
 
 ## 1. North Star Vision & Core Guiding Principles (Non-Negotiable)
 
